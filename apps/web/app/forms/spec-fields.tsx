@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Check, Plus, X } from "lucide-react";
 import {
   activityGuide,
@@ -11,7 +11,10 @@ import {
   isVisible,
   matrixRating,
   needsOtherExplanation,
+  isSheetRow,
+  isSheetSlot,
   otherKey,
+  sheetLayouts,
   refKey,
   refsKey,
   rowsFor,
@@ -49,6 +52,7 @@ export function SpecFields({
   only,
   skip,
   disabled,
+  slots,
 }: {
   form: SpecFormKey;
   values: SpecValues;
@@ -60,6 +64,11 @@ export function SpecFields({
   only?: readonly string[];
   skip?: readonly string[];
   disabled?: boolean;
+  /**
+   * The whole form in the order of its workbook sheet: every field of the sheet, with the
+   * screen's own controls (title, description, location, photos …) in their rows.
+   */
+  slots?: Partial<Record<string, ReactNode>>;
 }) {
   const idBase = useId();
   const directory = useSpecDirectory();
@@ -74,7 +83,24 @@ export function SpecFields({
     // Only when the field is still empty; the user can change it afterwards.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoUserKey, currentUser?.id]);
-  if (!fields.length) return null;
+  // "Date default" rows start with today or now; the user may correct them.
+  const nowKeys = fields.filter((field) => field.defaultsToNow && !values[field.key]).map((field) => field.key).join(",");
+  useEffect(() => {
+    if (!nowKeys || disabled) return;
+    const now = new Date();
+    const pad = (value: number) => String(value).padStart(2, "0");
+    const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    let next = values;
+    for (const key of nowKeys.split(",")) {
+      const field = specForms[form].find((item) => item.key === key);
+      next = setSpecValue(form, next, key, field?.kind === "datetime" ? `${date}T${pad(now.getHours())}:${pad(now.getMinutes())}` : field?.kind === "time" ? `${pad(now.getHours())}:${pad(now.getMinutes())}` : date);
+    }
+    onChange(next);
+    // Only for fields that are still empty.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nowKeys]);
+  const layout = slots ? sheetLayouts[form] : undefined;
+  if (!fields.length && !layout) return null;
   const set = (key: string, value: SpecValue) => onChange(setSpecValue(form, values, key, value));
   const setMany = (patch: Record<string, SpecValue>) => {
     let next = values;
@@ -87,6 +113,53 @@ export function SpecFields({
   const render = (field: SpecField) => (
     <SpecInput key={field.key} id={`${idBase}-${field.key}`} form={form} field={field} values={values} set={set} setMany={setMany} text={text} language={language} disabled={disabled} directory={directory} />
   );
+  if (layout && slots) {
+    // One row per line of the sheet, in the sheet's order.
+    return (
+      <section className="record-section spec-section sheet-form" aria-label={heading ?? text("Form", "Formulier")} data-spec-form={form} data-sheet-form={form}>
+        {heading ? <h3>{heading}</h3> : null}
+        {layout.map((item) => {
+          if (isSheetRow(item)) {
+            // One sheet row, several controls: they stand together under the sheet's label. A
+            // row without its own label is headed by its first control's label (the sheet's);
+            // that control then does not repeat it (it keeps it as its accessible name).
+            const first = typeof item.items[0] === "string" ? specForms[form].find((candidate) => candidate.key === item.items[0]) : undefined;
+            const rowLabel = item.label ?? first?.label;
+            const parts = item.items.map((part) => {
+              if (typeof part === "string") {
+                const field = fields.find((candidate) => candidate.key === part);
+                if (!field) return null;
+                return !item.label && field === first ? <div className="sheet-row-main" key={`main-${field.key}`}>{render(field)}</div> : render(field);
+              }
+              const node = slots[part.slot];
+              if (node === undefined || node === null || node === false) return null;
+              return <div className="sheet-row-part" data-sheet-slot={part.slot} key={`slot-${part.slot}`}>{node}</div>;
+            }).filter(Boolean);
+            if (!parts.length) return null;
+            return (
+              <div className="form-field sheet-row" data-sheet-row={item.row} key={`row-${item.row}`}>
+                {rowLabel ? <span className="sheet-slot-label">{rowLabel[language]} {item.required || (first && fields.includes(first) && isRequired(first, values)) ? <em className="record-section-required">*</em> : null}</span> : null}
+                {parts}
+              </div>
+            );
+          }
+          if (isSheetSlot(item)) {
+            const node = slots[item.slot];
+            if (node === undefined || node === null || node === false) return null;
+            return (
+              <div className="form-field sheet-slot" data-sheet-slot={item.slot} key={`slot-${item.slot}`}>
+                <span className="sheet-slot-label">{item.label[language]} {item.required ? <em className="record-section-required">*</em> : null}</span>
+                {item.hint ? <p className="form-helper">{item.hint[language]}</p> : null}
+                {node}
+              </div>
+            );
+          }
+          const field = fields.find((candidate) => candidate.key === item);
+          return field ? render(field) : null;
+        })}
+      </section>
+    );
+  }
   return (
     <section className="record-section spec-section" aria-label={heading ?? text("Specification details", "Specificatiegegevens")} data-spec-form={form}>
       {heading ? <h3>{heading}</h3> : null}

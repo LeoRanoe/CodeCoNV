@@ -13,6 +13,12 @@ import type { PeriodReportSnapshot } from "@/lib/supabase/operations";
 import { periodDetailKeys, periodDetailsLine, periodHours, periodProjectHead, periodSignatureRoles, periodToken } from "@/lib/reports/period-report-text";
 import { reportDelayCause, reportWeather, reportWind } from "@/lib/reports/report-vocabulary";
 
+/** The day closeout's HSE answer in words: the stored value is a code such as near_miss. */
+const closeoutHseEvents: Record<string, string> = { none: "geen", near_miss: "bijna-ongeval", incident: "incident", observation: "observatie", unsafe_act: "onveilige handeling", unsafe_condition: "onveilige situatie" };
+function closeoutHseEvent(code: string) {
+  return closeoutHseEvents[code] ?? code.replaceAll("_", " ");
+}
+
 export type PeriodReportSection = "management" | "workforce" | "work" | "quality" | "hse" | "actions" | "logistics" | "instructions" | "commercial" | "communications" | "requests" | "boq" | "visual" | "documents" | "environment" | "buildings";
 export const allPeriodReportSections: PeriodReportSection[] = ["management", "workforce", "work", "quality", "hse", "actions", "logistics", "instructions", "commercial", "communications", "requests", "boq", "visual", "documents", "environment", "buildings"];
 
@@ -291,7 +297,7 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
               <Text style={styles.dailyDetail}>Aannemer: {value(closeout, "contractor_signed_by", "oude registratie zonder handtekening")} · {value(closeout, "contractor_company")} · {formatDate(value(closeout, "contractor_signed_at"))}</Text>
               {value(closeout, "contractor_signature_image") ? <Image src={value(closeout, "contractor_signature_image")} style={styles.recordSignature} /> : null}
             </> : null}
-            {closeout ? <Text style={styles.dailyDetail}>QC: {value(closeout, "inspection_result")} · {value(closeout, "quality_details", "geen afwijking")} | HSE: {value(closeout, "hse_event")} · {value(closeout, "hse_details", "geen bijzonderheden")} | Advies/besluit: {value(closeout, "communication", "-")}</Text> : null}
+            {closeout ? <Text style={styles.dailyDetail}>QC: {value(closeout, "inspection_result")} · {value(closeout, "quality_details", "geen afwijking")} | HSE: {closeoutHseEvent(value(closeout, "hse_event"))} · {value(closeout, "hse_details", "geen bijzonderheden")} | Advies/besluit: {value(closeout, "communication", "-")}</Text> : null}
           </View>;
         }) : <Text style={styles.empty}>Geen dagrapporten in deze periode.</Text>}
         <Text style={styles.heading} minPresenceAhead={40}>Dagregistraties, activiteiten en locatie</Text><RecordRows rows={snapshot.registrations} />

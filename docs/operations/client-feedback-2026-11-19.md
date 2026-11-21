@@ -120,3 +120,52 @@ The client's choices of 20-11-2026 for the open points: workflow settings projec
 |---------|--------|--------------|
 | Every field that is typed freely can be dictated, understanding Dutch and English at the same time | done | Every free-text box (one-line text and writing areas) has a microphone. Boxes that already carried one keep it; every other box gets one at its right edge while it has the focus (`app/dictation-layer.tsx`), and the words are written in as if typed. Sign-in, e-mail, codes and coordinates are not dictated. With `TRANSCRIPTION_API_KEY` (or `OPENAI_API_KEY`) set on the server, the recording is transcribed by `app/api/speech/transcribe` without a fixed language, so Dutch, English and both mixed in one sentence are understood; signed-in users only, 60 recordings per 10 minutes, at most 2 minutes each. Without a key the browser's own recognition listens in the app language (it can do one language at a time). Guarded by `tests/e2e/dictation.spec.ts`. |
 | A custom icon / SVG per choice, so choices are told apart easily | done | Every short list of the specification fields (up to 6 choices: status, priority, severity, likelihood, shift, disposition, currency, yes/no …) is a row of tiles, each with its own picture (`lib/forms/choice-icons.tsx`). Scales (priority, likelihood, severity, risk rating, damage, injury) show a step gauge — the number of filled bars is the step — so the order reads at a glance. Tick-box lists (impact, consequence, containment …) are the same tiles, with a tick on each chosen one. The tiles are drawn like the forms' own quick-choice tiles (picture above the words), and no two choices of one list share a picture (`tests/spec-forms.test.mjs`). Longer lists stay a dropdown. The chosen tile is orange; reviewer-only decisions stay locked for others. The Workspace forms' own quick choices already had icons. |
+
+## Feedback of 20-11-2026 — "the whole sheet is not live"
+
+The client could not find the workbook in the forms: every form was the old screen with the workbook's fields added in a block underneath. START HERE says "Use the relevant form sheet to build each screen in the stated field order." Every Workspace form is now built from its sheet (`sheetLayouts` in `apps/web/lib/forms/spec-forms.ts`): each row in the sheet's order, the record's own boxes (title, description, location, photos, responsible party) in their row, the head of the form above it and the signatures below it.
+
+| Form (sheet) | Status | What changed |
+|---|---|---|
+| Issue | done | Rows 3–19 in order. New: Date/time identified, Title, Immediate action taken as short text. Gone (not in the sheet): severity buttons (Priority sets the deadline), root cause, additional notes, the folded impact / follow-up / escalation block (Impact type, Corrective action required; Critical escalates). |
+| NCR | done | Rows 3–24 in order. New: Date raised, Title. Gone: quick choices, client B1 catalog, old category/type lists, priority, old disposition, recommended-action chips, impact chips, reference checklist, date identified, escalation, contractor select, remarks. Severity sets priority and deadline; the action owner's company receives the NCR link. |
+| HSE | done | Rows 3–20 in order. New: Date/time observed, Title, Immediate action taken, Corrective / preventive action, Due date. Gone: tiles, severity buttons (potential severity sets the deadline), standard records, notes. |
+| HSE Incident Registration | done | Rows 3–26 in order. New: Incident title, Immediate response. |
+| Materials Delivery | done | Rows 3–19 in order. New: Delivery date/time, Delivered quantity, Unit. The record's quantity line and compliance follow from these rows. |
+| Technical Instructions | done | Rows 3–18 in order. New: Instruction date, Acknowledged by / date (filled by the sign-off). |
+| Change Order | done | Rows 3–21 in order. New: Request date, **Reason for change** (row 8, required). The client struck this field on 19-11; the request of 20-11 ("everything in the sheet exactly") brings it back. |
+| Project Delay Report | done | Rows 3–19 in order. New: Affected activity (linked work record, or typed), Detailed cause, Delay duration + Duration unit, Critical path impact, Mitigation / recovery action. The client's earlier PDR sections are replaced by the sheet. |
+| Lessons Learned | done | Rows 3–18 in order. New: Date recorded, Title, What happened?, Root cause / contributing factors, Lesson learned, Recommendation / preventive action. The four numbered questions and the two required photos are replaced by the sheet's rows and its Attachments row. |
+| Agreements Made | done | Rows 3–17 in order; the parties' signatures stay at the end. |
+| Works Ongoing / Works Completed | done | The Workspace tiles open the sheets (one record per activity) instead of the one-box day log. New: Report date, Completion date, Status. The day log stays reachable from the Works page. |
+| Photos | interpreted | The photo classification already asks purpose, category, location and related record; date/time and taken by are recorded automatically, the caption is the photo's description. Rows 4 and 5 of the sheet carry each other's values; the purpose-then-discipline reading is kept. |
+| Materials Delivery row 8 "Material category" | interpreted | Unchanged: the sheet lists the three families (Delivery Status, Material Group, Delivery Discrepancy) as the material groups; each family is its own field. |
+
+### Literal check against the workbook (20-11-2026, two passes)
+
+Every row of the 12 form sheets was compared with the screen by script: the row label (exactly), the control, required, the condition, and every list value (dependent lists with their descriptions, the 147 activities included). Then the screen itself was read in the browser, row by row, against the sheet.
+
+**One sheet row is one row on screen, with the sheet's label.** Where a sheet row has several controls ("Start / finish time", "Number + unit", "Dropdown + short text", "Approved amount / days", "Verified by / date" …) they stand together under that label (`SheetRow` in `sheetLayouts`). The controls the sheet's own developer instructions ask for stay inside their row: secondary discipline (Works row 5), N/A (quantity), "work crosses midnight" (WO row 15), the concrete-pour details (WO row 16), the blocker link (WO row 19), the linked NCR / issue (WC row 12), Actual / Estimated (PDR row 11), the closure note and reviewer (Status rows), revised delivery date (Delivery row 13), discrepancy type (row 17), added / omitted quantity (CO row 12), currency (row 13), containment justification and details (NCR row 14), meeting reference (Agreements row 4).
+
+| Sheet | Row | Was | Now |
+|---|---|---|---|
+| Issue | 13 Responsible party | Client / contractor / supervision | The sheet's list (Client … Undetermined, required), then the person or company (not asked for Weather, Shared, Undetermined) |
+| Issue, NCR | 9 / 8 | "Work discipline" | "Discipline / work package" |
+| Technical Instructions, Lessons Learned | 5 / 14 | "Work discipline" | "Discipline" |
+| Technical Instructions | 6 | "Other - specify" | "Other – specify" (the sheet's dash) |
+| Technical Instructions, Change Order | 8 / 11 | "… reference (with revision)" | "Drawing / document reference", "Drawing / specification reference" |
+| Change Order | 13, 14, 17, 19, 21 | Cost impact (estimated), Time impact (estimated), separate approved rows, Related record, Approved by only after approval | "Cost impact", "Time impact", "Approved amount / days", "Related records", "Prepared / reviewed / approved by" always shown |
+| Works Ongoing | 10, 16, 19 | "Quantity completed (this period)", blocker required on hold | "Quantity completed"; Blocker / issue not required (sheet: No) |
+| Works Ongoing / Completed | 23 / 19 | "Status" | "Workflow status" (read-only) |
+| Works / Delivery / CO | Unit | m … with mm and cm | The form sheets' list: m, m², m³, kg, tonne, pcs, number, lot, hours, set, other |
+| Works Completed | — | Activity-specific technical details | Removed: not a row of this sheet |
+| Project Delay Report | — | Related record | Removed: not a row of this sheet |
+| Lessons Learned | 18 | Reviewed by only after review | "Recorded by / reviewed by" always shown |
+| Agreements Made | 3, 11, 12, 13, 17 | "… date and time", an action list, "Related discipline", closure note required | "Meeting / agreement date"; "Action owner" and "Due date" (required when Action required = Yes; the action becomes an action record); "Related discipline / location"; closure note not required (sheet: No) |
+| HSE Incident Registration | 21 | Findings optional | Required when Investigation required = Yes |
+
+System rows (record ID / number, project, reported by and reported date/time, the sign-off panel and workflow status) stand in the form's head and on the saved record.
+
+Left as interpreted, because the workbook itself is inconsistent: Materials Delivery rows 7–8 (the "Material group" list holds the three family names Delivery Status, Material Group, Delivery Discrepancy; the app asks the material group from the Material Group family), and the Photos sheet (rows 4 and 5 carry each other's values).
+
+Verification: `tests/spec-forms.test.mjs` checks that every field of every form stands in its sheet order; `tests/e2e/sheet-forms.spec.ts` opens every Workspace tile, checks the first rows against the sheet, fills the form and saves it.

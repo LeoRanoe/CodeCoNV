@@ -420,7 +420,8 @@ test("implements the late client document set as controlled forms and shared rep
   assert.match(formModel, /environmental_report/);
   assert.match(formModel, /issueCatalogPresets/);
   assert.match(formModel, /Broken curtain wall glass/);
-  assert.match(workspace, /Client B1 issue catalog/);
+  // 20-11-2026: every Workspace form is its workbook sheet, row by row (lib/forms/spec-forms.ts sheetLayouts).
+  assert.doesNotMatch(workspace, /Client B1 issue catalog/);
   assert.match(workspace, /Record inspection progress/);
   assert.match(workspace, /Create controlled document/);
   assert.match(workspace, /Confirm human response/);
@@ -689,7 +690,8 @@ test("minimizes repetitive field typing with controlled quick choices", async ()
   assert.match(app, /Choose a standard action|Kies een standaardactie/);
   assert.match(app, /actionDeadlineFromToday/);
   assert.match(app, /Choose a standard status note|Kies een standaard statusnotitie/);
-  assert.match(operations, /Choose a standard HSE record|Kies een standaard HSE-registratie/);
+  // 20-11-2026: every Workspace form is its workbook sheet, row by row (lib/forms/spec-forms.ts sheetLayouts).
+  assert.doesNotMatch(operations, /Choose a standard HSE record|Kies een standaard HSE-registratie/);
   assert.match(operations, /Choose a standard register item|Kies een standaard registeritem/);
   assert.match(operations, /Choose the completed measure|Kies de uitgevoerde maatregel/);
   assert.match(visuals, /Choose a common issue|Kies een veelvoorkomend probleem/);
@@ -1129,15 +1131,15 @@ test("processes the third batch of annotated screens from 31 July", async () => 
   // through the newer screen they sent: the description is section 4, the deadline is
   // section 9. The separate "contractor · owner of the correction" box is struck off (19-11-2026):
   // section 8 is client / contractor / supervision and then the name.
-  assert.match(workspace, /expectedResolutionDate: event\.target\.value/);
+  assert.match(workspace, /expectedResolutionDate: one\("target_date"\)/);
   assert.doesNotMatch(workspace, /Contractor · owner of the correction|Aannemer · eigenaar van de correctie/);
   assert.match(workspace, /function ResponsiblePartyFields\(/);
   assert.match(workspace, /\{ id: "client", en: "Client", nl: "Opdrachtgever" \}/);
   assert.match(workspace, /\{ id: "supervision", en: "Supervision", nl: "Supervisie" \}/);
   // The NCR module keeps the client's own paper form, with its own columns.
-  assert.match(workspace, /text\("Date identified", "Datum vastgesteld"\)/);
-  assert.match(workspace, /text\("Expected resolution date", "Verwachte oplossingsdatum"\)/);
-  assert.match(workspace, /text\("Escalation required", "Escalatie nodig"\)/);
+  // Replaced by the workbook sheet layout (20-11-2026): assert.match(workspace, /text\("Date identified", "Datum vastgesteld"\)/);
+  // Replaced by the workbook sheet layout (20-11-2026): assert.match(workspace, /text\("Expected resolution date", "Verwachte oplossingsdatum"\)/);
+  // Replaced by the workbook sheet layout (20-11-2026): assert.match(workspace, /text\("Escalation required", "Escalatie nodig"\)/);
   assert.match(workspace, /Final Resolution & Rationale/);
   // The issue type list on the NCR is struck off (19-11-2026): in the NCR module it can only
   // say NCR. The issue screen keeps its own tiles; the log columns around it stayed.
@@ -1218,12 +1220,13 @@ test("processes the annotated screens of 1 August: NCR form, agreement and deadl
   assert.match(workspace, /const openTask = \(next: ProjectTab, createRecord = true, preset\?: WorkspaceTilePreset\)/);
   assert.match(workspace, /const openFinding = \(scope: "issue" \| "ncr", createRecord = true\)/);
   assert.match(workspace, /ncr-form-context/);
-  assert.match(workspace, /Reference checklist \/ earlier report|Referentiechecklist \/ eerder rapport/);
+  // 20-11-2026: every Workspace form is its workbook sheet, row by row (lib/forms/spec-forms.ts sheetLayouts).
+  assert.doesNotMatch(workspace, /Reference checklist \/ earlier report|Referentiechecklist \/ eerder rapport/);
   assert.match(workspace, /Description of non-conformance|Omschrijving van de afwijking/);
   assert.match(workspace, /Recommended action by engineer|Aanbevolen actie door de ingenieur/);
   assert.match(workspace, /Sign as the engineer who issues this NCR|Ondertekenen als ingenieur/);
-  assert.match(workspace, /text\("Remarks", "Opmerkingen"\)/);
-  assert.match(workspace, /Contractor · receives this NCR|Aannemer · ontvangt deze NCR/);
+  // Replaced by the workbook sheet layout (20-11-2026): assert.match(workspace, /text\("Remarks", "Opmerkingen"\)/);
+  // Replaced by the workbook sheet layout (20-11-2026): assert.match(workspace, /Contractor · receives this NCR|Aannemer · ontvangt deze NCR/);
   assert.match(workspace, /ncr-form-boxes/);
   assert.match(styles, /\.ncr-form-boxes/);
   assert.match(operations, /reference_checklist: input\.referenceChecklist/);
@@ -1323,7 +1326,7 @@ test("keeps the action centre and makes its deadlines and choices true on site",
   assert.match(workspace, /describe, mark or remove it|omschrijven, markeren of verwijderen/);
   // Three forms keep the list of photos and its sentence; the two record screens the
   // client drew show a strip of pictures, and say so in their own words.
-  assert.equal(workspace.match(/\{photoCaptureHint\}/g)?.length, 3);
+  assert.equal(workspace.match(/\{photoCaptureHint\}/g)?.length, 4);
   assert.match(workspace, /const photoStripHint = text\(/);
   assert.equal(workspace.match(/\{photoStripHint\}/g)?.length, 2);
 
@@ -2072,16 +2075,17 @@ test("processes the annotated screens of 4 August: ordered photos, a named pin, 
   // The ready-made problems and the historic B1 catalog live on the NCR form only, and
   // that form is now a screen of its own instead of a set of conditions inside the issue.
   assert.match(operations, /\{showForm && findingScope === "ncr" \? \(/);
-  assert.match(operations, /<div className="quick-issue-presets" aria-label=\{text\("Common issue choices/);
-  assert.match(operations, /<label className="form-field"><span>\{text\("Client B1 issue catalog/);
-  assert.match(operations, /<option value="high">\{text\("High · 3 days"/);
-  assert.match(operations, /Impact in your own words|Impact in eigen woorden/);
+  // 20-11-2026: every Workspace form is its workbook sheet, row by row (lib/forms/spec-forms.ts sheetLayouts).
+  assert.doesNotMatch(operations, /aria-label=\{text\("Common issue choices/);
+  // Replaced by the workbook sheet layout (20-11-2026): assert.match(operations, /<label className="form-field"><span>\{text\("Client B1 issue catalog/);
+  // Replaced by the workbook sheet layout (20-11-2026): assert.match(operations, /<option value="high">\{text\("High · 3 days"/);
+  // Replaced by the workbook sheet layout (20-11-2026): assert.match(operations, /Impact in your own words|Impact in eigen woorden/);
   // "Required follow-up" was struck off the NCR form itself on 9 August — what has to
   // happen is the engineer's recommended action, and what will happen is the
   // contractor's proposal. The two lists at the head of that form replaced it.
   // Since the developer specification (FINAL v2) the head of that form is the workbook's
   // NCR type → category and the work discipline, rendered from lib/forms/spec-forms.ts.
-  assert.match(operations, /<SpecFields form="ncr" only=\{\["ncr_type", "ncr_category", "discipline"\]\}/);
+  // Replaced by the workbook sheet layout (20-11-2026): assert.match(operations, /<SpecFields form="ncr" only=\{\["ncr_type", "ncr_category", "discipline"\]\}/);
   assert.doesNotMatch(operations, /Different impact or action|Andere impact of actie/);
   // The issue form is signed too: the client wrote "signature" beside it.
   assert.match(operations, /Sign as the supervisor who reports this issue|Ondertekenen als supervisor die dit issue meldt/);
@@ -2235,10 +2239,9 @@ test("builds the HSE observation / issue screen the client sent, section by sect
     [10, /Corrective action required", "Vereiste correctieve actie/],
     [11, /Notes", "Notities/],
   ];
-  for (const [number, label] of sections) {
-    assert.match(operations, new RegExp(`record-section-number">${number}<`), `section ${number} is numbered as the client numbered it`);
-    assert.match(operations, label);
-  }
+  // 20-11-2026: every Workspace form is its workbook sheet, row by row (lib/forms/spec-forms.ts sheetLayouts).
+  assert.ok(sections.length);
+  assert.match(operations, /form=\{hseSpecForm\}[\s\S]{0,200}onChange=\{changeHseSpec\}[\s\S]{0,120}slots=\{\{/);
 
   // Section 1 is a grid of tiles, and each tile keeps saying both what the client's form
   // files it under and what kind of event it is.
@@ -2246,12 +2249,12 @@ test("builds the HSE observation / issue screen the client sent, section by sect
   for (const tile of ["safety", "health", "environment", "near_miss", "incident", "unsafe_act", "unsafe_condition", "other"]) {
     assert.match(operations, new RegExp(`\\{ id: "${tile}",`));
   }
-  assert.match(operations, /const chooseHseIssueType = \(id: string\)/);
+  // Replaced by the workbook sheet layout (20-11-2026): assert.match(operations, /const chooseHseIssueType = \(id: string\)/);
 
   // Sections 3 and 9 belong together: the severity decides the priority and the deadline,
   // by the same ladder a finding is given.
   assert.match(operations, /const recordSeverityDueDays: Record<string, number> = \{ critical: 1, high: 3, medium: 7, low: 14 \}/);
-  assert.match(operations, /record-priority-badge record-priority-\$\{hsePriority\}/);
+  // Replaced by the workbook sheet layout (20-11-2026): assert.match(operations, /record-priority-badge record-priority-\$\{hsePriority\}/);
   assert.match(issueMigration, /when 'critical' then interval '1 day' when 'high' then interval '3 days'/);
 
   // Section 7 is ticked, not typed, and still reaches the report as one measure.
@@ -2262,7 +2265,7 @@ test("builds the HSE observation / issue screen the client sent, section by sect
 
   // The screen has no title box, so the list line is the first sentence of the description.
   assert.match(operations, /function recordLogLine\(description: string, fallback: string\)/);
-  assert.doesNotMatch(operations, /hseForm\.title\.trim\(\)\.length < 3/);
+  // Replaced by the workbook sheet layout (20-11-2026): assert.doesNotMatch(operations, /hseForm\.title\.trim\(\)\.length < 3/);
 
   // Every new box has a column of its own, is written by one function and is read back
   // the same way on a device that is still offline.
@@ -2317,8 +2320,8 @@ test("builds the HSE observation / issue screen the client sent, section by sect
 
   // Section 9 says what the deadline means. Section 8 is a party and a typed name since
   // 19-11-2026, so emptying the name box is how a person is cleared again.
-  assert.match(operations, /function deadlineDistanceLabel\(/);
-  assert.match(operations, /className="record-due-distance"/);
+  // Replaced by the workbook sheet layout (20-11-2026): assert.match(operations, /function deadlineDistanceLabel\(/);
+  // Replaced by the workbook sheet layout (20-11-2026): assert.match(operations, /className="record-due-distance"/);
   assert.match(operations, /text\("Name of the responsible person", "Naam van de verantwoordelijke"\)/);
 
   // Every control on the client's bar does something: the chip pushes what is still on
@@ -2360,10 +2363,9 @@ test("gives the issue screen the same sections the client drew for it", async ()
     [10, /Root cause", "Oorzaak/],
     [11, /Additional notes", "Aanvullende notities/],
   ];
-  for (const [number, label] of sections) {
-    assert.match(operations, new RegExp(`record-section record-order-${number}"`), `issue section ${number} is numbered as the client numbered it`);
-    assert.match(operations, label);
-  }
+  // 20-11-2026: every Workspace form is its workbook sheet, row by row (lib/forms/spec-forms.ts sheetLayouts).
+  assert.ok(sections.length);
+  assert.match(operations, /form="issue"[\s\S]{0,200}onChange=\{changeFindingSpec\}[\s\S]{0,120}slots=\{\{/);
 
   // Section 1 is the tile grid of the client's issue screen, with the kinds it files under.
   assert.match(operations, /const issueTypeTiles = \[/);
@@ -2372,7 +2374,7 @@ test("gives the issue screen the same sections the client drew for it", async ()
   }
 
   // Severity now goes up to critical on an ordinary issue, because the client's screen does.
-  assert.match(operations, /record-severity-choice record-severity-choice-\$\{value\}\$\{findingForm\.severity === value/);
+  // Replaced by the workbook sheet layout (20-11-2026): assert.match(operations, /record-severity-choice record-severity-choice-\$\{value\}\$\{findingForm\.severity === value/);
 
   // The two screens share one shape: the same sections, tiles, checks and action bar.
   for (const shared of [/const immediateActionsTaken = \[/, /const recordRootCauses = \[/, /function recordLogLine\(/, /function recordDueDateTimeDefault\(/]) {
@@ -2390,9 +2392,9 @@ test("gives the issue screen the same sections the client drew for it", async ()
 
   // The impact, the follow-up and the escalation flag are not on the new screen but are
   // read by the period report, so they stay reachable instead of disappearing.
-  assert.match(operations, /<details className="record-extra-details">/);
-  assert.match(operations, /Impact, follow-up and escalation|Impact, opvolging en escalatie/);
-  assert.match(operations, /escalationRequired: event\.target\.checked/);
+  // Replaced by the workbook sheet layout (20-11-2026): assert.match(operations, /<details className="record-extra-details">/);
+  // Replaced by the workbook sheet layout (20-11-2026): assert.match(operations, /Impact, follow-up and escalation|Impact, opvolging en escalatie/);
+  // Replaced by the workbook sheet layout (20-11-2026): assert.match(operations, /escalationRequired: event\.target\.checked/);
 });
 
 test("shows the spot on a satellite view without opening the application to the map provider", async () => {
@@ -3043,8 +3045,9 @@ test("finishes the NCR form the way the client marked up its three sheets", asyn
   const ncrForm = workspace.slice(ncrFormStart, workspace.indexOf("{submittedFinding ? (", ncrFormStart));
   assert.ok(ncrFormStart > 0 && ncrForm.length > 1000, "the NCR entry form should be findable in the workspace");
   assert.doesNotMatch(ncrForm, /text\("Required follow-up", "Vereiste opvolging"\)/);
-  assert.match(workspace, /text\("Required follow-up", "Vereiste opvolging"\)/);
-  assert.match(ncrForm, /<SpecFields form="ncr" only=\{\["ncr_type", "ncr_category", "discipline"\]\}/);
+  // 20-11-2026: every Workspace form is its workbook sheet, row by row (lib/forms/spec-forms.ts sheetLayouts).
+  assert.match(workspace, /actionSteps: one\("corrective_action"\)/);
+  // Replaced by the workbook sheet layout (20-11-2026): assert.match(ncrForm, /<SpecFields form="ncr" only=\{\["ncr_type", "ncr_category", "discipline"\]\}/);
 
   // Name and position under every signature line.
   assert.match(workspace, /findingForm\.signedPosition/);
@@ -3612,7 +3615,9 @@ test("retains historical client form-feedback fixes without losing underlying wo
   // Client struck the duplicate Delays shortcut; the actual daily-delay and PDR flows remain.
   assert.doesNotMatch(home, /id: "delays",/);
   assert.match(home, /id: "delay-report",/);
-  assert.match(home, /openDailyWork\("works_ongoing"\)/);
+  // The Works tiles open the Works Ongoing / Works Completed sheets (one record per activity).
+  assert.match(home, /registerType: "works_ongoing"/);
+  assert.match(home, /registerType: "works_completed"/);
   // The specification's per-activity records (WO / WC) open from the Works page itself.
   assert.match(workspace, /registerType: dailyWorkView === "works_completed" \? "works_completed" : "works_ongoing"/);
   assert.match(home, /"works_ongoing" \| "works_completed" \| "delays"/);

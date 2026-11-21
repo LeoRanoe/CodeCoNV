@@ -60,9 +60,12 @@ export type SpecConfiguration = {
   lists_version?: number;
 };
 
+/** The Unit list of the form sheets (Works Ongoing row 11, Works Completed row 10, Materials Delivery row 12). */
+const formUnits = ["m", "m²", "m³", "kg", "tonne", "pcs", "number", "lot", "hours", "set", "other"];
+
 export const specListDefaults: Record<SpecListKey, string[]> = {
   shifts: catalogue.shifts,
-  units: catalogue.sharedUnits,
+  units: formUnits,
   crews: [],
   storage_locations: [],
   risk_likelihoods: catalogue.riskLikelihoods,
@@ -152,6 +155,8 @@ export type SpecField = {
   rowsFrom?: string;
   /** Starts with the signed-in user ("Auto-filled user … allow supervisor confirmation"). */
   defaultsToCurrentUser?: boolean;
+  /** "Date default" / "Date/time default": starts with today or now, the user may correct it. */
+  defaultsToNow?: boolean;
 };
 
 const w = (en: string, nl: string): Words => ({ en, nl });
@@ -225,6 +230,8 @@ const relatedRecord = (label = w("Related record", "Gekoppelde registratie"), re
 
 const person = (key: string, label: Words, extra: Partial<SpecField> = {}): SpecField => ({ key, label, kind: "person", ...extra });
 
+const actionRequired = (values: SpecValues) => one(values, "action_required") === "Yes";
+
 const actionOwner = person("action_owner", w("Action owner", "Actiehouder"), {
   required: true,
   hint: w("One accountable person or company", "Eén verantwoordelijke persoon of bedrijf"),
@@ -247,14 +254,26 @@ const decisionStatuses = ["Approved", "Rejected"];
 /** Activity-specific technical fields of the Activity Detail Guide, for Concrete Pouring. */
 const concretePouring = (values: SpecValues) => one(values, "activity") === "Concrete Pouring";
 
+/** Change Order row 8 "Reason for change", the sheet's own values. */
+const changeReasons = [
+  "Client Request", "Consultant Instruction", "Design Development", "Design Error / Omission", "Unforeseen Site Condition",
+  "Regulatory Requirement", "Material Unavailability", "Quality Improvement", "Value Engineering", "HSE Requirement",
+  "Contractor Proposal", "Coordination Requirement", "Other",
+];
+
 export const specForms: Record<SpecFormKey, SpecField[]> = {
   issue: [
+    { key: "identified_at", label: w("Date/time identified", "Datum/tijd vastgesteld"), kind: "datetime", required: true, defaultsToNow: true, hint: w("When the issue was observed or raised", "Wanneer het issue is waargenomen of gemeld") },
     { key: "issue_type", label: w("Issue type", "Soort issue"), kind: "select", options: catalogue.issueTypes, required: true },
     { key: "issue_category", label: w("Category", "Categorie"), kind: "dependent", groups: catalogue.issueCategories, parent: "issue_type", required: true },
-    discipline("discipline", false),
+    discipline("discipline", false, w("Discipline / work package", "Discipline / werkpakket")),
+    // Row 13: the sheet's own list; the name of the person or company follows in the same row.
+    { key: "responsible_party", label: w("Responsible party", "Verantwoordelijke partij"), kind: "select", options: catalogue.responsibleParties, required: true },
     { key: "priority", label: w("Priority", "Prioriteit"), kind: "select", options: catalogue.priorities, required: true, hint: w("Critical notifies the project team at once", "Kritiek meldt het projectteam direct") },
     { key: "impact_types", label: w("Impact type", "Soort impact"), kind: "multi", options: catalogue.impactTypes, otherExplanation: true },
-    { key: "responsible_party", label: w("Responsible party", "Verantwoordelijke partij"), kind: "select", options: catalogue.responsibleParties, required: true },
+    { key: "immediate_action", label: w("Immediate action taken", "Directe maatregel"), kind: "text" },
+    // Responsible party (row 13, "Contractor / user dropdown") is the screen's own picker of
+    // the project's people and companies; it is stored on the record, not here.
     { key: "corrective_action", label: w("Corrective action required", "Vereiste corrigerende maatregel"), kind: "textarea", required: true },
     { key: "target_date", label: w("Target completion date", "Streefdatum gereed"), kind: "date", required: true },
     relatedRecord(),
@@ -262,9 +281,10 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     closureNote(),
   ],
   ncr: [
+    { key: "raised_at", label: w("Date raised", "Datum gemeld"), kind: "datetime", required: true, defaultsToNow: true },
     { key: "ncr_type", label: w("NCR type", "NCR-soort"), kind: "select", options: catalogue.ncrTypes, required: true },
     { key: "ncr_category", label: w("Category", "Categorie"), kind: "dependent", groups: catalogue.ncrCategories, parent: "ncr_type", required: true },
-    discipline("discipline", true),
+    discipline("discipline", true, w("Discipline / work package", "Discipline / werkpakket")),
     { key: "requirement_reference", label: w("Requirement reference", "Referentie eis"), kind: "text", required: true, hint: w("Document number, revision and clause", "Documentnummer, revisie en artikel") },
     { key: "detected_during", label: w("Detected during", "Vastgesteld tijdens"), kind: "select", options: catalogue.ncrDetectedDuring, required: true, otherExplanation: true },
     { key: "related_inspection", label: w("Related inspection", "Gekoppelde inspectie"), kind: "record", recordKinds: ["inspection"] },
@@ -300,6 +320,7 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     { key: "verified_on", label: w("Verified on", "Geverifieerd op"), kind: "date", auto: true, visible: (values) => has(values, "verified_on") },
   ],
   hse: [
+    { key: "observed_at", label: w("Date/time observed", "Datum/tijd waargenomen"), kind: "datetime", required: true, defaultsToNow: true },
     { key: "hse_type", label: w("Issue type", "Soort melding"), kind: "select", options: catalogue.hseTypes, required: true },
     { key: "hse_category", label: w("Category", "Categorie"), kind: "dependent", groups: catalogue.hseCategories, parent: "hse_type", required: true },
     person("person_involved", w("Person / contractor involved", "Betrokken persoon / aannemer"), { hint: w("No medical details here", "Geen medische gegevens hier") }),
@@ -307,7 +328,10 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     { key: "risk_likelihood", label: w("Risk likelihood", "Waarschijnlijkheid"), kind: "select", listKey: "risk_likelihoods", required: true },
     { key: "risk_severity", label: w("Potential severity", "Mogelijke ernst"), kind: "select", listKey: "risk_severities", required: true },
     { key: "risk_rating", label: w("Risk rating", "Risicoklasse"), kind: "rating", required: true, visible: (values) => has(values, "risk_likelihood") && has(values, "risk_severity") },
+    { key: "immediate_action", label: w("Immediate action taken", "Directe maatregel"), kind: "textarea" },
+    { key: "corrective_action", label: w("Corrective / preventive action", "Corrigerende / preventieve maatregel"), kind: "textarea", required: true },
     actionOwner,
+    { key: "due_date", label: w("Due date", "Uiterste datum"), kind: "date", required: true },
     relatedRecord(w("Related incident", "Gekoppeld incident"), ["hse"]),
     recordStatus,
     closureNote(w("Verification / closure note", "Verificatie / afsluitnotitie")),
@@ -323,6 +347,7 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     { key: "environmental_impact", label: w("Environmental impact", "Milieu-impact"), kind: "select", options: catalogue.environmentalImpacts, otherExplanation: true, required: (values) => one(values, "incident_type") === "Environmental Incident", visible: (values) => one(values, "incident_type") === "Environmental Incident" },
     { key: "property_damage", label: w("Property / equipment damage", "Schade eigendom / materieel"), kind: "select", options: catalogue.propertyDamage, required: (values) => one(values, "incident_type") === "Property / Equipment Damage", visible: (values) => ["Property / Equipment Damage", "Fire / Explosion", "Vehicle / Traffic Incident"].includes(one(values, "incident_type")) },
     { key: "property_damage_detail", label: w("Affected asset and estimated impact", "Getroffen object en geschatte impact"), kind: "text", visible: (values) => has(values, "property_damage") && one(values, "property_damage") !== "None" },
+    { key: "immediate_response", label: w("Immediate response", "Directe reactie"), kind: "textarea", required: true, hint: w("First aid, isolation, evacuation, spill control, area made safe", "Eerste hulp, afzetten, evacuatie, lekbestrijding, gebied veilig gemaakt") },
     { key: "authorities_notified", label: w("Authorities / client notified", "Autoriteiten / opdrachtgever gemeld"), kind: "select", options: catalogue.notificationStates },
     {
       key: "notification_log",
@@ -339,7 +364,7 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     { key: "witnesses", label: w("Witnesses", "Getuigen"), kind: "people", sensitive: true },
     { key: "incident_severity", label: w("Potential / actual severity", "Mogelijke / werkelijke ernst"), kind: "select", listKey: "risk_severities", required: true },
     { key: "investigation_required", label: w("Investigation required", "Onderzoek nodig"), kind: "select", options: catalogue.investigationRequired, required: true },
-    { key: "investigation_findings", label: w("Investigation findings / root cause", "Onderzoeksbevindingen / grondoorzaak"), kind: "textarea", visible: (values) => one(values, "investigation_required") === "Yes" },
+    { key: "investigation_findings", label: w("Investigation findings / root cause", "Onderzoeksbevindingen / grondoorzaak"), kind: "textarea", visible: (values) => one(values, "investigation_required") === "Yes", required: (values) => one(values, "investigation_required") === "Yes" },
     {
       key: "corrective_actions",
       label: w("Corrective / preventive actions", "Corrigerende / preventieve maatregelen"),
@@ -355,12 +380,15 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     closureNote(w("Closure note", "Afsluitnotitie")),
   ],
   delivery: [
+    { key: "delivery_at", label: w("Delivery date/time", "Datum/tijd levering"), kind: "datetime", required: true, defaultsToNow: true, hint: w("Actual arrival time", "Werkelijke aankomsttijd") },
     person("supplier", w("Supplier", "Leverancier"), { required: true, people: { users: false, partyTypes: ["supplier"] }, hint: w("From the project's supplier register (Management · Structure and parties)", "Uit het leveranciersregister van het project (Beheer · Structuur en partijen)") }),
     { key: "purchase_order", label: w("Purchase order / requisition", "Inkooporder / aanvraag"), kind: "text", required: true },
     { key: "delivery_note_number", label: w("Delivery note number", "Pakbonnummer"), kind: "text" },
     { key: "material_group", label: w("Material group", "Materiaalgroep"), kind: "dependent", groups: { all: catalogue.materialCategories["Material Group"] ?? [] }, parent: "__all", required: true, otherExplanation: true },
     { key: "material_specification", label: w("Material description / specification", "Materiaalomschrijving / specificatie"), kind: "text", required: true },
     { key: "ordered_quantity", label: w("Ordered quantity", "Bestelde hoeveelheid"), kind: "number", required: true, min: 0 },
+    { key: "delivered_quantity", label: w("Delivered quantity", "Geleverde hoeveelheid"), kind: "number", required: true, min: 0, hint: w("Zero when nothing was delivered", "Nul als niets is geleverd") },
+    { key: "unit", label: w("Unit", "Eenheid"), kind: "select", listKey: "units", required: true, otherExplanation: true },
     { key: "delivery_status", label: w("Delivery status", "Leveringsstatus"), kind: "dependent", groups: { all: catalogue.deliveryStatuses.map((value) => ({ value, description: catalogue.materialCategories["Delivery Status"]?.find((option) => option.value === value)?.description ?? "" })) }, parent: "__all", required: true },
     { key: "revised_delivery_date", label: w("Revised delivery date", "Nieuwe leverdatum"), kind: "date", visible: (values) => ["Delayed", "Partial Delivery"].includes(one(values, "delivery_status")), required: (values) => ["Delayed", "Partial Delivery"].includes(one(values, "delivery_status")) },
     { key: "arrival_condition", label: w("Condition on arrival", "Staat bij aankomst"), kind: "select", options: catalogue.arrivalConditions, required: true, otherExplanation: true },
@@ -372,90 +400,98 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     person("received_by", w("Received by", "Ontvangen door"), { required: true, defaultsToCurrentUser: true, people: { users: true, partyTypes: [] }, hint: w("Filled with your name; a supervisor confirms receipt in the sign-off.", "Ingevuld met uw naam; een supervisor bevestigt de ontvangst in de ondertekening.") }),
   ],
   technical_instruction: [
+    { key: "instruction_date", label: w("Instruction date", "Datum instructie"), kind: "date", required: true, defaultsToNow: true },
     { key: "instruction_type", label: w("Instruction type", "Soort instructie"), kind: "select", options: catalogue.instructionTypes, required: true, otherExplanation: true },
-    discipline("discipline", true),
+    discipline("discipline", true, w("Discipline", "Discipline")),
     { key: "instruction_category", label: w("Category / subject", "Categorie / onderwerp"), kind: "dependent", groups: catalogue.instructionCategories, parent: "discipline", required: true, otherExplanation: true },
-    { key: "drawing_reference", label: w("Drawing / document reference (with revision)", "Tekening- / documentreferentie (met revisie)"), kind: "text" },
+    { key: "drawing_reference", label: w("Drawing / document reference", "Tekening- / documentreferentie"), kind: "text", hint: w("With its revision", "Met de revisie") },
     { key: "reason", label: w("Reason / background", "Reden / achtergrond"), kind: "select", options: catalogue.instructionReasons, otherExplanation: true },
     { key: "reason_detail", label: w("Supporting explanation", "Toelichting"), kind: "text", visible: (values) => has(values, "reason") },
     person("issued_to", w("Issued to", "Uitgegeven aan"), { required: true }),
     actionOwner,
     { key: "response_required_by", label: w("Response required by", "Antwoord vereist voor"), kind: "date" },
+    { key: "acknowledged_by", label: w("Acknowledged by / date", "Ontvangst bevestigd door / datum"), kind: "text", auto: true, visible: (values) => has(values, "acknowledged_by"), hint: w("Acknowledgement is not acceptance of cost or time impact.", "Ontvangstbevestiging is geen akkoord met kosten- of tijdsimpact.") },
     relatedRecord(),
     recordStatus,
     person("closed_verified_by", w("Closed / verified by", "Gesloten / geverifieerd door"), { people: { users: true, partyTypes: [] }, visible: (values) => ["Pending Verification", "Closed"].includes(one(values, "workflow_status")) }),
   ],
   change_order: [
+    { key: "request_date", label: w("Request date", "Datum aanvraag"), kind: "date", required: true, defaultsToNow: true },
     { key: "change_type", label: w("Change type", "Soort wijziging"), kind: "select", options: catalogue.changeTypes, required: true },
     { key: "change_category", label: w("Change category", "Categorie wijziging"), kind: "dependent", groups: catalogue.changeCategories, parent: "change_type", required: true },
+    // Workbook row 8. The client struck it on 19-11-2026; on 20-11-2026 they asked for every row of the sheet.
+    { key: "change_reason", label: w("Reason for change", "Reden voor wijziging"), kind: "select", options: changeReasons, required: true, otherExplanation: true },
     person("originator", w("Originator / requester", "Aanvrager"), { required: true }),
-    { key: "drawing_reference", label: w("Drawing / specification reference (with revision)", "Tekening- / bestekreferentie (met revisie)"), kind: "text" },
+    { key: "drawing_reference", label: w("Drawing / specification reference", "Tekening- / bestekreferentie"), kind: "text", hint: w("With its revision", "Met de revisie") },
     { key: "added_quantity", label: w("Added quantity", "Toegevoegde hoeveelheid"), kind: "number", min: 0 },
     { key: "omitted_quantity", label: w("Omitted quantity", "Vervallen hoeveelheid"), kind: "number", min: 0 },
     { key: "quantity_unit", label: w("Unit", "Eenheid"), kind: "select", listKey: "units", required: (values) => has(values, "added_quantity") || has(values, "omitted_quantity"), otherExplanation: true },
     { key: "cost_currency", label: w("Currency", "Valuta"), kind: "select", options: ["SRD", "USD", "EUR"], required: true },
-    { key: "cost_impact", label: w("Cost impact (estimated)", "Kostenimpact (geschat)"), kind: "number", required: true },
-    { key: "time_impact", label: w("Time impact (estimated)", "Tijdsimpact (geschat)"), kind: "number", required: true },
+    { key: "cost_impact", label: w("Cost impact", "Kostenimpact"), kind: "number", required: true, hint: w("Estimated; the approved amount is recorded separately", "Geschat; het goedgekeurde bedrag wordt apart vastgelegd") },
+    { key: "time_impact", label: w("Time impact", "Tijdsimpact"), kind: "number", required: true, hint: w("Estimated", "Geschat") },
     { key: "time_impact_unit", label: w("Time unit", "Tijdseenheid"), kind: "select", options: catalogue.durationUnits, required: true },
     { key: "assessment", label: w("Cost / schedule assessment", "Kosten- / planningsbeoordeling"), kind: "textarea" },
     { key: "approval_status", label: w("Approval status", "Goedkeuringsstatus"), kind: "select", options: catalogue.changeApprovalStatuses, required: true, initial: "Draft", decision: decisionStatuses },
     { key: "approved_amount", label: w("Approved amount", "Goedgekeurd bedrag"), kind: "number", visible: (values) => ["Approved", "Implemented", "Closed"].includes(one(values, "approval_status")), required: (values) => one(values, "approval_status") === "Approved" },
     { key: "approved_days", label: w("Approved days", "Goedgekeurde dagen"), kind: "number", visible: (values) => ["Approved", "Implemented", "Closed"].includes(one(values, "approval_status")), required: (values) => one(values, "approval_status") === "Approved" },
-    { key: "approved_by", label: w("Approved by", "Goedgekeurd door"), kind: "text", auto: true, visible: (values) => has(values, "approved_by") },
+    { key: "approved_by", label: w("Approved by", "Goedgekeurd door"), kind: "text", auto: true },
     { key: "approved_on", label: w("Approval date", "Datum goedkeuring"), kind: "date", auto: true, visible: (values) => has(values, "approved_on") },
     { key: "instruction_to_proceed", label: w("Instruction to proceed", "Opdracht tot uitvoering"), kind: "select", options: catalogue.instructionToProceed, required: true, initial: "Not Issued" },
-    relatedRecord(),
+    relatedRecord(w("Related records", "Gekoppelde registraties")),
   ],
   // The client's own PDR form already asks for the activity, the cause, the duration in days,
   // the critical-path impact and the recovery plan; only what it lacks is added here.
   delay_report: [
     { key: "delay_start_at", label: w("Delay start date/time", "Begin vertraging"), kind: "datetime", required: true },
+    { key: "affected_activity", label: w("Affected activity", "Getroffen activiteit"), kind: "record", recordKinds: ["register:works_ongoing", "register:works_completed"], hint: w("The planned or running work record; or write the activity below", "Het geplande of lopende werk; of schrijf de activiteit hieronder") },
+    { key: "affected_activity_text", label: w("Affected activity (not in the list)", "Getroffen activiteit (niet in de lijst)"), kind: "text", required: (values) => !has(values, "affected_activity") },
     { key: "delay_cause_type", label: w("Delay cause type", "Soort oorzaak"), kind: "select", options: catalogue.delayCauseTypes, required: true },
     { key: "delay_cause_category", label: w("Delay cause category", "Categorie oorzaak"), kind: "dependent", groups: catalogue.delayCauseCategories, parent: "delay_cause_type", required: true, otherExplanation: true },
+    { key: "detailed_cause", label: w("Detailed cause", "Gedetailleerde oorzaak"), kind: "text", required: true, hint: w("What happened and why it delayed the activity", "Wat er gebeurde en waarom het de activiteit vertraagde") },
     { key: "responsible_party", label: w("Responsible party", "Verantwoordelijke partij"), kind: "select", options: catalogue.responsibleParties },
+    { key: "delay_duration", label: w("Delay duration", "Duur vertraging"), kind: "number", required: true, min: 0 },
+    { key: "duration_unit", label: w("Duration unit", "Eenheid duur"), kind: "select", options: catalogue.durationUnits, required: true },
     { key: "duration_basis", label: w("Duration is", "Duur is"), kind: "select", options: ["Actual", "Estimated"], required: true },
+    { key: "critical_path", label: w("Critical path impact", "Impact kritiek pad"), kind: "select", options: catalogue.criticalPathImpacts, required: true },
     { key: "milestone_impact", label: w("Schedule / milestone impact", "Impact planning / mijlpaal"), kind: "text" },
+    { key: "recovery_action", label: w("Mitigation / recovery action", "Beperkende / herstelmaatregel"), kind: "text", required: true },
     actionOwner,
     { key: "target_recovery_date", label: w("Target recovery date", "Streefdatum herstel"), kind: "date" },
-    relatedRecord(),
     recordStatus,
     closureNote(w("Closure note and reviewer", "Afsluitnotitie en beoordelaar")),
   ],
   lessons_learned: [
+    { key: "recorded_on", label: w("Date recorded", "Datum vastgelegd"), kind: "date", required: true, defaultsToNow: true },
     { key: "project_phase", label: w("Project phase", "Projectfase"), kind: "select", options: catalogue.lessonPhases, required: true },
     { key: "lesson_category", label: w("Lesson category", "Categorie les"), kind: "dependent", groups: catalogue.lessonCategories, parent: "project_phase", required: true },
     { key: "situation", label: w("Situation / context", "Situatie / context"), kind: "textarea", required: true },
+    { key: "what_happened", label: w("What happened?", "Wat is er gebeurd?"), kind: "textarea", required: true },
     { key: "impact_types", label: w("Impact / consequence", "Impact / gevolg"), kind: "multi", options: catalogue.impactTypes, required: true, otherExplanation: true },
     { key: "impact_detail", label: w("Actual consequence", "Werkelijk gevolg"), kind: "text", required: true },
+    { key: "root_cause", label: w("Root cause / contributing factors", "Grondoorzaak / bijdragende factoren"), kind: "textarea" },
+    { key: "lesson_learned", label: w("Lesson learned", "Geleerde les"), kind: "textarea", required: true },
+    { key: "recommendation", label: w("Recommendation / preventive action", "Aanbeveling / preventieve maatregel"), kind: "textarea", required: true },
     { key: "applicability", label: w("Applicability", "Toepasbaarheid"), kind: "select", options: catalogue.lessonApplicability, required: true },
-    discipline("discipline", false),
+    discipline("discipline", false, w("Discipline", "Discipline")),
     person("action_owner", w("Action owner", "Actiehouder")),
     { key: "review_status", label: w("Review status", "Beoordelingsstatus"), kind: "select", options: catalogue.lessonReviewStatuses, required: true, initial: "Draft", decision: ["Approved for Sharing"], hint: w("Approved for Sharing makes the lesson visible to every project of the organisation.", "Goedgekeurd voor delen maakt de les zichtbaar voor alle projecten van de organisatie.") },
-    { key: "reviewed_by", label: w("Reviewed by", "Beoordeeld door"), kind: "text", auto: true, visible: (values) => has(values, "reviewed_by") },
+    { key: "reviewed_by", label: w("Reviewed by", "Beoordeeld door"), kind: "text", auto: true },
   ],
   agreement: [
-    { key: "agreement_at", label: w("Meeting / agreement date and time", "Datum en tijd overleg / afspraak"), kind: "datetime", required: true },
+    { key: "agreement_at", label: w("Meeting / agreement date", "Datum overleg / afspraak"), kind: "datetime", required: true },
     { key: "meeting_source", label: w("Meeting / source", "Overleg / bron"), kind: "select", options: catalogue.agreementSources, otherExplanation: true },
     { key: "meeting_reference", label: w("Meeting number / reference", "Overlegnummer / referentie"), kind: "text", visible: (values) => has(values, "meeting_source") },
     { key: "agreement_type", label: w("Agreement type", "Soort afspraak"), kind: "select", options: catalogue.agreementTypes, required: true },
     { key: "agreement_category", label: w("Agreement category", "Categorie afspraak"), kind: "dependent", groups: catalogue.agreementCategories, parent: "agreement_type", required: true },
     { key: "agreed_by", label: w("Agreed by", "Overeengekomen door"), kind: "people", required: true, hint: w("Every party that explicitly agreed; attendance alone is not agreement", "Elke partij die uitdrukkelijk akkoord ging; aanwezigheid alleen is geen akkoord") },
     { key: "action_required", label: w("Action required", "Actie nodig"), kind: "select", options: ["Yes", "No"], required: true },
-    {
-      key: "actions",
-      label: w("Actions", "Acties"),
-      kind: "rows",
-      columns: followUpColumns,
-      followUp: true,
-      visible: (values) => one(values, "action_required") === "Yes",
-      required: (values) => one(values, "action_required") === "Yes",
-      hint: w("One accountable owner per action; each action becomes its own action record.", "Eén eigenaar per actie; elke actie wordt een eigen actie."),
-    },
-    discipline("discipline", false),
+    { ...actionOwner, required: actionRequired, visible: actionRequired, hint: w("One accountable owner; the action becomes its own action record.", "Eén verantwoordelijke; de actie wordt een eigen actie.") },
+    { key: "due_date", label: w("Due date", "Uiterste datum"), kind: "date", required: actionRequired, visible: actionRequired },
+    discipline("discipline", false, w("Related discipline", "Gerelateerde discipline")),
     { key: "related_location", label: w("Related location", "Gerelateerde locatie"), kind: "location" },
     relatedRecord(),
     recordStatus,
-    closureNote(w("Confirmation / closure note", "Bevestiging / afsluitnotitie")),
+    { ...closureNote(w("Confirmation / closure note", "Bevestiging / afsluitnotitie")), kind: "text", required: false },
   ],
   photo: [
     { key: "photo_purpose", label: w("Photo purpose", "Doel van de foto"), kind: "select", options: catalogue.photoPurposes, required: true, otherExplanation: true },
@@ -467,13 +503,14 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     relatedRecord(),
   ],
   works_ongoing: [
+    { key: "report_date", label: w("Report date", "Rapportdatum"), kind: "date", required: true, defaultsToNow: true },
     { key: "shift", label: w("Shift", "Dienst"), kind: "select", listKey: "shifts", otherExplanation: true },
     discipline("discipline", true),
     discipline("secondary_discipline", false, w("Secondary discipline", "Tweede discipline")),
     { key: "activity", label: w("Activity", "Activiteit"), kind: "activity", parent: "discipline", required: true },
     ...locationFields(),
     { key: "work_item", label: w("What exactly is being worked on?", "Waar wordt precies aan gewerkt?"), kind: "text", required: true },
-    ...quantityFields(w("Quantity completed (this period)", "Hoeveelheid gereed (deze periode)")),
+    ...quantityFields(w("Quantity completed", "Hoeveelheid gereed")),
     { key: "progress_status", label: w("Progress status", "Voortgangsstatus"), kind: "select", options: catalogue.progressStatuses, required: true },
     { key: "progress_percent", label: w("Progress percentage", "Voortgangspercentage"), kind: "number", min: 0, max: 100 },
     { key: "crew", label: w("Crew / contractor", "Ploeg / aannemer"), kind: "people", required: true, people: { users: false, partyTypes: ["contractor", "subcontractor"], listKey: "crews" } },
@@ -486,13 +523,15 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     { key: "concrete_volume", label: w("Volume (m³)", "Volume (m³)"), kind: "number", visible: concretePouring, required: concretePouring, min: 0 },
     { key: "delivery_tickets", label: w("Delivery ticket / batch references", "Leverbon- / batchreferenties"), kind: "text", visible: concretePouring },
     { key: "slump_cube_refs", label: w("Slump and cube sample references", "Referenties zetmaat en kubussen"), kind: "text", visible: concretePouring },
-    { key: "activity_details", label: w("Activity-specific technical details", "Activiteitspecifieke technische gegevens"), kind: "textarea", visible: (values) => has(values, "activity") && !concretePouring(values) },
+    { key: "activity_details", label: w("Details for this activity", "Gegevens voor deze activiteit"), kind: "textarea", visible: (values) => has(values, "activity") && !concretePouring(values) },
     { key: "inspection_reference", label: w("Inspection / test reference", "Inspectie- / testreferentie"), kind: "record", recordKinds: ["inspection", "register:test", "register:inspection_request"] },
-    { key: "blocker", label: w("Blocker / issue", "Belemmering"), kind: "select", options: catalogue.workBlockers, otherExplanation: true, visible: (values) => one(values, "progress_status") === "On Hold" || has(values, "blocker"), required: (values) => one(values, "progress_status") === "On Hold" },
+    { key: "blocker", label: w("Blocker / issue", "Belemmering"), kind: "select", options: catalogue.workBlockers, otherExplanation: true, visible: (values) => one(values, "progress_status") === "On Hold" || has(values, "blocker") },
     { key: "blocker_record", label: w("Linked issue or delay report", "Gekoppeld issue of vertragingsrapport"), kind: "record", recordKinds: ["finding", "ncr", "register:delay_report"], visible: (values) => has(values, "blocker") && one(values, "blocker") !== "None" },
     { key: "remarks", label: w("Remarks", "Opmerkingen"), kind: "text" },
+    { ...recordStatus, label: w("Workflow status", "Workflowstatus") },
   ],
   works_completed: [
+    { key: "completion_date", label: w("Completion date", "Datum gereed"), kind: "date", required: true, defaultsToNow: true },
     discipline("discipline", true),
     discipline("secondary_discipline", false, w("Secondary discipline", "Tweede discipline")),
     { key: "activity", label: w("Activity", "Activiteit"), kind: "activity", parent: "discipline", required: true },
@@ -505,8 +544,8 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     { key: "ncr_reference", label: w("Linked NCR / issue", "Gekoppelde NCR / issue"), kind: "record", recordKinds: ["ncr", "finding"], visible: (values) => one(values, "inspection_status") === "Inspected - Rejected" || has(values, "outstanding"), required: (values) => one(values, "inspection_status") === "Inspected - Rejected" },
     { key: "crew", label: w("Contractor / crew", "Aannemer / ploeg"), kind: "people", required: true, people: { users: false, partyTypes: ["contractor", "subcontractor"], listKey: "crews" } },
     { key: "outstanding", label: w("Outstanding work / defects", "Openstaand werk / gebreken"), kind: "text", visible: (values) => one(values, "inspection_status") !== "Inspected - Accepted" },
-    { key: "activity_details", label: w("Activity-specific technical details", "Activiteitspecifieke technische gegevens"), kind: "textarea", visible: (values) => has(values, "activity") },
     { key: "remarks", label: w("Remarks", "Opmerkingen"), kind: "text" },
+    { ...recordStatus, label: w("Workflow status", "Workflowstatus") },
   ],
   workforce: [
     { key: "shift", label: w("Shift", "Dienst"), kind: "select", listKey: "shifts", otherExplanation: true },
@@ -522,6 +561,269 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     person("contractor_witness", w("Contractor witness", "Getuige aannemer"), { people: { users: true, partyTypes: ["contractor", "subcontractor"] } }),
   ],
 };
+
+/**
+ * START HERE: "Use the relevant form sheet to build each screen in the stated field order."
+ * Each form is laid out row by row in the order of its sheet. A string is a field of
+ * `specForms`; a slot is a row whose control belongs to the screen itself because it is stored
+ * on the record (title, description, location, photos, people that own the record). System
+ * rows (record ID, project, reported by, the sign-off panel) stand in the form's head or on the
+ * saved record and are not repeated here.
+ */
+export type SheetSlot = { slot: string; label: Words; required?: boolean; hint?: Words };
+/**
+ * One row of the sheet made of several controls, e.g. "Start / finish time" or a dropdown
+ * with its short text. `label` is the sheet's row label; without it the first control's own
+ * label (which is the sheet's) heads the row.
+ */
+export type SheetRow = { row: string; label?: Words; required?: boolean; items: Array<string | SheetSlot> };
+export type SheetItem = string | SheetSlot | SheetRow;
+const slot = (name: string, en: string, nl: string, required = false, hint?: Words): SheetSlot => ({ slot: name, label: w(en, nl), required, hint });
+const row = (name: string, items: Array<string | SheetSlot>, label?: Words, required = false): SheetRow => ({ row: name, items, label, required });
+
+export const sheetLayouts: Partial<Record<SpecFormKey, SheetItem[]>> = {
+  issue: [
+    "identified_at",
+    "issue_type",
+    "issue_category",
+    slot("title", "Title", "Titel", true),
+    slot("description", "Description", "Omschrijving", true),
+    slot("location", "Location", "Locatie", true),
+    "discipline",
+    "priority",
+    "impact_types",
+    "immediate_action",
+    row("responsible", ["responsible_party", slot("responsible", "Responsible person / company", "Verantwoordelijke persoon / bedrijf", true)]),
+    "corrective_action",
+    "target_date",
+    "related_record",
+    slot("attachments", "Attachments", "Bijlagen"),
+    "workflow_status",
+    "closure_note",
+  ],
+  ncr: [
+    "raised_at",
+    "ncr_type",
+    "ncr_category",
+    slot("title", "Title", "Titel", true),
+    slot("description", "Non-conformance description", "Omschrijving van de afwijking", true),
+    "discipline",
+    slot("location", "Location / element", "Locatie / element", true),
+    "requirement_reference",
+    "detected_during",
+    "related_inspection",
+    "severity",
+    row("containment", ["containment", "containment_justification", "containment_details"]),
+    "disposition",
+    "root_cause_category",
+    "root_cause_analysis",
+    "corrective_action",
+    "action_owner",
+    "target_date",
+    "verification_result",
+    row("verified", ["verified_by", "verified_on"], w("Verified by / date", "Geverifieerd door / datum")),
+    slot("attachments", "Attachments", "Bijlagen"),
+    "workflow_status",
+  ],
+  hse: [
+    "observed_at",
+    "hse_type",
+    "hse_category",
+    slot("title", "Title", "Titel", true),
+    slot("description", "Observation / hazard description", "Omschrijving observatie / gevaar", true),
+    slot("location", "Location", "Locatie", true),
+    "person_involved",
+    "potential_consequences",
+    "risk_likelihood",
+    "risk_severity",
+    "risk_rating",
+    "immediate_action",
+    "corrective_action",
+    "action_owner",
+    "due_date",
+    slot("photos", "Photo evidence", "Fotobewijs", false, w("Recommended", "Aanbevolen")),
+    "related_record",
+    row("status", ["workflow_status", "closure_note"]),
+  ],
+  hse_incident: [
+    "incident_at",
+    "incident_type",
+    "incident_category",
+    slot("title", "Incident title", "Titel incident", true),
+    slot("description", "Detailed event description", "Gedetailleerde omschrijving van de gebeurtenis", true),
+    slot("location", "Exact location", "Exacte locatie", true),
+    "people_involved",
+    "injury_classification",
+    "injury_nature",
+    "body_part",
+    "environmental_impact",
+    row("damage", ["property_damage", "property_damage_detail"]),
+    "immediate_response",
+    row("notified", ["authorities_notified", "notification_log"]),
+    "witnesses",
+    "incident_severity",
+    "investigation_required",
+    "investigation_findings",
+    "corrective_actions",
+    slot("photos", "Photo / document evidence", "Foto- / documentbewijs"),
+    "related_observation",
+    row("status", ["workflow_status", "closure_note"]),
+    row("reviewer", ["hse_reviewer"], w("Reported by / HSE reviewer", "Gemeld door / HSE-beoordelaar"), true),
+  ],
+  works_ongoing: [
+    "report_date",
+    "shift",
+    row("discipline", ["discipline", "secondary_discipline"]),
+    "activity",
+    slot("location", "Building / area", "Gebouw / gebied", true),
+    "exact_location",
+    "work_item",
+    row("quantity", ["quantity", "quantity_na"]),
+    "quantity_unit",
+    "progress_status",
+    "progress_percent",
+    "crew",
+    row("times", ["start_time", "finish_time", "crosses_midnight"], w("Start / finish time", "Begin- / eindtijd")),
+    row("details", ["element_type", "element_id", "concrete_grade", "concrete_volume", "delivery_tickets", "slump_cube_refs", "activity_details"], w("Activity-specific technical details", "Activiteitspecifieke technische gegevens")),
+    "inspection_reference",
+    slot("photos", "Photos", "Foto's"),
+    row("blocker", ["blocker", "blocker_record"]),
+    "remarks",
+    "workflow_status",
+  ],
+  works_completed: [
+    "completion_date",
+    row("discipline", ["discipline", "secondary_discipline"]),
+    "activity",
+    slot("location", "Building / area", "Gebouw / gebied", true),
+    "exact_location",
+    "completed_items",
+    row("quantity", ["quantity", "quantity_na"]),
+    "quantity_unit",
+    row("inspection", ["inspection_status", "inspected_by"]),
+    row("reference", ["inspection_reference", "ncr_reference"]),
+    "crew",
+    slot("photos", "Photo evidence", "Fotobewijs", false, w("Recommended: before/after or the inspected element", "Aanbevolen: voor/na of het gekeurde element")),
+    "outstanding",
+    "remarks",
+    "workflow_status",
+  ],
+  delivery: [
+    "delivery_at",
+    "supplier",
+    "purchase_order",
+    "delivery_note_number",
+    "material_group",
+    "material_specification",
+    "ordered_quantity",
+    "delivered_quantity",
+    "unit",
+    row("delivery_status", ["delivery_status", "revised_delivery_date"]),
+    "arrival_condition",
+    row("inspection", ["inspection_result", "accepted_by"]),
+    "storage_location",
+    row("discrepancy", ["discrepancy_remarks", "discrepancy_type"]),
+    slot("photos", "Photos / documents", "Foto's / documenten"),
+    "received_by",
+  ],
+  technical_instruction: [
+    "instruction_date",
+    "instruction_type",
+    "discipline",
+    "instruction_category",
+    slot("location", "Location / element", "Locatie / element", true),
+    "drawing_reference",
+    slot("description", "Instruction description", "Omschrijving instructie", true),
+    row("reason", ["reason", "reason_detail"]),
+    "issued_to",
+    "action_owner",
+    "response_required_by",
+    "workflow_status",
+    slot("attachments", "Attachments", "Bijlagen"),
+    "related_record",
+    "acknowledged_by",
+    "closed_verified_by",
+  ],
+  change_order: [
+    "request_date",
+    "change_type",
+    "change_category",
+    slot("title", "Change title", "Titel wijziging", true),
+    slot("description", "Change description", "Omschrijving wijziging", true),
+    "change_reason",
+    "originator",
+    slot("location", "Location / work package", "Locatie / werkpakket", true),
+    "drawing_reference",
+    row("quantity", ["added_quantity", "omitted_quantity", "quantity_unit"], w("Quantity / unit", "Hoeveelheid / eenheid")),
+    row("cost", ["cost_impact", "cost_currency"]),
+    row("time", ["time_impact", "time_impact_unit"]),
+    "assessment",
+    "approval_status",
+    row("approved", ["approved_amount", "approved_days"], w("Approved amount / days", "Goedgekeurd bedrag / dagen")),
+    "instruction_to_proceed",
+    "related_record",
+    slot("attachments", "Attachments", "Bijlagen"),
+    row("approvers", ["approved_by", "approved_on"], w("Prepared / reviewed / approved by", "Opgesteld / beoordeeld / goedgekeurd door")),
+  ],
+  delay_report: [
+    "delay_start_at",
+    row("activity", ["affected_activity", "affected_activity_text"], undefined, true),
+    slot("location", "Location", "Locatie", true),
+    "delay_cause_type",
+    "delay_cause_category",
+    "detailed_cause",
+    "responsible_party",
+    row("duration", ["delay_duration", "duration_basis"]),
+    "duration_unit",
+    "critical_path",
+    "milestone_impact",
+    "recovery_action",
+    "action_owner",
+    "target_recovery_date",
+    slot("photos", "Evidence", "Bewijs"),
+    row("status", ["workflow_status", "closure_note"]),
+  ],
+  lessons_learned: [
+    "recorded_on",
+    "project_phase",
+    "lesson_category",
+    slot("title", "Title", "Titel", true),
+    "situation",
+    "what_happened",
+    row("impact", ["impact_types", "impact_detail"]),
+    "root_cause",
+    "lesson_learned",
+    "recommendation",
+    "applicability",
+    "discipline",
+    "action_owner",
+    slot("photos", "Attachments", "Bijlagen"),
+    "review_status",
+    row("reviewed", ["reviewed_by"], w("Recorded by / reviewed by", "Vastgelegd door / beoordeeld door")),
+  ],
+  agreement: [
+    "agreement_at",
+    row("source", ["meeting_source", "meeting_reference"]),
+    "agreement_type",
+    "agreement_category",
+    slot("title", "Agreement / decision title", "Titel afspraak / besluit", true),
+    slot("description", "Agreement details", "Details afspraak", true),
+    "agreed_by",
+    "action_required",
+    "action_owner",
+    "due_date",
+    row("related", ["discipline", "related_location"], w("Related discipline / location", "Gerelateerde discipline / locatie")),
+    "related_record",
+    "workflow_status",
+    slot("photos", "Evidence / minutes", "Bewijs / notulen"),
+    "closure_note",
+  ],
+};
+
+export const isSheetRow = (item: SheetItem): item is SheetRow => typeof item !== "string" && "row" in item;
+export const isSheetSlot = (item: SheetItem | string): item is SheetSlot => typeof item !== "string" && "slot" in item;
+/** The spec fields of a sheet layout, top to bottom (rows flattened). */
+export const sheetKeys = (form: SpecFormKey): string[] => (sheetLayouts[form] ?? []).flatMap((item) => (isSheetRow(item) ? item.items : [item])).filter((item): item is string => typeof item === "string");
 
 function deliveryException(values: SpecValues) {
   const status = one(values, "delivery_status");
@@ -591,14 +893,22 @@ export function rowsFor(field: SpecField, values: SpecValues): SpecRow[] {
 }
 
 /**
- * Older records stored a few fields as text that are now structured: the agreement's single
- * action owner and due date become its first action row, the incident's corrective actions
- * ("action — owner — date" per line) become rows.
+ * Older records stored a few fields differently: an agreement kept its actions as rows (the
+ * sheet asks one Action owner and one Due date, rows 11 and 12) or its due date as
+ * `action_due`; the incident's corrective actions ("action — owner — date" per line) become rows.
  */
 export function upgradeSpecValues(form: SpecFormKey, values: SpecValues): SpecValues {
   const next: SpecValues = { ...values };
-  if (form === "agreement" && !specRows(next, "actions").length && (one(next, "action_owner") || one(next, "action_due"))) {
-    next.actions = [{ action: "", owner: one(next, "action_owner"), due: one(next, "action_due") }];
+  if (form === "agreement") {
+    const first = specRows(next, "actions")[0];
+    if (first && !one(next, "action_owner")) {
+      next.action_owner = first.owner ?? "";
+      if (first.owner_ref) next.action_owner_ref = first.owner_ref;
+    }
+    const due = first?.due || one(next, "action_due");
+    if (!one(next, "due_date") && due) next.due_date = due;
+    delete next.actions;
+    delete next.action_due;
   }
   if (form === "hse_incident" && typeof next.corrective_actions === "string") {
     next.corrective_actions = next.corrective_actions.split(/\n+/).map((line) => line.trim()).filter(Boolean).map((line) => {

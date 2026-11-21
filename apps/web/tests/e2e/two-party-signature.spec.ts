@@ -59,11 +59,10 @@ test("technical instruction: the issuer signs as themself, the recipient signs t
   await page.locator('[data-workspace-destination="technical-instructions"]').click();
   const form = page.locator(".controlled-document-form");
   await expect(form).toBeVisible();
-  await form.locator(".controlled-document-primary input").fill(title);
-  await form.locator(".controlled-document-primary textarea").fill("Torque every cast-in anchor to the value on the approved drawing before the base plate is grouted.");
-  const deadline = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
-  await form.locator(".controlled-document-deadline input[type=date]").fill(deadline);
-  await form.locator("label.form-field").filter({ has: page.locator("span", { hasText: /^To$/ }) }).locator("select").selectOption({ label: "Hoofdaannemer E2E · Contractor" });
+  // The Technical Instructions sheet, row by row: the record is read back by its description.
+  const sheet = form.locator("[data-sheet-form='technical_instruction']");
+  await sheet.locator("[data-sheet-slot='description'] textarea").fill(`${title}. Torque every cast-in anchor to the value on the approved drawing before the base plate is grouted.`);
+  await sheet.locator("[data-spec-field='issued_to'] select").selectOption({ label: "Hoofdaannemer E2E" });
 
   // The issuer's name on the signature is the account's own name; it cannot be typed over.
   // (The contractor's own signature box stands beside it since 19-11-2026.)
@@ -136,28 +135,21 @@ test("change order: title and description once, one issuer signature, contractor
   const form = page.locator(".controlled-document-form");
   await expect(form).toBeVisible();
 
-  // The title and the description are asked once, at the top; section 1 does not ask them again.
-  await expect(form.getByText("Title / subject", { exact: true })).toHaveCount(0);
-  await expect(form.getByText("Description of change", { exact: true })).toHaveCount(0);
-  // One issuer signature: the supervision approval; there is no second author signature.
-  await expect(form.getByText("Sign as the author of this document")).toHaveCount(0);
-
-  await form.locator(".controlled-document-primary input").fill(title);
-  await form.locator(".controlled-document-primary textarea").fill("Add a second row of cast-in anchors along gridline C.");
-  await form.locator("label.form-field").filter({ hasText: "Change order type" }).locator("select").selectOption("addition");
-  // The reason and "what will change" are struck off the form: the formal request says both.
-  await expect(form.getByText("Reason for change", { exact: true })).toHaveCount(0);
-  await expect(form.getByText("Details / what will change?", { exact: true })).toHaveCount(0);
-  await form.getByText("Work scope", { exact: true }).click();
-  await form.locator("label.form-field").filter({ has: page.locator("span", { hasText: /^To$/ }) }).locator("select").selectOption({ label: "Hoofdaannemer E2E · Contractor" });
+  // The Change Order sheet, row by row (client, 20-11-2026): the change title and description
+  // once, in rows 6 and 7, and the reason for change in row 8.
+  const sheet = form.locator("[data-sheet-form='change_order']");
+  await expect(sheet.locator("[data-sheet-slot='title'] input")).toHaveCount(1);
+  await expect(sheet.locator("[data-sheet-slot='description'] textarea")).toHaveCount(1);
+  await expect(sheet.locator("[data-spec-field='change_reason']")).toBeVisible();
+  await sheet.locator("[data-sheet-slot='title'] input").fill(title);
+  await sheet.locator("[data-sheet-slot='description'] textarea").fill("Add a second row of cast-in anchors along gridline C.");
 
   // Issuer: the account's own name. Contractor: a different person, signing on this device.
-  await form.locator(".signature-field").filter({ hasText: "Signature · supervision (issuer)" }).getByRole("button", { name: "Sign now" }).click();
+  await form.locator(".signature-field").filter({ hasText: "Sign as the author of this document" }).getByRole("button", { name: "Sign now" }).click();
   await expect(page.locator(".signature-modal input").first()).toHaveAttribute("readonly", "");
   await drawSignature(page);
   await form.locator("label.form-field").filter({ hasText: "Contractor representative" }).locator("input").fill("Cees Contractor");
-  await form.locator("label.form-field").filter({ hasText: "Position" }).locator("input").first().fill("Site manager");
-  await form.locator(".signature-field").filter({ hasText: "Signature · contractor representative" }).getByRole("button", { name: "Sign now" }).click();
+  await form.locator(".signature-field").filter({ hasText: "Signature · contractor" }).getByRole("button", { name: "Sign now" }).click();
   await drawSignature(page);
   await fillSpecFields(page.locator(".record-form-shell").first());
   await form.getByRole("button", { name: "Create controlled document" }).click();

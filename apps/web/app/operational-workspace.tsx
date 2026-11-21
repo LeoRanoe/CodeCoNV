@@ -9,11 +9,9 @@ import {
   ArrowLeft,
   ArrowRight,
   Camera,
-  CalendarClock,
   CalendarRange,
   CheckCircle2,
   ChevronRight,
-  Circle,
   ClipboardCheck,
   CloudSun,
   Construction,
@@ -24,7 +22,6 @@ import {
   FileText,
   FolderOpen,
   HardDrive,
-  Info,
   HeartPulse,
   KeyRound,
   Leaf,
@@ -69,11 +66,11 @@ import { SharedLessons } from "@/app/forms/shared-lessons";
 import { InspectionSpecEditor } from "@/app/forms/inspection-spec-editor";
 import { SignoffPanel } from "@/app/forms/signoff-panel";
 import { loadSignoffHistory, signoffHistoryEntries } from "@/lib/forms/signoff";
-import { cleanSpecValues, sensitiveKeys, specFacts, specFollowUps, specForms, specLinks, specMissing, workflowProfiles, type SpecFormKey, type SpecRow, type SpecValues } from "@/lib/forms/spec-forms";
+import { cleanSpecValues, isOtherOption, sensitiveKeys, sheetLayouts, specFacts, specFollowUps, specForms, specLinks, specMissing, workflowProfiles, type SpecFormKey, type SpecRow, type SpecValues } from "@/lib/forms/spec-forms";
 import { specLabel } from "@/lib/forms/spec-labels-nl";
 import { facetFilterActive, filterPeriodSnapshot, matchesSpecFacets, recordSpec, specFacets, type SpecFacetFilter } from "@/lib/forms/spec-facets";
 import { SpecFacetFilterBar } from "@/app/forms/spec-facet-filter";
-import { lessonPhases as specLessonPhases, hseCategories as specHseCategories, incidentCategories as specIncidentCategories, issueCategories as specIssueCategories } from "@/lib/forms/spec-catalogue";
+import { lessonPhases as specLessonPhases } from "@/lib/forms/spec-catalogue";
 import { formIcons, registerIcon } from "@/app/forms/form-icons";
 import { NamedPhotoSlot, photoTitle, photoUploadDescription, PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence, photoSpecFromDetails } from "@/app/photo-evidence";
 import { RecordLocationMap } from "@/app/record-location-map";
@@ -112,7 +109,6 @@ import {
   createControlledDocumentDetails,
   emptyControlledDocumentDraft,
   isControlledDocumentType,
-  issueCatalogPresets,
   type ControlledDocumentDraft,
 } from "@/lib/forms/controlled-project-documents";
 import {
@@ -374,6 +370,13 @@ const hseIssueTypes = [
 
 /** The three parties the client wrote beside "Responsible person" on the issue screen. */
 type ResponsibleRole = "" | "client" | "contractor" | "supervision";
+/** The record's own responsible role, from the Issue sheet's Responsible party (row 13). */
+const responsibleRoleFor = (party: string): ResponsibleRole =>
+  party === "Client" ? "client"
+    : party === "Consultant" ? "supervision"
+      : ["Main Contractor", "Subcontractor", "Supplier"].includes(party) ? "contractor"
+        : "";
+
 const responsibleRoles = [
   { id: "client", en: "Client", nl: "Opdrachtgever" },
   { id: "contractor", en: "Contractor", nl: "Aannemer" },
@@ -470,17 +473,6 @@ const hseSpecTypes: Record<string, string> = {
   other: "HSE Observation",
 };
 
-/**
- * The client asked for exactly six kinds. Issues that were filed earlier under one of these
- * kinds keep it: it is shown as an extra, already-chosen tile when such an issue is edited,
- * and is not offered for a new issue.
- */
-const legacyIssueTypeTiles = [
-  { id: "safety", en: "Safety", nl: "Veiligheid", icon: ShieldCheck },
-  { id: "environmental", en: "Environmental", nl: "Milieu", icon: Leaf },
-  { id: "documentation", en: "Documentation", nl: "Documentatie", icon: FileText },
-  { id: "other", en: "Other", nl: "Overig", icon: MoreHorizontal },
-] as const;
 
 /**
  * The two lists at the head of the client's own NCR form, in the client's own order and
@@ -596,17 +588,6 @@ function nextRecordNumber(existing: string[], prefix: string, year: string) {
   return `${prefix}-${year}-${String(highest + 1).padStart(4, "0")}`;
 }
 
-/** "(Today)", "(tomorrow)", "(in 3 days)": what the deadline means without counting. */
-function deadlineDistanceLabel(value: string, todayLabel: string, tomorrowLabel: string, inDays: (days: number) => string, overdue: string) {
-  const due = new Date(value);
-  if (Number.isNaN(due.getTime())) return "";
-  const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-  const days = Math.round((startOfDay(due) - startOfDay(new Date())) / 86400000);
-  if (days < 0) return overdue;
-  if (days === 0) return todayLabel;
-  if (days === 1) return tomorrowLabel;
-  return inDays(days);
-}
 
 /**
  * Section 9 of both screens: the deadline the severity implies. The same ladder a finding
@@ -1653,23 +1634,6 @@ function ProjectOperations({
   const scopedFindings = data.findings.filter((finding) => findingScope === "ncr"
     ? finding.finding_type === "ncr"
     : finding.finding_type !== "ncr");
-  const findingPresets = [
-    { title: text("Crack or damage", "Scheur of beschadiging"), description: text("Visible crack or damage requires repair and verification.", "Zichtbare scheur of beschadiging moet worden hersteld en gecontroleerd.") },
-    { title: text("Work incomplete", "Werk niet volledig"), description: text("The planned work is not fully completed.", "Het geplande werk is niet volledig uitgevoerd.") },
-    { title: text("Incorrect dimensions", "Verkeerde maatvoering"), description: text("The executed dimensions do not match the approved drawing.", "De uitgevoerde maatvoering komt niet overeen met de goedgekeurde tekening.") },
-    { title: text("Safety risk", "Veiligheidsrisico"), description: text("An unsafe condition requires immediate attention.", "Een onveilige situatie vraagt directe opvolging.") },
-    { title: text("Finish or cleaning", "Afwerking of schoonmaak"), description: text("The finish or work area does not meet the required condition.", "De afwerking of werkzone voldoet niet aan de vereiste staat.") },
-  ];
-  const findingImpactPresets = [
-    text("No schedule impact identified.", "Geen planningimpact vastgesteld."),
-    text("Possible schedule impact; monitor in the next update.", "Mogelijke planningimpact; volgen in de volgende update."),
-    text("Scope or work area is affected.", "Scope of werkzone is beïnvloed."),
-  ];
-  const findingActionPresets = [
-    text("Correct the issue and submit photo evidence.", "Herstel het probleem en lever fotobewijs."),
-    text("Inspect the correction and verify compliance.", "Inspecteer het herstel en verifieer dat het voldoet."),
-    text("Stop the affected work pending an approved correction.", "Stop het betrokken werk tot een goedgekeurde correctie."),
-  ];
   /** The three headings of the client's HSE form, as they read in a list. */
   const hseCategoryLabels: Record<string, string> = {
     health: text("Health", "Health"),
@@ -1681,13 +1645,6 @@ function ProjectOperations({
    * the severity, what was observed and what was already done, and every box stays
    * editable afterwards.
    */
-  const hsePresets = [
-    { issueType: "safety", severity: "low", label: text("Safe work observed", "Veilig werk waargenomen"), description: text("The work was performed safely and according to the agreed control measures.", "Het werk is veilig en volgens de afgesproken beheersmaatregelen uitgevoerd."), actions: [] as string[] },
-    { issueType: "unsafe_condition", severity: "high", label: text("Unsafe work area", "Onveilige werkzone"), description: text("The work area was not sufficiently secured or marked.", "De werkzone was onvoldoende afgezet of gemarkeerd."), actions: ["work_stopped", "area_barricaded"] },
-    { issueType: "unsafe_act", severity: "high", label: text("PPE not used correctly", "PBM niet correct gebruikt"), description: text("Required personal protective equipment was not used correctly.", "Verplichte persoonlijke beschermingsmiddelen werden niet correct gebruikt."), actions: ["employee_warned", "ppe_provided"] },
-    { issueType: "near_miss", severity: "high", label: "Near miss", description: text("An event occurred without injury but with a realistic risk of harm.", "Er vond een gebeurtenis plaats zonder letsel, maar met reëel risico op schade."), actions: ["work_stopped", "area_barricaded", "supervisor_informed"] },
-    { issueType: "incident", severity: "critical", label: text("Work stopped", "Werk stilgelegd"), description: text("Work was stopped because the risk was not adequately controlled.", "Werk is stilgelegd omdat het risico onvoldoende werd beheerst."), actions: ["work_stopped", "supervisor_informed"] },
-  ];
   const hseTileLabel = (tile: (typeof hseIssueTypes)[number]) => text(tile.en, tile.nl);
   /** The tile that is selected, with the heading and the event kind it stands for. */
   const hseIssueTile = hseIssueTypes.find((tile) => tile.id === hseForm.issueType) ?? hseIssueTypes[0];
@@ -1695,10 +1652,6 @@ function ProjectOperations({
   /** Section 9 shows the deadline the severity implies until somebody sets another one. */
   const hseDueValue = hseForm.dueAt || recordDueDateTimeDefault(hseForm.severity);
   const hsePriority = hseForm.severity === "critical" ? "critical" : hseForm.severity === "high" ? "high" : hseForm.severity === "medium" ? "normal" : "low";
-  const recordPriorityLabels: Record<string, string> = {
-    critical: text("Critical", "Kritiek"), high: text("High", "Hoog"),
-    normal: text("Normal", "Normaal"), low: text("Low", "Laag"),
-  };
   // High and critical events are opened as action required by the database itself, so the
   // screen says the status the record will actually get.
   const hseStatusLabel = hseForm.severity === "high" || hseForm.severity === "critical"
@@ -1723,10 +1676,6 @@ function ProjectOperations({
     } as Record<string, string>)[liveWeather.condition] ?? liveWeather.condition}`
     : text("Not available", "Niet beschikbaar");
   /** Section 1: the tile decides the heading of the form and the kind of event it is. */
-  const chooseHseIssueType = (id: string) => {
-    const tile = hseIssueTypes.find((option) => option.id === id) ?? hseIssueTypes[0];
-    setHseForm((current) => ({ ...current, issueType: tile.id, category: tile.category, type: tile.eventType, issueCategory: current.issueType === tile.id ? current.issueCategory : "" }));
-  };
   /** The HSE incident tile opens the HSE form with the Incident tile already chosen. */
   const applyHsePreset = (eventType: string) => {
     const tile = hseIssueTypes.find((option) => option.eventType === eventType && option.id === eventType)
@@ -1734,12 +1683,6 @@ function ProjectOperations({
       ?? hseIssueTypes[0];
     setHseForm((current) => ({ ...current, type: tile.eventType, issueType: tile.id, category: tile.category }));
   };
-  const toggleHseAction = (id: string) => setHseForm((current) => ({
-    ...current,
-    immediateActions: current.immediateActions.includes(id)
-      ? current.immediateActions.filter((action) => action !== id)
-      : [...current.immediateActions, id],
-  }));
   /** Section 7 as one sentence, so every report that already reads the measure keeps working. */
   const hseImmediateMeasure = (form: HseIssueForm) => {
     const taken = immediateActionsTaken.filter((action) => form.immediateActions.includes(action.id)).map((action) => text(action.en, action.nl));
@@ -1776,13 +1719,6 @@ function ProjectOperations({
   const recordYear = issueDate.slice(0, 4);
   const nextIssueNumber = nextRecordNumber(data.findings.map((finding) => finding.finding_number), "Q", recordYear);
   const nextHseNumber = nextRecordNumber(data.hseEvents.map((event) => event.event_number), "HSE", recordYear);
-  const deadlineDistance = (value: string) => deadlineDistanceLabel(
-    value,
-    text("today", "vandaag"),
-    text("tomorrow", "morgen"),
-    (days) => text(`in ${days} days`, `over ${days} dagen`),
-    text("overdue", "verlopen"),
-  );
   /**
    * The chip in the head of the record screens is not only a light: it is the way to push
    * what is still on the device. "Data will sync" has to be something you can also ask for.
@@ -1801,8 +1737,6 @@ function ProjectOperations({
   const syncChip = online ? { label: text("Online", "Online"), detail: "" } : { label: text("Offline", "Offline"), detail: "" };
   const issueTile = issueTypeTiles.find((tile) => tile.id === findingForm.issueType) ?? issueTypeTiles[0];
   const issueTileLabel = (tile: { en: string; nl: string }) => text(tile.en, tile.nl);
-  const legacyIssueTile = legacyIssueTypeTiles.find((tile) => tile.id === findingForm.issueType);
-  const shownIssueTiles: ReadonlyArray<(typeof issueTypeTiles)[number] | (typeof legacyIssueTypeTiles)[number]> = legacyIssueTile ? [...issueTypeTiles, legacyIssueTile] : issueTypeTiles;
   const issueCategoryOption = issueCategories.find((option) => option.id === findingForm.issueCategory);
   const ncrCategoryOption = ncrCategories.find((option) => option.id === findingForm.ncrCategory);
   const ncrWorkTypeOption = ncrWorkTypes.find((option) => option.id === findingForm.ncrWorkType);
@@ -1812,19 +1746,6 @@ function ProjectOperations({
     ? text("Assigned", "Toegewezen")
     : text("Open", "Open");
   /** Section 9 shows the deadline the severity implies until somebody sets another one. */
-  const issueDueValue = findingForm.expectedResolutionDate || recordDueDateDefault(findingForm.severity);
-  const chooseIssueType = (id: string) => setFindingForm((current) => ({
-    ...current,
-    issueType: id,
-    // A category of another type does not stay selected (specification, dependent dropdowns).
-    issueCategory: (specIssueCategories[issueSpecTypes[id] ?? ""] ?? []).some((option) => option.value === current.issueCategory) ? current.issueCategory : "",
-  }));
-  const toggleIssueAction = (id: string) => setFindingForm((current) => ({
-    ...current,
-    immediateActions: current.immediateActions.includes(id)
-      ? current.immediateActions.filter((action) => action !== id)
-      : [...current.immediateActions, id],
-  }));
   /** Section 5 of the issue screen: the spot itself, as the phone reads it. */
   const captureIssuePosition = () => {
     if (gpsRequests.current.issue) return;
@@ -2158,41 +2079,193 @@ function ProjectOperations({
   const lessonsLearnedRegister = registerForm.type === "lessons_learned";
   const delayReportRegister = registerForm.type === "delay_report";
   const findingSpecForm: SpecFormKey = findingScope === "ncr" ? "ncr" : "issue";
-  // The tile is the issue type and the severity buttons are the priority: they are not asked twice.
+  // The form is the workbook sheet, row by row. Rows the record itself stores (type, category,
+  // priority, corrective action, target date) are read from and written to the record's own
+  // boxes, so lists, exports and the period report keep reading them.
   const findingSpecValues: SpecValues = findingSpecForm === "issue"
-    ? { ...findingSpec, issue_type: issueSpecTypes[findingForm.issueType] ?? "", issue_category: findingForm.issueCategory, priority: findingForm.severity ? findingForm.severity[0].toUpperCase() + findingForm.severity.slice(1) : "" }
-    : { ...findingSpec, target_date: findingForm.expectedResolutionDate };
-  const findingSpecSkip = findingSpecForm === "issue"
-    ? ["issue_type", "issue_category", "priority", "responsible_party", "corrective_action", "target_date"]
-    : ["ncr_type", "ncr_category", "discipline", "target_date"];
+    ? {
+      ...findingSpec,
+      issue_type: issueSpecTypes[findingForm.issueType] ?? "",
+      issue_category: findingForm.issueCategory,
+      priority: findingForm.severity ? findingForm.severity[0].toUpperCase() + findingForm.severity.slice(1) : "",
+      corrective_action: findingForm.actionSteps,
+      target_date: findingForm.expectedResolutionDate || recordDueDateDefault(findingForm.severity),
+      immediate_action: findingSpec.immediate_action ?? findingForm.immediateActionOther,
+      // Row 13 is the sheet's list; an older record only knew client / contractor / supervision.
+      responsible_party: findingSpec.responsible_party ?? ({ client: "Client", contractor: "Main Contractor", supervision: "Consultant" } as Record<string, string>)[findingForm.responsibleRole] ?? "",
+    }
+    : {
+      ...findingSpec,
+      corrective_action: findingForm.recommendedActionDetail,
+      target_date: findingForm.expectedResolutionDate || recordDueDateDefault(findingForm.severity),
+    };
+  const findingSpecSkip: string[] = [];
+  // Weather, a shared cause or an undetermined party has no one to name (Issue row 13).
+  const issueNeedsResponsibleName = !["Weather", "Shared", "Undetermined"].includes(String(findingSpecValues.responsible_party ?? ""));
+  const changeFindingSpec = (next: SpecValues) => {
+    const one = (key: string) => (typeof next[key] === "string" ? String(next[key]) : "");
+    setFindingSpec(next);
+    if (findingSpecForm === "issue") {
+      const typeId = Object.entries(issueSpecTypes).find(([, value]) => value === one("issue_type"))?.[0] ?? "";
+      setFindingForm((current) => ({
+        ...current,
+        issueType: typeId || current.issueType,
+        issueCategory: one("issue_category"),
+        severity: one("priority") ? one("priority").toLowerCase() : current.severity,
+        actionSteps: one("corrective_action"),
+        expectedResolutionDate: one("target_date"),
+        immediateActions: [],
+        immediateActionOther: one("immediate_action"),
+        impactSummary: Array.isArray(next.impact_types) ? next.impact_types.filter((item): item is string => typeof item === "string").join(", ") : current.impactSummary,
+        // A critical issue is escalated (Shared Dropdown Lists: Priority "escalation rules").
+        escalationRequired: one("priority") === "Critical",
+        dateIdentified: one("identified_at").slice(0, 10) || current.dateIdentified,
+        responsibleRole: responsibleRoleFor(one("responsible_party")),
+      }));
+      return;
+    }
+    // NCR severity Minor / Major / Critical is the record's priority and deadline.
+    const severity = one("severity");
+    setFindingForm((current) => ({
+      ...current,
+      recommendedActionDetail: one("corrective_action"),
+      expectedResolutionDate: one("target_date"),
+      severity: severity === "Critical" ? "critical" : severity === "Major" ? "high" : severity === "Minor" ? "medium" : current.severity,
+      escalationRequired: severity === "Critical",
+      dateIdentified: one("raised_at").slice(0, 10) || current.dateIdentified,
+      // The workbook disposition decides the record's own correction state.
+      disposition: /^use as is/i.test(one("disposition")) ? "validated" : /evaluation/i.test(one("disposition")) ? "alternative_solution" : "to_be_corrected",
+      recommendedAction: one("disposition") === "Rework" ? "rework" : one("disposition") === "Repair" ? "repair" : current.recommendedAction,
+      // The contractor who owns the action receives the NCR (link without account).
+      responsiblePartyId: one("action_owner_ref").startsWith("party:") ? one("action_owner_ref").slice(6) : current.responsiblePartyId,
+    }));
+  };
   const findingSpecProblems = specMissing(findingSpecForm, findingSpecValues, language, findingSpecSkip);
   const hseSpecForm: SpecFormKey = hseForm.issueType === "incident" || hseForm.issueType === "near_miss" ? "hse_incident" : "hse";
+  // The HSE and HSE Incident Registration sheets, row by row. Rows the record stores itself
+  // (type, category, owner, actions, due date) read from and write to the record's boxes.
   const hseSpecValues: SpecValues = hseSpecForm === "hse"
-    ? { ...hseSpec, hse_type: hseSpecTypes[hseForm.issueType] ?? "", hse_category: hseForm.issueCategory, action_owner: hseForm.responsiblePerson }
-    : { ...hseSpec, incident_type: hseForm.issueType === "near_miss" ? "Near Miss" : hseSpec.incident_type, incident_category: hseForm.issueCategory, corrective_actions: hseSpec.corrective_actions ?? hseForm.correctiveAction };
+    ? {
+      ...hseSpec,
+      hse_type: hseSpecTypes[hseForm.issueType] ?? "",
+      hse_category: hseForm.issueCategory,
+      action_owner: hseSpec.action_owner ?? hseForm.responsiblePerson,
+      immediate_action: hseSpec.immediate_action ?? [...hseForm.immediateActions.map((id) => optionText(immediateActionsTaken, id, text)), hseForm.immediateActionOther].filter(Boolean).join("; "),
+      corrective_action: hseForm.correctiveAction,
+      due_date: hseDueValue.slice(0, 10),
+    }
+    : {
+      ...hseSpec,
+      incident_type: hseForm.issueType === "near_miss" ? "Near Miss" : hseSpec.incident_type,
+      incident_category: hseForm.issueCategory,
+      corrective_actions: hseSpec.corrective_actions ?? hseForm.correctiveAction,
+      immediate_response: hseSpec.immediate_response ?? hseForm.immediateActionOther,
+    };
+  const hseSeverityFrom = (value: string) => /catastrophic/i.test(value) ? "critical" : /major/i.test(value) ? "high" : /moderate/i.test(value) ? "medium" : /minor|insignificant/i.test(value) ? "low" : "";
+  const changeHseSpec = (next: SpecValues) => {
+    const one = (key: string) => (typeof next[key] === "string" ? String(next[key]) : "");
+    setHseSpec(next);
+    if (hseSpecForm === "hse") {
+      const tile = hseIssueTypes.find((option) => hseSpecTypes[option.id] === one("hse_type")) ?? hseIssueTile;
+      const owner = one("action_owner_ref");
+      setHseForm((current) => ({
+        ...current,
+        issueType: tile.id,
+        category: tile.category,
+        type: tile.eventType,
+        issueCategory: one("hse_category"),
+        responsiblePerson: one("action_owner"),
+        responsibleUserId: owner.startsWith("user:") ? owner.slice(5) : "",
+        immediateActions: [],
+        immediateActionOther: one("immediate_action"),
+        correctiveAction: one("corrective_action"),
+        dueAt: one("due_date") ? `${one("due_date")}T17:00` : "",
+        severity: hseSeverityFrom(one("risk_severity")) || current.severity,
+      }));
+      return;
+    }
+    const nearMiss = one("incident_type") === "Near Miss";
+    const tile = hseIssueTypes.find((option) => option.id === (nearMiss ? "near_miss" : "incident")) ?? hseIssueTile;
+    const reviewer = one("hse_reviewer_ref");
+    setHseForm((current) => ({
+      ...current,
+      issueType: tile.id,
+      category: tile.category,
+      type: tile.eventType,
+      issueCategory: one("incident_category"),
+      immediateActions: [],
+      immediateActionOther: one("immediate_response"),
+      severity: hseSeverityFrom(one("incident_severity")) || current.severity,
+      // The HSE reviewer owns the incident's follow-up; each corrective action has its own owner.
+      responsiblePerson: one("hse_reviewer") || current.responsiblePerson,
+      responsibleUserId: reviewer.startsWith("user:") ? reviewer.slice(5) : current.responsibleUserId,
+    }));
+  };
   // Someone without HSE management does not see the restricted incident fields of a stored
   // record, so they are not asked for either.
   const hseSensitiveSkip = editingHseId && !permissions.can("hse.manage") ? sensitiveKeys(hseSpecForm) : [];
-  const hseSpecSkip = hseSpecForm === "hse" ? ["hse_type", "hse_category", "action_owner", ...hseSensitiveSkip] : ["incident_category", ...(hseForm.issueType === "near_miss" ? ["incident_type"] : []), ...hseSensitiveSkip];
+  const hseSpecSkip = hseSensitiveSkip;
   const hseSpecProblems = specMissing(hseSpecForm, hseSpecValues, language, hseSpecSkip);
-  const issueCategoryChoices = specIssueCategories[issueSpecTypes[findingForm.issueType] ?? ""] ?? [];
-  const hseCategoryChoices = hseSpecForm === "hse"
-    ? specHseCategories[hseSpecTypes[hseForm.issueType] ?? ""] ?? []
-    : specIncidentCategories[String(hseSpecValues.incident_type ?? "")] ?? [];
   const registerSpecForm: SpecFormKey | null = registerForm.type in specForms ? registerForm.type as SpecFormKey : null;
   // A delivery's received quantity is the quantity lines of the form; the specification
   // compares it with the ordered quantity to ask for a discrepancy note.
   const deliveredQuantity = registerLines.reduce((total, line) => total + (Number(line.quantity) || 0), 0);
   // Where the client's own form already asks a question of the specification, its answer is
   // used and the question is not asked a second time.
-  const registerSpecValues: SpecValues = registerForm.type === "delivery" && registerLines.some((line) => line.quantity.trim())
+  // Delivery, TI, CO, PDR, Lessons Learned and Agreements Made are their workbook sheets, row by row.
+  const sheetRegister = Boolean(registerSpecForm && sheetLayouts[registerSpecForm]);
+  const sheetRegisterValues: SpecValues = registerForm.type === "delivery"
+    ? { ...registerSpec, delivered_quantity: registerSpec.delivered_quantity ?? registerLines[0]?.quantity ?? "", unit: registerSpec.unit ?? registerLines[0]?.unit ?? "" }
+    : registerForm.type === "technical_instruction"
+      ? { ...registerSpec, response_required_by: registerForm.dueDate, issued_to: registerSpec.issued_to ?? registerForm.requestedTo }
+      : registerForm.type === "change_order"
+        ? { ...registerSpec, originator: registerSpec.originator ?? changeOrder.requestedBy }
+        : registerForm.type === "lessons_learned"
+          ? {
+            ...registerSpec,
+            project_phase: registerSpec.project_phase ?? lessonForm.projectPhase,
+            what_happened: registerSpec.what_happened ?? lessonForm.issue,
+            root_cause: registerSpec.root_cause ?? lessonForm.cause,
+            lesson_learned: registerSpec.lesson_learned ?? lessonForm.solution,
+            recommendation: registerSpec.recommendation ?? lessonForm.followUpAction,
+            action_owner: registerSpec.action_owner ?? lessonForm.responsiblePerson,
+          }
+          : registerSpec;
+  const changeRegisterSpec = (next: SpecValues) => {
+    const one = (key: string) => (typeof next[key] === "string" ? String(next[key]).trim() : "");
+    setRegisterSpec(next);
+    if (registerForm.type === "delivery") {
+      const unit = isOtherOption(one("unit")) ? one("unit_other") : one("unit");
+      setRegisterLines([{ quantity: one("delivered_quantity"), unit, description: one("material_specification") }]);
+      const result = one("inspection_result");
+      setRegisterOutcome(/^accepted$/i.test(result) ? "compliant" : /^rejected/i.test(result) ? "not_compliant" : result ? "partly" : "");
+    } else if (registerForm.type === "technical_instruction") {
+      const issued = one("issued_to_ref");
+      setRegisterForm((current) => ({ ...current, dueDate: one("response_required_by"), requestedTo: one("issued_to"), responsiblePartyId: issued.startsWith("party:") ? issued.slice(6) : current.responsiblePartyId }));
+    } else if (registerForm.type === "change_order") {
+      const days = /day/i.test(one("time_impact_unit")) ? one("time_impact") : "";
+      setChangeOrder((current) => ({ ...current, requestedBy: one("originator"), extensionDays: days || current.extensionDays, affectsSchedule: Number(one("time_impact")) > 0 }));
+      setRegisterForm((current) => ({ ...current, requestedTo: current.requestedTo || one("originator") }));
+    } else if (registerForm.type === "delay_report") {
+      const days = /day/i.test(one("duration_unit")) ? one("delay_duration") : one("duration_unit") === "Hours" && one("delay_duration") ? String(Math.ceil(Number(one("delay_duration")) / 24)) : "";
+      setDelayForm((current) => ({ ...current, description: one("detailed_cause").slice(0, 250), durationDays: days || current.durationDays, recoveryPlan: one("recovery_action") }));
+    } else if (registerForm.type === "lessons_learned") {
+      setLessonForm((current) => ({ ...current, projectPhase: one("project_phase"), issue: one("what_happened"), cause: one("root_cause"), solution: one("lesson_learned"), expectedResults: one("recommendation"), followUpAction: one("recommendation"), responsiblePerson: one("action_owner") }));
+    } else if (registerForm.type === "agreement") {
+      // Rows 11 and 12: one action owner and due date when an action is required.
+      const owner = one("action_owner_ref");
+      setRegisterForm((current) => ({ ...current, dueDate: one("action_required") === "Yes" ? one("due_date") : "", responsiblePartyId: owner.startsWith("party:") ? owner.slice(6) : current.responsiblePartyId }));
+    }
+  };
+  const registerSpecValues: SpecValues = sheetRegister ? sheetRegisterValues : registerForm.type === "delivery" && registerLines.some((line) => line.quantity.trim())
     ? { ...registerSpec, delivered_quantity: String(deliveredQuantity) }
     : registerForm.type === "lessons_learned"
       ? { ...registerSpec, project_phase: lessonForm.projectPhase, action_owner: lessonForm.responsiblePerson }
       : registerForm.type === "change_order"
         ? { ...registerSpec, originator: changeOrder.requestedBy, cost_impact: changeOrder.costImpact, time_impact: changeOrder.extensionDays, time_impact_unit: "Calendar Days" }
         : registerSpec;
-  const registerSpecSkip: string[] = registerForm.type === "lessons_learned"
+  // Works: the building / area row is the screen's own building and location picker.
+  const registerSpecSkip: string[] = sheetRegister ? (["works_ongoing", "works_completed"].includes(registerForm.type) ? ["building_area"] : []) : registerForm.type === "lessons_learned"
     ? ["project_phase", "action_owner"]
     : registerForm.type === "change_order" ? ["originator", "cost_impact", "time_impact", "time_impact_unit"] : [];
   const registerSpecProblems = registerSpecForm ? specMissing(registerSpecForm, registerSpecValues, language, registerSpecSkip) : [];
@@ -2223,7 +2296,11 @@ function ProjectOperations({
    * agreement already carry their own contractor box; a lesson learned is reviewed
    * internally; a contractor's own submission is already signed by the contractor.
    */
-  const registerContractorSignatureApplies = !changeOrderRegister && !delayReportRegister && !agreementRegister && !lessonsLearnedRegister && !submittedRegister;
+  const registerContractorSignatureApplies = sheetRegister
+    // Every sheet form ends with the contractor's signature beside the author's, except the
+    // lesson: "Contractor signature is not required by default" (LESSON-REVIEW).
+    ? !lessonsLearnedRegister && !agreementRegister
+    : !changeOrderRegister && !delayReportRegister && !agreementRegister && !lessonsLearnedRegister && !submittedRegister;
   // Who the parties of an agreement can be: the own company, the signed-in supervisor
   // and every party of this project.
   const agreementPartyOptions = Array.from(new Set([
@@ -2233,7 +2310,19 @@ function ProjectOperations({
   ].filter(Boolean)));
   // An agreement is written as a sentence, so its own text is also its register line; a
   // lesson learned reads the same way off its own issue text.
-  const registerTitle = agreementRegister
+  const sheetText = (key: string) => (typeof registerSpecValues[key] === "string" ? String(registerSpecValues[key]).trim() : "");
+  // Sheets without a title row (delivery, TI, PDR) read back by what they are about.
+  const registerTitle = sheetRegister && registerForm.type === "delivery"
+    ? sheetText("material_specification").slice(0, 120)
+    : sheetRegister && registerForm.type === "technical_instruction"
+    ? [sheetText("instruction_category") || sheetText("instruction_type"), registerForm.details.trim().split(/\r?\n/)[0]].filter(Boolean).join(" · ").slice(0, 120)
+    : sheetRegister && (registerForm.type === "works_ongoing" || registerForm.type === "works_completed")
+    ? [sheetText("activity"), registerForm.type === "works_ongoing" ? sheetText("work_item") : (Array.isArray(registerSpecValues.completed_items) ? registerSpecValues.completed_items.filter((item): item is string => typeof item === "string").join(", ") : ""), sheetText("exact_location")].filter(Boolean).join(" · ").slice(0, 120)
+    : sheetRegister && delayReportRegister
+    ? [sheetText("affected_activity") || sheetText("affected_activity_text"), sheetText("delay_cause_category") || sheetText("delay_cause_type")].filter(Boolean).join(" · ").slice(0, 120)
+    : sheetRegister
+    ? registerForm.title.trim()
+    : agreementRegister
     ? registerForm.title.trim() || registerForm.details.trim().split(/\r?\n/)[0].slice(0, 90)
     : lessonsLearnedRegister
     ? registerForm.title.trim() || lessonForm.issue.trim().split(/\r?\n/)[0].slice(0, 90)
@@ -2244,6 +2333,11 @@ function ProjectOperations({
       delayForm.description.trim().split(/\r?\n/)[0],
     ].filter(Boolean).join(" · ").slice(0, 90)
     : registerForm.title.trim();
+  // What a sheet form still needs: the rows of the screen's own boxes, then the sheet's rows.
+  const sheetRegisterMissing = sheetRegister ? [
+    registerTitle.length < 3 ? text("title", "titel") : "",
+    ["technical_instruction", "change_order", "agreement"].includes(registerForm.type) && registerForm.details.trim().length < 3 ? text("description", "omschrijving") : "",
+  ].filter(Boolean) : [];
 
   // A module opens at its top. Keeping the scroll position of the page it came from opened
   // Project Docs and Assets halfway down on a phone, past everything there was to see.
@@ -2573,7 +2667,9 @@ function ProjectOperations({
     if (findingForm.description.trim().length < 3) return;
     // The client's issue screen has no title box: the record takes its log line from the
     // first sentence of the description. The NCR form keeps its own subject.
-    const findingTitle = findingScope === "ncr"
+    // The workbook gives the issue its own Title row; an older draft without one still
+    // takes the first sentence of the description.
+    const findingTitle = findingScope === "ncr" || findingForm.title.trim().length >= 3
       ? findingForm.title
       : recordLogLine(findingForm.description, `${issueTileLabel(issueTile)}${issueCategoryOption ? ` · ${text(issueCategoryOption.en, issueCategoryOption.nl)}` : findingForm.issueCategory ? ` · ${findingForm.issueCategory}` : ""}`);
     if (findingTitle.trim().length < 3) return;
@@ -2825,10 +2921,10 @@ function ProjectOperations({
    * owner and due date, linked to the record (workbook: "create separate linked action records").
    * The key is stable per row, so saving the record again never creates the action twice.
    */
-  const createFollowUpActions = async (form: SpecFormKey, values: SpecValues, sourceType: "hse" | "meeting", sourceId: string, buildingIdForActions: string | null, sourceLabel: string) => {
+  const createFollowUpActions = async (form: SpecFormKey, values: SpecValues, sourceType: "hse" | "meeting", sourceId: string, buildingIdForActions: string | null, sourceLabel: string, rows?: Array<{ field: string; row: SpecRow }>) => {
     if (!permissions.can("actions.create") || sourceId.startsWith("pending") || (typeof navigator !== "undefined" && !navigator.onLine)) return 0;
     let created = 0;
-    for (const { field, row } of specFollowUps(form, values)) {
+    for (const { field, row } of rows ?? specFollowUps(form, values)) {
       const reference = String(row.owner_ref ?? "");
       const action = String(row.action ?? "").trim();
       const key = `follow:${sourceId}:${field}:${action.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 80)}`;
@@ -2853,7 +2949,7 @@ function ProjectOperations({
     if (hseForm.description.trim().length < 3) return;
     // The client's screen has no title box: the record takes its log line from the first
     // sentence of what was observed, so the list still reads as a list.
-    const hseTitle = recordLogLine(hseForm.description, `${hseTileLabel(hseIssueTile)}${hseCategoryOption ? ` · ${text(hseCategoryOption.en, hseCategoryOption.nl)}` : ""}`);
+    const hseTitle = hseForm.title.trim().length >= 3 ? hseForm.title.trim() : recordLogLine(hseForm.description, `${hseTileLabel(hseIssueTile)}${hseCategoryOption ? ` · ${text(hseCategoryOption.en, hseCategoryOption.nl)}` : ""}`);
     const hseLatitude = hseForm.latitude.trim() === "" ? null : Number(hseForm.latitude);
     const hseLongitude = hseForm.longitude.trim() === "" ? null : Number(hseForm.longitude);
     const hseDueAt = new Date(hseDueValue);
@@ -3026,7 +3122,8 @@ function ProjectOperations({
       .flatMap(([role, photo]) => photo ? [{ role, photo }] : []);
     const baseDetails = controlledRegister
       ? {
-        ...createControlledDocumentDetails(registerForm, {
+        // A sheet without a title row (TI) is filed under the line it is read back by.
+        ...createControlledDocumentDetails(sheetRegister ? { ...registerForm, title: registerTitle } : registerForm, {
           projectName,
           projectCode,
           buildingName: registerBuildingName,
@@ -3169,9 +3266,13 @@ function ProjectOperations({
           // A queued item has no number yet; the database assigns it when the item is sent.
           entry = savedEntry.record ?? { id: savedEntry.id, entry_number: "" };
         }
-        // The agreement's actions each become an action record of their own.
-        if (registerForm.type === "agreement" && entry.entry_number) {
-          await createFollowUpActions("agreement", registerSpecValues, "meeting", entry.id, registerRecordBuildingId || null, `${entry.entry_number} · ${registerTitle}`);
+        // The agreement's action (rows 11 and 12) becomes an action record of its own.
+        const agreementOwner = typeof registerSpecValues.action_owner === "string" ? registerSpecValues.action_owner.trim() : "";
+        if (registerForm.type === "agreement" && entry.entry_number && registerSpecValues.action_required === "Yes" && agreementOwner) {
+          await createFollowUpActions("agreement", registerSpecValues, "meeting", entry.id, registerRecordBuildingId || null, `${entry.entry_number} · ${registerTitle}`, [{
+            field: "action_owner",
+            row: { action: registerTitle, owner: agreementOwner, owner_ref: String(registerSpecValues.action_owner_ref ?? ""), due: String(registerSpecValues.due_date ?? "") },
+          }]);
         }
         // Site photos belong to a register item as much as documents do. The photos the
         // form asked for by name are filed the same way and in the same folder, but keep
@@ -3390,6 +3491,22 @@ function ProjectOperations({
   const activeSectionLabel = projectSections.find(([id]) => id === tab)?.[1];
   const activeSectionCount = projectSections.find(([id]) => id === tab)?.[2] ?? 0;
   const canCreateRecord = recordModuleTabs.includes(tab) && mayCreateHere;
+  // The photo row of a register sheet (Photos / documents, Evidence, Attachments).
+  const registerSheetPhotos = (
+    <>
+      <label className="finding-photo-capture register-photo-capture">
+        <Camera size={22} />
+        <span><strong>{registerPhotos.length ? text(`${registerPhotos.length} photos ready`, `${registerPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
+        <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setRegisterPhotos, setRegisterPhotoError); event.currentTarget.value = ""; }} />
+      </label>
+      <PhotoEvidenceList
+        photos={registerPhotos}
+        setPhotos={setRegisterPhotos}
+        markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId }}
+      />
+      {registerPhotoError ? <p className="field-error" role="alert">{registerPhotoError}</p> : null}
+    </>
+  );
 
   return (
     <>
@@ -3708,120 +3825,46 @@ function ProjectOperations({
                 </p>
               ) : null}
 
-              <div className="sectioned-record-columns">
-                <div className="sectioned-record-column">
-                  <section className="record-section record-order-1" aria-label={text("Issue type", "Issuetype")}>
-                    <h3><span className="record-section-number">1</span> {text("Issue type", "Issuetype")} <em className="record-section-required">*</em></h3>
-                    <div className="record-tile-grid">
-                      {shownIssueTiles.map((tile) => {
-                        const TileIcon = tile.icon;
-                        return (
-                          <button className={`record-tile${findingForm.issueType === tile.id ? " active" : ""}`} type="button" key={tile.id} aria-pressed={findingForm.issueType === tile.id} onClick={() => chooseIssueType(tile.id)}>
-                            <TileIcon size={20} />
-                            <span>{issueTileLabel(tile)}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </section>
-
-                  <section className="record-section record-order-2" aria-label={text("Category", "Categorie")}>
-                    <h3><span className="record-section-number">2</span> {text("Category", "Categorie")} <em className="record-section-required">*</em></h3>
-                    <label className="form-field"><select aria-label={text("Category", "Categorie")} value={findingForm.issueCategory} onChange={(event) => setFindingForm({ ...findingForm, issueCategory: event.target.value })}>
-                      <option value="">{text("Choose a category", "Kies een categorie")}</option>
-                      {issueCategoryChoices.map((option) => <option value={option.value} key={option.value}>{specLabel(option.value, language)}</option>)}
-                      {findingForm.issueCategory && !issueCategoryChoices.some((option) => option.value === findingForm.issueCategory) ? <option value={findingForm.issueCategory}>{issueCategoryOption ? text(issueCategoryOption.en, issueCategoryOption.nl) : findingForm.issueCategory}</option> : null}
-                    </select></label>
-                    {issueCategoryChoices.find((option) => option.value === findingForm.issueCategory)?.description ? <p className="form-helper">{issueCategoryChoices.find((option) => option.value === findingForm.issueCategory)?.description}</p> : null}
-                  </section>
-
-                  <section className="record-section record-order-3" aria-label={text("Severity", "Ernst")}>
-                    <h3><span className="record-section-number">3</span> {text("Severity", "Ernst")} <em className="record-section-required">*</em></h3>
-                    <div className="record-severity-choices">
-                      {([["low", text("Low", "Laag")], ["medium", text("Medium", "Middel")], ["high", text("High", "Hoog")], ["critical", text("Critical", "Kritiek")]] as const).map(([value, label]) => (
-                        <button className={`record-severity-choice record-severity-choice-${value}${findingForm.severity === value ? " active" : ""}`} type="button" key={value} aria-pressed={findingForm.severity === value} onClick={() => setFindingForm({ ...findingForm, severity: value })}>
-                          <Circle size={13} /> {label}
-                        </button>
-                      ))}
-                    </div>
-                  </section>
-
-                  <section className="record-section record-order-4" aria-label={text("Description", "Omschrijving")}>
-                    <h3><span className="record-section-number">4</span> {text("Description", "Omschrijving")} <em className="record-section-required">*</em></h3>
+              {/* The Issue sheet of the specification workbook, row by row in its order. */}
+              <SpecFields
+                form="issue"
+                skip={findingSpecSkip}
+                values={findingSpecValues}
+                onChange={changeFindingSpec}
+                text={text}
+                language={language}
+                slots={{
+                  title: <input aria-label={text("Title", "Titel")} value={findingForm.title} maxLength={160} onChange={(event) => setFindingForm({ ...findingForm, title: event.target.value })} />,
+                  description: (
                     <label className="form-field record-description-field">
-                      <textarea rows={5} maxLength={1000} value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} />
+                      <textarea aria-label={text("Description", "Omschrijving")} rows={5} maxLength={1000} value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} />
                       <div className="record-field-foot">
                         <DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} />
                         <span className="record-counter">{findingForm.description.length} / 1000</span>
                       </div>
                     </label>
-                  </section>
-
-                  <section className="record-section record-order-5" aria-label={text("Location", "Locatie")}>
-                    <h3><span className="record-section-number">5</span> {text("Location", "Locatie")} <em className="record-section-required">*</em></h3>
-                    <div className="form-grid-2">
+                  ),
+                  location: (
+                    <div className="sheet-location">
                       <BuildingMultiPicker id="finding-buildings" buildings={buildings} value={findingBuildingIds} onChange={chooseFindingBuildings} />
                       <LocationPicker id="finding-location" nodes={data.locationNodes} buildingId={findingBuildingId} value={findingLocationNodeId} onChange={setFindingLocationNodeId} requiredDepth={requiredLocationDepth} />
-                    </div>
-                    <RecordLocationMap
-                      client={client}
-                      value={{ latitude: findingForm.latitude, longitude: findingForm.longitude }}
-                      fallbackCenter={projectCenter}
-                      contextLabel={findingCoversEveryBuilding ? projectName : `${findingBuildingsLabel}, ${projectName}`}
-                      onChange={(coordinates) => setFindingForm((current) => ({ ...current, ...coordinates }))}
-                      onUseMyLocation={captureIssuePosition}
-                      locating={issueLocating}
-                      manualOpen={issueManualPosition}
-                      onToggleManual={() => setIssueManualPosition(!issueManualPosition)}
-                    />
-                    {issueLocationError ? <p className="field-error" role="alert">{issueLocationError}</p> : null}
-                  </section>
-                </div>
-
-                <div className="sectioned-record-column">
-                  <section className="record-section record-order-6" aria-label={text("Photos / evidence", "Foto's / bewijs")}>
-                    <h3><span className="record-section-number">6</span> {text("Photos / evidence", "Foto's / bewijs")}</h3>
-                    {/* The strip the client drew: the pictures themselves with a cross on
-                        them, and the tile that adds one right next to them. Tapping a
-                        picture still opens the one screen where it is described. */}
-                    <div className="record-evidence-strip">
-                      <PhotoEvidenceList
-                        photos={findingPhotos}
-                        setPhotos={setFindingPhotos}
-                        markupContext={{ ...markupOptions, defaultBuildingId: findingBuildingId }}
-                        layout="gallery"
+                      <RecordLocationMap
+                        client={client}
+                        value={{ latitude: findingForm.latitude, longitude: findingForm.longitude }}
+                        fallbackCenter={projectCenter}
+                        contextLabel={findingCoversEveryBuilding ? projectName : `${findingBuildingsLabel}, ${projectName}`}
+                        onChange={(coordinates) => setFindingForm((current) => ({ ...current, ...coordinates }))}
+                        onUseMyLocation={captureIssuePosition}
+                        locating={issueLocating}
+                        manualOpen={issueManualPosition}
+                        onToggleManual={() => setIssueManualPosition(!issueManualPosition)}
                       />
-                      <label className="record-add-photo">
-                        <Camera size={20} />
-                        <strong>{text("Add photo", "Foto toevoegen")}</strong>
-                        <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
-                      </label>
+                      {issueLocationError ? <p className="field-error" role="alert">{issueLocationError}</p> : null}
                     </div>
-                    <small className="record-photo-hint">{photoStripHint}</small>
-                    {findingPhotoError ? <p className="field-error" role="alert">{findingPhotoError}</p> : null}
-                  </section>
-
-                  <section className="record-section record-order-7" aria-label={text("Immediate action taken", "Directe maatregel")}>
-                    <h3><span className="record-section-number">7</span> {text("Immediate action taken", "Directe maatregel")}</h3>
-                    <div className="record-action-grid">
-                      {immediateActionsTaken.map((action) => (
-                        <label className={`record-action-check${findingForm.immediateActions.includes(action.id) ? " active" : ""}`} key={action.id}>
-                          <input type="checkbox" aria-label={text(action.en, action.nl)} checked={findingForm.immediateActions.includes(action.id)} onChange={() => toggleIssueAction(action.id)} />
-                          {text(action.en, action.nl)}
-                        </label>
-                      ))}
-                      <label className="record-action-check record-action-other">
-                        <MoreHorizontal size={14} />
-                        <input type="text" value={findingForm.immediateActionOther} onChange={(event) => setFindingForm({ ...findingForm, immediateActionOther: event.target.value })} maxLength={240} aria-label={text("Other · specify", "Overig · omschrijf")} placeholder={text("Other · specify", "Overig · omschrijf")} /><DictateButton style={{ position: "static", flex: "none" }} onText={(transcript) => setFindingForm((current) => ({ ...current, immediateActionOther: appendDictation(current.immediateActionOther, transcript) }))} />
-                      </label>
-                    </div>
-                  </section>
-
-                  <section className="record-section record-order-8" aria-label={text("Responsible person", "Verantwoordelijke")}>
-                    <h3><span className="record-section-number">8</span> {text("Responsible person", "Verantwoordelijke")} <em className="record-section-required">*</em></h3>
-                    {/* "Client / contractor / supervision", then the name. The separate
-                        "contractor · owner of the correction" box is struck off the form. */}
+                  ),
+                  responsible: (
                     <ResponsiblePartyFields
+                      showRole={false}
                       idPrefix="issue"
                       role={findingForm.responsibleRole}
                       name={findingForm.responsiblePerson}
@@ -3829,62 +3872,28 @@ function ProjectOperations({
                       partyNames={parties.map((party) => party.name)}
                       onChange={(next) => setFindingForm((current) => ({ ...current, responsibleRole: next.role, responsiblePerson: next.name, responsibleUserId: next.userId }))}
                     />
-                  </section>
-
-                  <section className="record-section record-order-9" aria-label={text("Due date", "Deadline")}>
-                    <h3><span className="record-section-number">9</span> {text("Due date", "Deadline")}</h3>
-                    <label className="form-field record-due-field">
-                      <CalendarClock size={15} />
-                      <input type="date" value={issueDueValue} onChange={(event) => setFindingForm({ ...findingForm, expectedResolutionDate: event.target.value })} />
-                      <span className="record-due-distance">({deadlineDistance(issueDueValue)})</span>
-                      <Info size={15} className="record-due-info" aria-label={text("How this deadline is set", "Hoe deze deadline tot stand komt")} />
-                    </label>
-                    <div className="record-derived-block">
-                      <div><small>{text("Priority", "Prioriteit")}</small><span className={`record-priority-badge record-priority-${issuePriority}`}>{recordPriorityLabels[issuePriority]}</span></div>
-                      <div><small>{text("Status", "Status")}</small><span className="record-status-badge">{issueStatusLabel}</span></div>
-                      <div className="record-derived-assignee"><small>{text("Automatically assigned to", "Automatisch toegewezen aan")}</small><strong>{findingForm.responsiblePerson || parties.find((party) => party.id === findingForm.responsiblePartyId)?.name || text("Nobody yet", "Nog niemand")}</strong></div>
-                    </div>
-                    <p className="form-helper">{text("Default deadline by severity: critical 1 day, high 3, medium 7, low 14.", "Standaarddeadline per ernst: kritiek 1 dag, hoog 3, midden 7, laag 14.")}</p>
-                  </section>
-
-                  <section className="record-section record-order-10" aria-label={text("Root cause", "Oorzaak")}>
-                    <h3><span className="record-section-number">10</span> {text("Root cause", "Oorzaak")} <em className="record-section-optional">({text("optional", "optioneel")})</em></h3>
-                    <label className="form-field"><select aria-label={text("Root cause", "Oorzaak")} value={findingForm.rootCause} onChange={(event) => setFindingForm({ ...findingForm, rootCause: event.target.value })}>
-                      <option value="">{text("Select root cause", "Kies een oorzaak")}</option>
-                      {recordRootCauses.map((cause) => <option value={cause.id} key={cause.id}>{text(cause.en, cause.nl)}</option>)}
-                    </select></label>
-                  </section>
-
-                  <section className="record-section record-order-11" aria-label={text("Additional notes", "Aanvullende notities")}>
-                    <h3><span className="record-section-number">11</span> {text("Additional notes", "Aanvullende notities")} <em className="record-section-optional">({text("optional", "optioneel")})</em></h3>
-                    <label className="form-field">
-                      <textarea rows={3} maxLength={500} value={findingForm.remarks} onChange={(event) => setFindingForm({ ...findingForm, remarks: event.target.value })} placeholder={text("Any additional notes...", "Aanvullende notities...")} /><DictateButton style={{ bottom: 34 }} onText={(transcript) => setFindingForm((current) => ({ ...current, remarks: appendDictation(current.remarks, transcript) }))} />
-                      <div className="record-field-foot"><span /><span className="record-counter">{findingForm.remarks.length} / 500</span></div>
-                    </label>
-                  </section>
-                </div>
-              </div>
-
-              {/* The impact, the follow-up and the escalation flag are not on the screen
-                  the client drew, but they are the boxes of their own issue register and
-                  the period report reads them. They stay one tap away, folded shut. */}
-              <details className="record-extra-details">
-                <summary>{text("Impact, follow-up and escalation", "Impact, opvolging en escalatie")}</summary>
-                <div className="record-extra-body">
-                  <div className="click-answer-block">
-                    <strong>{text("Impact", "Impact")}</strong>
-                    <div className="quick-issue-presets">{findingImpactPresets.map((option) => <button className={findingForm.impactSummary === option ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, impactSummary: findingForm.impactSummary === option ? "" : option })} key={option}>{option}</button>)}</div>
-                    <label className="form-field"><textarea rows={2} aria-label={text("Impact", "Impact")} value={findingForm.impactSummary} onChange={(event) => setFindingForm({ ...findingForm, impactSummary: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, impactSummary: appendDictation(current.impactSummary, transcript) }))} /></label>
-                  </div>
-                  <div className="click-answer-block">
-                    <strong>{text("Required follow-up", "Vereiste opvolging")}</strong>
-                    <div className="quick-issue-presets">{findingActionPresets.map((option) => <button className={findingForm.actionSteps === option ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, actionSteps: findingForm.actionSteps === option ? "" : option })} key={option}>{option}</button>)}</div>
-                    <label className="form-field"><textarea rows={2} aria-label={text("Required follow-up", "Vereiste opvolging")} value={findingForm.actionSteps} onChange={(event) => setFindingForm({ ...findingForm, actionSteps: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, actionSteps: appendDictation(current.actionSteps, transcript) }))} /></label>
-                  </div>
-                  <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required (Y/N)", "Escalatie vereist (J/N)")}</label>
-                </div>
-              </details>
-              <SpecFields form="issue" skip={findingSpecSkip} values={findingSpecValues} onChange={setFindingSpec} text={text} language={language} heading={text("Follow-up and classification", "Opvolging en classificatie")} />
+                  ),
+                  attachments: (
+                    <>
+                      <div className="record-evidence-strip">
+                        <PhotoEvidenceList
+                          photos={findingPhotos}
+                          setPhotos={setFindingPhotos}
+                          markupContext={{ ...markupOptions, defaultBuildingId: findingBuildingId }}
+                          layout="gallery"
+                        />
+                        <label className="record-add-photo">
+                          <Camera size={20} />
+                          <strong>{text("Add photo", "Foto toevoegen")}</strong>
+                          <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
+                        </label>
+                      </div>
+                      <small className="record-photo-hint">{photoStripHint}</small>
+                      {findingPhotoError ? <p className="field-error" role="alert">{findingPhotoError}</p> : null}
+                    </>
+                  ),
+                }}
+              />
               {/* The client wrote "signature" beside the issue form too, and "contractor ook
                   tekenen": both signatures close the form, supervisor first. */}
               <RecordSignatures>
@@ -3924,11 +3933,12 @@ function ProjectOperations({
                   exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId ? text("exact location", "exacte locatie") : "",
                   !online && !findingPhotos.length ? text("a photo (you are offline)", "een foto (je bent offline)") : "",
                   !findingForm.issueCategory ? text("category", "categorie") : "",
-                  findingForm.responsiblePerson.trim().length < 2 ? text("responsible person", "verantwoordelijke") : "",
+                  findingForm.title.trim().length < 3 ? text("title", "titel") : "",
+                  issueNeedsResponsibleName && findingForm.responsiblePerson.trim().length < 2 ? text("responsible person", "verantwoordelijke") : "",
                   findingForm.description.trim().length < 3 ? text("description", "omschrijving") : "",
                   ...findingSpecProblems,
                 ]} />
-                <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || !findingForm.issueCategory || findingForm.responsiblePerson.trim().length < 2 || findingForm.description.trim().length < 3 || findingSpecProblems.length > 0} onClick={() => void addFinding()}><Send size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Issue indienen")}</button>
+                <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || !findingForm.issueCategory || findingForm.title.trim().length < 3 || (issueNeedsResponsibleName && findingForm.responsiblePerson.trim().length < 2) || findingForm.description.trim().length < 3 || findingSpecProblems.length > 0} onClick={() => void addFinding()}><Send size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Issue indienen")}</button>
               </div>
             </div>
           ) : null}
@@ -3946,82 +3956,48 @@ function ProjectOperations({
                 <div><small>{text("Drawn up by", "Opgesteld door")}</small><strong>{currentUserName}</strong><span>{findingForm.signedBy ? text(`Signed by ${findingForm.signedBy}`, `Ondertekend door ${findingForm.signedBy}`) : text("Not signed yet", "Nog niet ondertekend")}</span></div>
                 <div><small>{text("Report no · automatic", "Rapportnummer · automatisch")}</small><strong>{text("On submit", "Bij indienen")}</strong><span>{text("Unique project code", "Unieke projectcode")}</span></div>
               </section>
-              <label className="finding-photo-capture">
-                <Camera size={22} />
-                <span><strong>{findingPhotos.length ? text(`${findingPhotos.length} photos ready`, `${findingPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
-                <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
-              </label>
-              <PhotoEvidenceList
-                photos={findingPhotos}
-                setPhotos={setFindingPhotos}
-                markupContext={{ ...markupOptions, defaultBuildingId: findingBuildingId }}
+              {/* The NCR sheet of the specification workbook, row by row in its order. */}
+              <SpecFields
+                form="ncr"
+                skip={findingSpecSkip}
+                values={findingSpecValues}
+                onChange={changeFindingSpec}
+                text={text}
+                language={language}
+                slots={{
+                  title: <input aria-label={text("Title", "Titel")} value={findingForm.title} maxLength={160} onChange={(event) => setFindingForm({ ...findingForm, title: event.target.value })} />,
+                  description: (
+                    <label className="form-field record-description-field">
+                      <textarea aria-label={text("Non-conformance description", "Omschrijving van de afwijking")} rows={5} value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} />
+                      <DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} />
+                    </label>
+                  ),
+                  location: (
+                    <div className="sheet-location">
+                      <BuildingMultiPicker id="ncr-buildings" buildings={buildings} value={findingBuildingIds} onChange={chooseFindingBuildings} />
+                      <LocationPicker id="finding-location" nodes={data.locationNodes} buildingId={findingBuildingId} value={findingLocationNodeId} onChange={setFindingLocationNodeId} requiredDepth={requiredLocationDepth} />
+                    </div>
+                  ),
+                  attachments: (
+                    <>
+                      <label className="finding-photo-capture">
+                        <Camera size={22} />
+                        <span><strong>{findingPhotos.length ? text(`${findingPhotos.length} photos ready`, `${findingPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
+                        <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
+                      </label>
+                      <PhotoEvidenceList
+                        photos={findingPhotos}
+                        setPhotos={setFindingPhotos}
+                        markupContext={{ ...markupOptions, defaultBuildingId: findingBuildingId }}
+                      />
+                      {findingPhotoError ? <p className="field-error" role="alert">{findingPhotoError}</p> : null}
+                    </>
+                  ),
+                }}
               />
-              {findingPhotoError ? <p className="field-error" role="alert">{findingPhotoError}</p> : null}
-              <div className="quick-issue-presets" aria-label={text("Common issue choices", "Veelvoorkomende problemen")}>
-                {findingPresets.map((preset) => <button className={findingForm.title === preset.title ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, title: preset.title, description: preset.description, type: preset.title === text("Safety risk", "Veiligheidsrisico") ? "observation" : "deficiency", severity: preset.title === text("Safety risk", "Veiligheidsrisico") ? "high" : findingForm.severity })} key={preset.title}>{preset.title}</button>)}
-              </div>
-              <label className="form-field"><span>{text("Client B1 issue catalog (35 reusable categories)", "Klantcatalogus B1 (35 herbruikbare categorieën)")}</span><select value={findingForm.sourceCatalogSubject} onChange={(event) => {
-              const preset = issueCatalogPresets.find((item) => item.subject === event.target.value);
-              if (!preset) {
-                setFindingForm({ ...findingForm, sourceCatalogSubject: "" });
-                return;
-              }
-              setFindingForm({
-                ...findingForm,
-                sourceCatalogSubject: preset.subject,
-                title: preset.subject,
-                description: preset.description,
-                actionSteps: preset.action,
-                disposition: preset.disposition,
-                type: "deficiency",
-                issueType: "quality",
-              });
-              }}><option value="">{text("Choose only when applicable", "Kies alleen indien van toepassing")}</option>{issueCatalogPresets.map((preset) => <option value={preset.subject} key={preset.subject}>{preset.subject}</option>)}</select></label>
-              {/* "On top": the subject and its description come before the lists, right
-                  under the quick choices that fill them, one below the other. */}
-              <label className="form-field"><span>{text("Subject", "Onderwerp")}</span><input value={findingForm.title} onChange={(event) => setFindingForm({ ...findingForm, title: event.target.value })} placeholder={text("What the non-conformance is about", "Waar de afwijking over gaat")} /></label>
-              <label className="form-field"><span>{text("Description of non-conformance", "Omschrijving van de afwijking")}</span><textarea rows={5} value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} /></label>
-              {/* Short choices stand in pairs, long text stands full width - on every form. */}
-              <SpecFields form="ncr" only={["ncr_type", "ncr_category", "discipline"]} values={findingSpecValues} onChange={setFindingSpec} text={text} language={language} />
-              <div className="form-grid-2">
-                <label className="form-field"><span>{text("Priority", "Prioriteit")}</span><select value={findingForm.severity} onChange={(event) => setFindingForm({ ...findingForm, severity: event.target.value })}><option value="high">{text("High · 3 days", "Hoog · 3 dagen")}</option><option value="medium">{text("Medium · 7 days", "Middel · 7 dagen")}</option><option value="low">{text("Low · 14 days", "Laag · 14 dagen")}</option><option value="critical">{text("Critical · 1 day + escalation", "Kritiek · 1 dag + escalatie")}</option></select></label>
-                <label className="form-field"><span>{text("Disposition", "Beoordeling")}</span><select value={findingForm.disposition} onChange={(event) => setFindingForm({ ...findingForm, disposition: event.target.value as typeof findingForm.disposition })}><option value="validated">{text("Validated", "Gevalideerd")}</option><option value="to_be_corrected">{text("To be corrected", "Te corrigeren")}</option><option value="alternative_solution">{text("Alternative solution required", "Alternatieve oplossing nodig")}</option></select></label>
-              </div>
-              {/* "Issue type" is struck off the NCR: in this module it can only ever say NCR. */}
-              <div className="click-answer-block ncr-recommended-action">
-                <strong>{text("Recommended action by engineer", "Aanbevolen actie door de ingenieur")}</strong>
-                <div className="quick-issue-presets">
-                  {([["rework", text("Rework", "Opnieuw uitvoeren")], ["repair", text("Repair", "Herstellen")], ["alternative", text("Alternative solution for approval", "Alternatieve oplossing ter goedkeuring")]] as const).map(([value, label]) => (
-                    <button className={findingForm.recommendedAction === value ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, recommendedAction: findingForm.recommendedAction === value ? "" : value })} key={value}>{label}</button>
-                  ))}
-                </div>
-                <label className="form-field"><span>{text("What the contractor has to do", "Wat de aannemer moet doen")}</span><textarea rows={2} value={findingForm.recommendedActionDetail} onChange={(event) => setFindingForm({ ...findingForm, recommendedActionDetail: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, recommendedActionDetail: appendDictation(current.recommendedActionDetail, transcript) }))} /></label>
-              </div>
-              {/* The impact is chosen, not written: "Impact in your own words" is struck off. */}
-              <div className="click-answer-block">
-                <strong>{text("Impact", "Impact")}</strong>
-                <div className="quick-issue-presets">{findingImpactPresets.map((option) => <button className={findingForm.impactSummary === option ? "active" : ""} type="button" onClick={() => setFindingForm({ ...findingForm, impactSummary: findingForm.impactSummary === option ? "" : option })} key={option}>{option}</button>)}</div>
-              </div>
-              <div className="form-grid-2">
-                <label className="form-field"><span>{text("Reference checklist / earlier report", "Referentiechecklist / eerder rapport")}</span><input value={findingForm.referenceChecklist} onChange={(event) => setFindingForm({ ...findingForm, referenceChecklist: event.target.value })} placeholder="NCR - 51" /></label>
-                <label className="form-field"><span>{text("Date identified", "Datum vastgesteld")}</span><input type="date" value={findingForm.dateIdentified} onChange={(event) => setFindingForm({ ...findingForm, dateIdentified: event.target.value })} /></label>
-              </div>
-              <div className="form-grid-2">
-                <label className="form-field"><span>{text("Expected resolution date", "Verwachte oplossingsdatum")}</span><input type="date" value={findingForm.expectedResolutionDate} onChange={(event) => setFindingForm({ ...findingForm, expectedResolutionDate: event.target.value })} /></label>
-                <div className="form-field ncr-escalation-field">
-                <label className="check-field issue-escalation"><input type="checkbox" checked={findingForm.escalationRequired} onChange={(event) => setFindingForm({ ...findingForm, escalationRequired: event.target.checked })} /> {text("Escalation required", "Escalatie nodig")}</label>
-                </div>
-              </div>
-              <div className="form-grid-2">
-                <BuildingMultiPicker id="ncr-buildings" buildings={buildings} value={findingBuildingIds} onChange={chooseFindingBuildings} />
-                <label className="form-field"><span>{text("Contractor · receives this NCR", "Aannemer · ontvangt deze NCR")}</span><select value={findingForm.responsiblePartyId} onChange={(event) => setFindingForm({ ...findingForm, responsiblePartyId: event.target.value })}><option value="">{text("Not assigned", "Nog niet toegewezen")}</option>{parties.map((party) => <option value={party.id} key={party.id}>{party.name}</option>)}</select></label>
-              </div>
-              <LocationPicker id="finding-location" nodes={data.locationNodes} buildingId={findingBuildingId} value={findingLocationNodeId} onChange={setFindingLocationNodeId} requiredDepth={requiredLocationDepth} />
-              <label className="form-field"><span>{text("Remarks", "Opmerkingen")}</span><textarea rows={2} value={findingForm.remarks} onChange={(event) => setFindingForm({ ...findingForm, remarks: event.target.value })} /><DictateButton onText={(transcript) => setFindingForm((current) => ({ ...current, remarks: appendDictation(current.remarks, transcript) }))} /></label>
               {/* "Gaat dit in de app gebeuren?" - yes: the contractor answers in the app through
                   the link, without an account, and CODECO verifies and closes it here. */}
-              <div className="operation-alert warning"><RotateCcw size={17} /><div><strong>{text("The contractor answers in the app", "De aannemer antwoordt in de app")}</strong><span>{text("After submitting, send the NCR link to the contractor (no account needed). The contractor writes the corrective action in the app; CODECO verifies and closes it here.", "Stuur na het indienen de NCR-link naar de aannemer (geen account nodig). De aannemer schrijft de corrigerende maatregel in de app; CODECO verifieert en sluit hier af.")}</span></div></div>
-              <SpecFields form="ncr" skip={findingSpecSkip} values={findingSpecValues} onChange={setFindingSpec} text={text} language={language} heading={text("Containment, disposition and verification", "Beheersing, dispositie en verificatie")} />
+              <div className="operation-alert warning"><RotateCcw size={17} /><div><strong>{text("The contractor answers in the app", "De aannemer antwoordt in de app")}</strong><span>{text("After submitting, send the NCR link to the action owner's company (no account needed). The contractor writes the corrective action in the app; CODECO verifies and closes it here.", "Stuur na het indienen de NCR-link naar het bedrijf van de actiehouder (geen account nodig). De aannemer schrijft de corrigerende maatregel in de app; CODECO verifieert en sluit hier af.")}</span></div></div>
               {/* "Overal aan het eind plaatsen": the engineer and the contractor sign last. */}
               <RecordSignatures>
                 <div className="record-signature-with-position">
@@ -4178,173 +4154,64 @@ function ProjectOperations({
                 </p>
               ) : null}
 
-              <div className="sectioned-record-columns">
-                <div className="sectioned-record-column">
-                  <section className="record-section record-order-1" aria-label={text("Issue type", "Issuetype")}>
-                    <h3><span className="record-section-number">1</span> {text("Issue type", "Issuetype")} <em className="record-section-required">*</em></h3>
-                    <div className="record-tile-grid">
-                      {hseIssueTypes.map((tile) => {
-                        const TileIcon = tile.icon;
-                        return (
-                          <button className={`record-tile${hseForm.issueType === tile.id ? " active" : ""}`} type="button" key={tile.id} aria-pressed={hseForm.issueType === tile.id} onClick={() => chooseHseIssueType(tile.id)}>
-                            <TileIcon size={20} />
-                            <span>{hseTileLabel(tile)}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </section>
-
-                  <section className="record-section record-order-2" aria-label={text("Category", "Categorie")}>
-                    <h3><span className="record-section-number">2</span> {text("Category", "Categorie")} <em className="record-section-required">*</em></h3>
-                    {hseSpecForm === "hse_incident" && hseForm.issueType !== "near_miss" ? (
-                      <SpecFields form="hse_incident" only={["incident_type"]} values={hseSpecValues} onChange={(next) => { setHseSpec(next); if (next.incident_type !== hseSpecValues.incident_type) setHseForm((current) => ({ ...current, issueCategory: "" })); }} text={text} language={language} />
-                    ) : null}
-                    <label className="form-field"><select aria-label={text("Category", "Categorie")} value={hseForm.issueCategory} onChange={(event) => setHseForm({ ...hseForm, issueCategory: event.target.value })}>
-                      <option value="">{text("Choose a category", "Kies een categorie")}</option>
-                      {hseCategoryChoices.map((option) => <option value={option.value} key={option.value}>{specLabel(option.value, language)}</option>)}
-                      {hseForm.issueCategory && !hseCategoryChoices.some((option) => option.value === hseForm.issueCategory) ? <option value={hseForm.issueCategory}>{hseCategoryOption ? text(hseCategoryOption.en, hseCategoryOption.nl) : hseForm.issueCategory}</option> : null}
-                    </select></label>
-                    {hseCategoryChoices.find((option) => option.value === hseForm.issueCategory)?.description ? <p className="form-helper">{hseCategoryChoices.find((option) => option.value === hseForm.issueCategory)?.description}</p> : null}
-                  </section>
-
-                  <section className="record-section record-order-3" aria-label={text("Severity", "Ernst")}>
-                    <h3><span className="record-section-number">3</span> {text("Severity", "Ernst")} <em className="record-section-required">*</em></h3>
-                    <div className="record-severity-choices">
-                      {([["low", text("Low", "Laag")], ["medium", text("Medium", "Middel")], ["high", text("High", "Hoog")], ["critical", text("Critical", "Kritiek")]] as const).map(([value, label]) => (
-                        <button className={`record-severity-choice record-severity-choice-${value}${hseForm.severity === value ? " active" : ""}`} type="button" key={value} aria-pressed={hseForm.severity === value} onClick={() => setHseForm({ ...hseForm, severity: value })}>
-                          <Circle size={13} /> {label}
-                        </button>
-                      ))}
-                    </div>
-                  </section>
-
-                  <section className="record-section record-order-4" aria-label={text("Description", "Omschrijving")}>
-                    <h3><span className="record-section-number">4</span> {text("Description", "Omschrijving")} <em className="record-section-required">*</em></h3>
-                    {/* The standard records the client asked for stay one tap away; they
-                        fill this box and every box they belong to, and stay editable. */}
-                    <div className="quick-issue-presets" aria-label={text("Choose a standard HSE record", "Kies een standaard HSE-registratie")}>{hsePresets.map((preset) => <button className={hseForm.description === preset.description ? "active" : ""} type="button" onClick={() => { chooseHseIssueType(preset.issueType); setHseForm((current) => ({ ...current, issueType: preset.issueType, severity: preset.severity, description: preset.description, immediateActions: preset.actions })); }} key={preset.label}>{preset.label}</button>)}</div>
+              {/* The HSE sheet, or the HSE Incident Registration sheet, row by row in its order. */}
+              <SpecFields
+                form={hseSpecForm}
+                skip={hseSpecSkip}
+                values={hseSpecValues}
+                onChange={changeHseSpec}
+                text={text}
+                language={language}
+                slots={{
+                  title: <input aria-label={hseSpecForm === "hse" ? text("Title", "Titel") : text("Incident title", "Titel incident")} value={hseForm.title} maxLength={160} onChange={(event) => setHseForm({ ...hseForm, title: event.target.value })} />,
+                  description: (
                     <label className="form-field record-description-field">
-                      <textarea rows={5} maxLength={1000} value={hseForm.description} onChange={(event) => setHseForm({ ...hseForm, description: event.target.value })} />
+                      <textarea aria-label={hseSpecForm === "hse" ? text("Observation / hazard description", "Omschrijving observatie / gevaar") : text("Detailed event description", "Gedetailleerde omschrijving van de gebeurtenis")} rows={5} maxLength={1000} value={hseForm.description} onChange={(event) => setHseForm({ ...hseForm, description: event.target.value })} />
                       <div className="record-field-foot">
                         <DictateButton onText={(transcript) => setHseForm((current) => ({ ...current, description: appendDictation(current.description, transcript) }))} />
                         <span className="record-counter">{hseForm.description.length} / 1000</span>
                       </div>
                     </label>
-                  </section>
-
-                  <section className="record-section record-order-8" aria-label={text("Responsible person", "Verantwoordelijke")}>
-                    <h3><span className="record-section-number">8</span> {text("Responsible person", "Verantwoordelijke")} <em className="record-section-required">*</em></h3>
-                    {/* "Dit is al voorhanden": one choice of party and one name, not a list
-                        of colleagues above a second box for the same name. */}
-                    <ResponsiblePartyFields
-                      idPrefix="hse"
-                      role={hseForm.responsibleRole}
-                      name={hseForm.responsiblePerson}
-                      people={responsiblePeople}
-                      partyNames={parties.map((party) => party.name)}
-                      onChange={(next) => setHseForm((current) => ({ ...current, responsibleRole: next.role, responsiblePerson: next.name, responsibleUserId: next.userId }))}
-                    />
-                  </section>
-
-                  <section className="record-section record-order-9" aria-label={text("Due date", "Deadline")}>
-                    <h3><span className="record-section-number">9</span> {text("Due date", "Deadline")}</h3>
-                    <label className="form-field record-due-field">
-                      <CalendarClock size={15} />
-                      <input type="datetime-local" value={hseDueValue} onChange={(event) => setHseForm({ ...hseForm, dueAt: event.target.value })} />
-                      <span className="record-due-distance">({deadlineDistance(hseDueValue)})</span>
-                      <Info size={15} className="record-due-info" aria-label={text("How this deadline is set", "Hoe deze deadline tot stand komt")} />
-                    </label>
-                    {/* The deadline follows the severity by the same ladder a finding gets,
-                        so the priority, the status and the owner are not typed twice. */}
-                    <div className="record-derived-block">
-                      <div><small>{text("Priority", "Prioriteit")}</small><span className={`record-priority-badge record-priority-${hsePriority}`}>{recordPriorityLabels[hsePriority]}</span></div>
-                      <div><small>{text("Status", "Status")}</small><span className="record-status-badge">{hseStatusLabel}</span></div>
-                      <div className="record-derived-assignee"><small>{text("Automatically assigned to", "Automatisch toegewezen aan")}</small><strong>{hseForm.responsiblePerson || text("Nobody yet", "Nog niemand")}</strong></div>
-                    </div>
-                    <p className="form-helper">{text(`Default deadline by severity: critical 1 day, high 3, medium 7, low 14.`, `Standaarddeadline per ernst: kritiek 1 dag, hoog 3, midden 7, laag 14.`)}</p>
-                  </section>
-                </div>
-
-                <div className="sectioned-record-column">
-                  <section className="record-section record-order-5" aria-label={text("Location", "Locatie")}>
-                    <h3><span className="record-section-number">5</span> {text("Location", "Locatie")} <em className="record-section-required">*</em></h3>
-                    <RecordBuildingsField id="hse-buildings" buildings={buildings} value={hseBuildingIds} onChange={(next) => { setHseBuildingIds(next); setHseBuildingId(next[0] ?? hseBuildingId); setHseLocationNodeId(""); }} />
-                    <LocationPicker id="hse-location" nodes={data.locationNodes} buildingId={hseBuildingId} value={hseLocationNodeId} onChange={setHseLocationNodeId} requiredDepth={requiredLocationDepth} />
-                    {/* Where on earth it was seen, next to where in the works it was seen. */}
-                    <RecordLocationMap
-                      client={client}
-                      value={{ latitude: hseForm.latitude, longitude: hseForm.longitude }}
-                      fallbackCenter={projectCenter}
-                      contextLabel={`${buildings.find((building) => building.id === hseBuildingId)?.name ?? buildingName}, ${projectName}`}
-                      onChange={(coordinates) => setHseForm((current) => ({ ...current, ...coordinates }))}
-                      onUseMyLocation={captureHsePosition}
-                      locating={hseLocating}
-                      manualOpen={hseManualPosition}
-                      onToggleManual={() => setHseManualPosition(!hseManualPosition)}
-                    />
-                    {hseLocationError ? <p className="field-error" role="alert">{hseLocationError}</p> : null}
-                  </section>
-
-                  <section className="record-section record-order-6" aria-label={text("Photos / evidence", "Foto's / bewijs")}>
-                    <h3><span className="record-section-number">6</span> {text("Photos / evidence", "Foto's / bewijs")}</h3>
-                    <div className="record-evidence-strip">
-                      <PhotoEvidenceList
-                        photos={hsePhotos}
-                        setPhotos={setHsePhotos}
-                        markupContext={{ ...markupOptions, defaultBuildingId: hseBuildingId }}
-                        layout="gallery"
+                  ),
+                  location: (
+                    <div className="sheet-location">
+                      <RecordBuildingsField id="hse-buildings" buildings={buildings} value={hseBuildingIds} onChange={(next) => { setHseBuildingIds(next); setHseBuildingId(next[0] ?? hseBuildingId); setHseLocationNodeId(""); }} />
+                      <LocationPicker id="hse-location" nodes={data.locationNodes} buildingId={hseBuildingId} value={hseLocationNodeId} onChange={setHseLocationNodeId} requiredDepth={requiredLocationDepth} />
+                      <RecordLocationMap
+                        client={client}
+                        value={{ latitude: hseForm.latitude, longitude: hseForm.longitude }}
+                        fallbackCenter={projectCenter}
+                        contextLabel={`${buildings.find((building) => building.id === hseBuildingId)?.name ?? buildingName}, ${projectName}`}
+                        onChange={(coordinates) => setHseForm((current) => ({ ...current, ...coordinates }))}
+                        onUseMyLocation={captureHsePosition}
+                        locating={hseLocating}
+                        manualOpen={hseManualPosition}
+                        onToggleManual={() => setHseManualPosition(!hseManualPosition)}
                       />
-                      <label className="record-add-photo">
-                        <Camera size={20} />
-                        <strong>{text("Add photo", "Foto toevoegen")}</strong>
-                        <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setHsePhotos, setHsePhotoError); event.currentTarget.value = ""; }} />
-                      </label>
+                      {hseLocationError ? <p className="field-error" role="alert">{hseLocationError}</p> : null}
                     </div>
-                    <small className="record-photo-hint">{photoStripHint}</small>
-                    {hsePhotoError ? <p className="field-error" role="alert">{hsePhotoError}</p> : null}
-                  </section>
-
-                  <section className="record-section record-order-7" aria-label={text("Immediate action taken", "Directe maatregel")}>
-                    <h3><span className="record-section-number">7</span> {text("Immediate action taken", "Directe maatregel")}</h3>
-                    <div className="record-action-grid">
-                      {immediateActionsTaken.map((action) => (
-                        <label className={`record-action-check${hseForm.immediateActions.includes(action.id) ? " active" : ""}`} key={action.id}>
-                          <input type="checkbox" aria-label={text(action.en, action.nl)} checked={hseForm.immediateActions.includes(action.id)} onChange={() => toggleHseAction(action.id)} />
-                          {text(action.en, action.nl)}
+                  ),
+                  photos: (
+                    <>
+                      <div className="record-evidence-strip">
+                        <PhotoEvidenceList
+                          photos={hsePhotos}
+                          setPhotos={setHsePhotos}
+                          markupContext={{ ...markupOptions, defaultBuildingId: hseBuildingId }}
+                          layout="gallery"
+                        />
+                        <label className="record-add-photo">
+                          <Camera size={20} />
+                          <strong>{text("Add photo", "Foto toevoegen")}</strong>
+                          <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setHsePhotos, setHsePhotoError); event.currentTarget.value = ""; }} />
                         </label>
-                      ))}
-                      <label className="record-action-check record-action-other">
-                        <MoreHorizontal size={14} />
-                        <input type="text" value={hseForm.immediateActionOther} onChange={(event) => setHseForm({ ...hseForm, immediateActionOther: event.target.value })} maxLength={240} aria-label={text("Other · specify", "Overig · omschrijf")} placeholder={text("Other · specify", "Overig · omschrijf")} /><DictateButton style={{ position: "static", flex: "none" }} onText={(transcript) => setHseForm((current) => ({ ...current, immediateActionOther: appendDictation(current.immediateActionOther, transcript) }))} />
-                      </label>
-                    </div>
-                  </section>
-
-                  <section className="record-section record-order-10" aria-label={text("Corrective action required", "Vereiste correctieve actie")}>
-                    <h3><span className="record-section-number">10</span> {text("Corrective action required", "Vereiste correctieve actie")}</h3>
-                    {hseSpecForm === "hse_incident" ? (
-                      // An incident has one row per corrective action, each with its owner and due date.
-                      <SpecFields form="hse_incident" only={["corrective_actions"]} values={hseSpecValues} onChange={setHseSpec} text={text} language={language} />
-                    ) : (
-                    <label className="form-field">
-                      <textarea rows={3} maxLength={1000} value={hseForm.correctiveAction} onChange={(event) => setHseForm({ ...hseForm, correctiveAction: event.target.value })} aria-label={text("What corrective action is required?", "Welke correctieve actie is nodig?")} placeholder={text("What corrective action is required?", "Welke correctieve actie is nodig?")} />
-                      <DictateButton onText={(transcript) => setHseForm((current) => ({ ...current, correctiveAction: appendDictation(current.correctiveAction, transcript) }))} />
-                    </label>
-                    )}
-                  </section>
-
-                  <section className="record-section record-order-11" aria-label={text("Notes", "Notities")}>
-                    <h3><span className="record-section-number">11</span> {text("Notes", "Notities")} <em className="record-section-optional">({text("optional", "optioneel")})</em></h3>
-                    <label className="form-field">
-                      <textarea rows={3} maxLength={500} value={hseForm.notes} onChange={(event) => setHseForm({ ...hseForm, notes: event.target.value })} placeholder={text("Additional notes...", "Aanvullende notities...")} /><DictateButton style={{ bottom: 34 }} onText={(transcript) => setHseForm((current) => ({ ...current, notes: appendDictation(current.notes, transcript) }))} />
-                      <div className="record-field-foot"><span /><span className="record-counter">{hseForm.notes.length} / 500</span></div>
-                    </label>
-                  </section>
-                </div>
-              </div>
-
-              <SpecFields form={hseSpecForm} skip={[...hseSpecSkip, "corrective_actions"]} values={hseSpecValues} onChange={setHseSpec} text={text} language={language} heading={hseSpecForm === "hse" ? text("Risk and follow-up", "Risico en opvolging") : text("Incident registration", "Incidentregistratie")} />
+                      </div>
+                      <small className="record-photo-hint">{photoStripHint}</small>
+                      {hsePhotoError ? <p className="field-error" role="alert">{hsePhotoError}</p> : null}
+                    </>
+                  ),
+                }}
+              />
               <label className="check-field"><input type="checkbox" checked={hseForm.confidential} onChange={(event) => setHseForm({ ...hseForm, confidential: event.target.checked })} /> {text("Restrict this sensitive incident to authorized HSE roles", "Beperk dit gevoelige incident tot bevoegde HSE-rollen")}</label>
               <RecordSignatures>
               <RecordSignatureField
@@ -4376,11 +4243,11 @@ function ProjectOperations({
                 <StillNeeded items={[
                   exactLocationRequired && !hseLocationNodeId ? text("exact location", "exacte locatie") : "",
                   !hseForm.issueCategory ? text("category", "categorie") : "",
-                  hseForm.responsiblePerson.trim().length < 2 ? text("responsible person", "verantwoordelijke") : "",
+                  hseForm.title.trim().length < 3 ? text("title", "titel") : "",
                   hseForm.description.trim().length < 3 ? text("description", "omschrijving") : "",
                   ...hseSpecProblems,
                 ]} />
-                <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !hseLocationNodeId) || !hseForm.issueCategory || hseForm.responsiblePerson.trim().length < 2 || hseForm.description.trim().length < 3 || hseSpecProblems.length > 0} onClick={() => void addHse()}><Send size={15} /> {text("Submit issue", "Issue indienen")}</button>
+                <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !hseLocationNodeId) || !hseForm.issueCategory || hseForm.title.trim().length < 3 || hseForm.description.trim().length < 3 || hseSpecProblems.length > 0} onClick={() => void addHse()}><Send size={15} /> {text("Submit issue", "Issue indienen")}</button>
               </div>
             </RecordFormShell>
           ) : null}
@@ -4416,6 +4283,15 @@ function ProjectOperations({
 
       {tab === "registers" ? (
         <section className="operation-panel">
+          {/* The Works tiles open the workbook's activity record; the one-box day log the
+              client used before stays one tap away. */}
+          {(registerForm.type === "works_ongoing" || registerForm.type === "works_completed") && !editingRegisterId ? (
+            <div className="works-activity-record">
+              <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => { openDailyWork(registerForm.type === "works_completed" ? "works_completed" : "works_ongoing"); switchTab("daily"); setShowForm(true); }}>
+                <FileText size={15} /> {text("Day log for the whole day", "Daglog voor de hele dag")}
+              </button>
+            </div>
+          ) : null}
           {showForm ? (
             <RecordFormShell
               code={data.registerEntries.find((item) => item.id === editingRegisterId)?.entry_number}
@@ -4475,7 +4351,7 @@ function ProjectOperations({
                 </>
               ) : null}
               <DraftNotice status={registerAutosave.status} savedAt={registerAutosave.savedAt} onDiscard={discardRegisterDraft} />
-              {controlledRegister ? (
+              {controlledRegister && !sheetRegister ? (
                 <div className="form-grid controlled-document-primary">
                   {/* The client's arrow runs from Discipline to the top of the form: it comes before the title. */}
                   {registerForm.type === "technical_instruction" ? <label className="form-field"><span>{text("Discipline", "Discipline")}</span><select value={registerForm.discipline} onChange={(event) => setRegisterForm({ ...registerForm, discipline: event.target.value })}><option value="architectural">{text("Architectural", "Architectonisch")}</option><option value="structural">{text("Structural", "Constructief")}</option><option value="electrical">{text("Electrical", "Elektrisch")}</option><option value="mechanical">{text("Mechanical", "Werktuigbouwkundig")}</option><option value="civil">{text("Civil", "Civiel")}</option><option value="hse">HSE</option></select></label> : null}
@@ -4483,7 +4359,10 @@ function ProjectOperations({
                   <label className="form-field"><span>{registerForm.type === "technical_instruction" ? text("Instruction description", "Omschrijving instructie") : text("Formal request / instruction / observation", "Formeel verzoek / instructie / observatie")}</span><textarea value={registerForm.details} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} rows={5} /><DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} /></label>
                 </div>
               ) : null}
-              <div className="form-grid-2">
+              {sheetRegister ? (
+                /* A sheet without a location row: the buildings the numbered record is filed under. */
+                !["technical_instruction", "change_order", "delay_report", "works_ongoing", "works_completed"].includes(registerForm.type) ? <RecordBuildingsField id="register-buildings" buildings={buildings} value={registerBuildingIds} onChange={(next) => { setRegisterBuildingIds(next); setRegisterBuildingId(next[0] ?? registerBuildingId); setRegisterLocationNodeId(""); }} /> : null
+              ) : <div className="form-grid-2">
                 <RecordBuildingsField id="register-buildings" buildings={buildings} value={registerBuildingIds} onChange={(next) => { setRegisterBuildingIds(next); setRegisterBuildingId(next[0] ?? registerBuildingId); setRegisterLocationNodeId(""); }} />
                 <LocationPicker id="register-location" nodes={data.locationNodes} buildingId={registerBuildingId} value={registerLocationNodeId} onChange={setRegisterLocationNodeId} requiredDepth={requiredLocationDepth} />
                 {submittedRegister ? <details className="optional-text-entry register-type-switch" style={{ alignSelf: "start" }}>
@@ -4504,15 +4383,63 @@ function ProjectOperations({
                     <button className="field-inline-link" type="button" onClick={() => switchTab("drawings")}><MapPin size={12} /> {text("Open the drawing to place a pin", "Open de tekening om een pin te plaatsen")}</button>
                   </label>
                 ) : null}
-              </div>
-              {controlledRegister ? (
+              </div>}
+              {controlledRegister && !sheetRegister ? (
                 <label className="form-field controlled-document-deadline">
                   <span>{registerForm.type === "technical_instruction" ? text("Instruction deadline / required by", "Deadline instructie / uitvoeren uiterlijk") : text("Response / information required by", "Antwoord / informatie nodig uiterlijk")}</span>
                   <input type="date" min={editingRegisterId ? undefined : issueDate} value={registerForm.dueDate} onChange={(event) => setRegisterForm({ ...registerForm, dueDate: event.target.value })} />
                 </label>
               ) : null}
-              {activeRegisterPresets.length ? <div className="quick-issue-presets" aria-label={text("Choose a standard register item", "Kies een standaard registeritem")}>{activeRegisterPresets.map((preset) => <button className={registerForm.title === preset.title ? "active" : ""} type="button" onClick={() => setRegisterForm({ ...registerForm, ...preset })} key={preset.title}>{preset.title}</button>)}</div> : null}
-              {delayReportRegister ? (
+              {activeRegisterPresets.length && !sheetRegister ? <div className="quick-issue-presets" aria-label={text("Choose a standard register item", "Kies een standaard registeritem")}>{activeRegisterPresets.map((preset) => <button className={registerForm.title === preset.title ? "active" : ""} type="button" onClick={() => setRegisterForm({ ...registerForm, ...preset })} key={preset.title}>{preset.title}</button>)}</div> : null}
+              {sheetRegister && registerSpecForm ? (
+                /* The workbook sheet of this form, row by row in its order. */
+                <SpecFields
+                  form={registerSpecForm}
+                  skip={registerSpecSkip}
+                  values={registerSpecValues}
+                  onChange={changeRegisterSpec}
+                  text={text}
+                  language={language}
+                  slots={{
+                    title: <input aria-label={text("Title", "Titel")} value={registerForm.title} maxLength={160} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} />,
+                    description: (
+                      <label className="form-field record-description-field">
+                        <textarea aria-label={text("Description", "Omschrijving")} value={registerForm.details} rows={5} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} />
+                        <DictateButton onText={(transcript) => setRegisterForm((current) => ({ ...current, details: appendDictation(current.details, transcript) }))} />
+                      </label>
+                    ),
+                    location: (
+                      <div className="sheet-location">
+                        <RecordBuildingsField id="register-buildings" buildings={buildings} value={registerBuildingIds} onChange={(next) => { setRegisterBuildingIds(next); setRegisterBuildingId(next[0] ?? registerBuildingId); setRegisterLocationNodeId(""); }} />
+                        <LocationPicker id="register-location" nodes={data.locationNodes} buildingId={registerBuildingId} value={registerLocationNodeId} onChange={setRegisterLocationNodeId} requiredDepth={requiredLocationDepth} />
+                      </div>
+                    ),
+                    photos: registerSheetPhotos,
+                    attachments: (
+                      <>
+                        {registerSheetPhotos}
+                        <label className="ui-button ui-button--secondary ui-button--md file-button controlled-document-upload">
+                          <Upload size={15} /> {registerFiles.length
+                            ? text(`${registerFiles.length} document(s) selected`, `${registerFiles.length} document(en) geselecteerd`)
+                            : text("Upload attachment", "Bijlage uploaden")}
+                          <input
+                            type="file"
+                            multiple
+                            accept=".pdf,.dwg,.doc,.docx,.xls,.xlsx,.csv,.txt,image/jpeg,image/png,image/webp"
+                            hidden
+                            onChange={(event) => {
+                              const files = Array.from(event.currentTarget.files ?? []);
+                              setRegisterFiles(files);
+                              event.currentTarget.value = "";
+                            }}
+                          />
+                        </label>
+                        {registerFiles.length ? <div className="boq-preview">{registerFiles.map((file) => <div key={`${file.name}:${file.lastModified}`}><FileText size={15} /><span>{file.name}</span><small>{Math.max(1, Math.round(file.size / 1024))} KB</small></div>)}</div> : null}
+                      </>
+                    ),
+                  }}
+                />
+              ) : delayReportRegister ? (
                 /* The client's own Project Delay Report. The header above this — project,
                    location, reporter, date and time — is filled by the app, "zelfde als
                    HSE"; what follows is the delay itself, in the client's own sections. */
@@ -4903,7 +4830,7 @@ function ProjectOperations({
                 </div>
                 </>
               )}
-              {controlledRegister ? <>
+              {controlledRegister && !sheetRegister ? <>
                 {editingRegisterId ? <label className="form-field"><span>{text("Revision", "Revisie")}</span><input value={registerForm.revision} onChange={(event) => setRegisterForm({ ...registerForm, revision: event.target.value })} /></label> : null}
                 {/* Who draws the document up is a choice, not always the person logged in. */}
                 {submittedRegister ? (
@@ -4982,7 +4909,7 @@ function ProjectOperations({
               </> : null}
               {/* Site photos come before the signatures. A lesson learned has its own two named
                   pictures; a third, general photo box on it was "dubbel". */}
-              {!lessonsLearnedRegister ? (
+              {!lessonsLearnedRegister && !sheetRegister ? (
                 <>
                 <label className="finding-photo-capture register-photo-capture">
                   <Camera size={22} />
@@ -4997,10 +4924,19 @@ function ProjectOperations({
                 {registerPhotoError ? <p className="field-error" role="alert">{registerPhotoError}</p> : null}
                 </>
               ) : null}
-              {registerSpecForm ? <SpecFields form={registerSpecForm} skip={registerSpecSkip} values={registerSpecValues} onChange={setRegisterSpec} text={text} language={language} heading={text("Specification details", "Specificatiegegevens")} /> : null}
+              {registerSpecForm && !sheetRegister ? <SpecFields form={registerSpecForm} skip={registerSpecSkip} values={registerSpecValues} onChange={setRegisterSpec} text={text} language={language} heading={text("Specification details", "Specificatiegegevens")} /> : null}
               {/* "Overal aan het eind": the signatures close every register form — supervision
                   first, the contractor next to it. */}
-              {changeOrderRegister ? (
+              {sheetRegister && agreementRegister ? (
+                <RecordSignatures>
+                  <AgreementSignatureFields
+                    options={agreementPartyOptions}
+                    value={agreementForm}
+                    onChange={setAgreementForm}
+                    roleLabels={[text("Contractor representative", "Vertegenwoordiger aannemer"), text("Supervision (consultant)", "Supervisie (consultant)")]}
+                  />
+                </RecordSignatures>
+              ) : changeOrderRegister && !sheetRegister ? (
                 <div className="record-form-sections change-order-sections">
                     <RecordFormSection
                       number={5}
@@ -5122,7 +5058,11 @@ function ProjectOperations({
               {(() => {
                 // What is still missing before the save button works, in words. A disabled button
                 // that does not say why is how a form gets abandoned; this mirrors the rules above.
-                const registerMissing = [
+                const registerMissing = sheetRegister ? [
+                  exactLocationRequired && !registerLocationNodeId ? text("exact location", "exacte locatie") : "",
+                  ...sheetRegisterMissing,
+                  ...registerSpecProblems,
+                ].filter(Boolean) : [
     exactLocationRequired && !registerLocationNodeId ? text("exact location", "exacte locatie") : "",
     registerTitle.length < 3 ? text("title", "titel") : "",
     controlledRegister && registerForm.details.trim().length < 3 ? text("description", "omschrijving") : "",
@@ -5142,7 +5082,7 @@ function ProjectOperations({
                 ].filter(Boolean);
                 return registerMissing.length ? <small className="confirm-needs">{text("Still needed", "Nog nodig")}: {registerMissing.join(" · ")}</small> : null;
               })()}
-              <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !registerLocationNodeId) || registerTitle.length < 3 || !controlledFormReady || !lessonFormReady || !delayReportFormReady || registerSpecProblems.length > 0} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : agreementRegister ? text("Save agreement", "Afspraak opslaan") : lessonsLearnedRegister ? text("Save lesson learned", "Geleerde les opslaan") : delayReportRegister ? text("Save delay report", "Vertragingsrapport opslaan") : text("Save register item", "Registeritem opslaan")}</button>
+              <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !registerLocationNodeId) || registerTitle.length < 3 || (sheetRegister ? sheetRegisterMissing.length > 0 : !controlledFormReady || !lessonFormReady || !delayReportFormReady) || registerSpecProblems.length > 0} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : agreementRegister ? text("Save agreement", "Afspraak opslaan") : lessonsLearnedRegister ? text("Save lesson learned", "Geleerde les opslaan") : delayReportRegister ? text("Save delay report", "Vertragingsrapport opslaan") : text("Save register item", "Registeritem opslaan")}</button>
             </RecordFormShell>
           ) : null}
           {/* The bill of quantities has nothing to do with a delivery or any other
@@ -5408,8 +5348,10 @@ function BoqProgressRegister({
  * act; the name is written once beneath it. A name that matches a colleague in the app still
  * assigns the record to that colleague, so their notification keeps working.
  */
-function ResponsiblePartyFields({ idPrefix, role, name, people, partyNames, onChange }: {
+function ResponsiblePartyFields({ idPrefix, role, name, people, partyNames, onChange, showRole = true }: {
   idPrefix: string;
+  /** The Issue sheet asks the party in its own row; then only the name is asked here. */
+  showRole?: boolean;
   role: ResponsibleRole;
   name: string;
   people: Array<{ id: string; name: string; role: string }>;
@@ -5424,13 +5366,13 @@ function ResponsiblePartyFields({ idPrefix, role, name, people, partyNames, onCh
   ].filter(Boolean)));
   return (
     <div className="record-responsible-fields">
-      <label className="form-field record-responsible-field">
+      {showRole ? <label className="form-field record-responsible-field">
         <UserCheck size={15} />
         <select aria-label={text("Responsible party", "Verantwoordelijke partij")} value={role} onChange={(event) => onChange({ role: event.target.value as ResponsibleRole, name, userId: userIdFor(name) })}>
           <option value="">{text("Client, contractor or supervision", "Opdrachtgever, aannemer of supervisie")}</option>
           {responsibleRoles.map((option) => <option value={option.id} key={option.id}>{text(option.en, option.nl)}</option>)}
         </select>
-      </label>
+      </label> : null}
       <label className="form-field">
         <span>{text("Name of the responsible person", "Naam van de verantwoordelijke")}</span>
         <input list={suggestions.length ? `${idPrefix}-responsible-names` : undefined} value={name} onChange={(event) => onChange({ role, name: event.target.value, userId: userIdFor(event.target.value) })} placeholder={text("First and last name", "Voor- en achternaam")} />

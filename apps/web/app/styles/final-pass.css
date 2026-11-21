@@ -713,6 +713,15 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
 .spec-section > .form-grid-2 + .form-field,
 .spec-section > .form-field + .form-field,
 .spec-section > .form-field + .form-grid-2 { margin-top: var(--space-4); }
+/* A sheet row with several controls (e.g. "Start / finish time"): one row, its parts under each other. */
+.sheet-row { display: grid; gap: var(--space-3); }
+.sheet-row > .form-field, .sheet-row > .sheet-row-part { margin: 0; }
+/* The row's first control under the row's own label: its caption is read, not shown twice. */
+.sheet-row-main > .form-field > span:first-child,
+.sheet-row-main > .form-field > legend,
+.sheet-row-main > .spec-readonly > span:first-child {
+  block-size: 1px; clip-path: inset(50%); inline-size: 1px; overflow: hidden; position: absolute; white-space: nowrap;
+}
 .spec-choices { border: 0; margin: 0; min-width: 0; padding: 0; }
 .spec-choices legend { margin-bottom: var(--space-2); padding: 0; }
 .spec-choice-list { display: grid; gap: var(--space-2) var(--space-4); grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }

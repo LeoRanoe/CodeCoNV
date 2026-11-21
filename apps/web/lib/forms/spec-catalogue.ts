@@ -4172,7 +4172,7 @@ export const instructionCategories: Record<string, SpecOption[]> = {
       "description": ""
     },
     {
-      "value": "Other - specify",
+      "value": "Other – specify",
       "description": ""
     }
   ],
@@ -4198,7 +4198,7 @@ export const instructionCategories: Record<string, SpecOption[]> = {
       "description": ""
     },
     {
-      "value": "Other - specify",
+      "value": "Other – specify",
       "description": ""
     }
   ],
@@ -4228,7 +4228,7 @@ export const instructionCategories: Record<string, SpecOption[]> = {
       "description": ""
     },
     {
-      "value": "Other - specify",
+      "value": "Other – specify",
       "description": ""
     }
   ],
@@ -4258,7 +4258,7 @@ export const instructionCategories: Record<string, SpecOption[]> = {
       "description": ""
     },
     {
-      "value": "Other - specify",
+      "value": "Other – specify",
       "description": ""
     }
   ],
@@ -4296,7 +4296,7 @@ export const instructionCategories: Record<string, SpecOption[]> = {
       "description": ""
     },
     {
-      "value": "Other - specify",
+      "value": "Other – specify",
       "description": ""
     }
   ],
@@ -4330,7 +4330,7 @@ export const instructionCategories: Record<string, SpecOption[]> = {
       "description": ""
     },
     {
-      "value": "Other - specify",
+      "value": "Other – specify",
       "description": ""
     }
   ],
@@ -4356,7 +4356,7 @@ export const instructionCategories: Record<string, SpecOption[]> = {
       "description": ""
     },
     {
-      "value": "Other - specify",
+      "value": "Other – specify",
       "description": ""
     }
   ],
@@ -4386,7 +4386,7 @@ export const instructionCategories: Record<string, SpecOption[]> = {
       "description": ""
     },
     {
-      "value": "Other - specify",
+      "value": "Other – specify",
       "description": ""
     }
   ],
@@ -4416,7 +4416,7 @@ export const instructionCategories: Record<string, SpecOption[]> = {
       "description": ""
     },
     {
-      "value": "Other - specify",
+      "value": "Other – specify",
       "description": ""
     }
   ],
@@ -4446,7 +4446,7 @@ export const instructionCategories: Record<string, SpecOption[]> = {
       "description": ""
     },
     {
-      "value": "Other - specify",
+      "value": "Other – specify",
       "description": ""
     }
   ],
@@ -4476,7 +4476,7 @@ export const instructionCategories: Record<string, SpecOption[]> = {
       "description": ""
     },
     {
-      "value": "Other - specify",
+      "value": "Other – specify",
       "description": ""
     }
   ],
@@ -4506,7 +4506,7 @@ export const instructionCategories: Record<string, SpecOption[]> = {
       "description": ""
     },
     {
-      "value": "Other - specify",
+      "value": "Other – specify",
       "description": ""
     }
   ],
@@ -4536,7 +4536,7 @@ export const instructionCategories: Record<string, SpecOption[]> = {
       "description": ""
     },
     {
-      "value": "Other - specify",
+      "value": "Other – specify",
       "description": ""
     }
   ],
@@ -4566,7 +4566,7 @@ export const instructionCategories: Record<string, SpecOption[]> = {
       "description": ""
     },
     {
-      "value": "Other - specify",
+      "value": "Other – specify",
       "description": ""
     }
   ],
@@ -4596,7 +4596,7 @@ export const instructionCategories: Record<string, SpecOption[]> = {
       "description": ""
     },
     {
-      "value": "Other - specify",
+      "value": "Other – specify",
       "description": ""
     }
   ],
@@ -4622,7 +4622,7 @@ export const instructionCategories: Record<string, SpecOption[]> = {
       "description": ""
     },
     {
-      "value": "Other - specify",
+      "value": "Other – specify",
       "description": ""
     }
   ],
@@ -4652,7 +4652,7 @@ export const instructionCategories: Record<string, SpecOption[]> = {
       "description": ""
     },
     {
-      "value": "Other - specify",
+      "value": "Other – specify",
       "description": ""
     }
   ]
