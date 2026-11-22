@@ -43,6 +43,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Siren,
+  Mail,
   Smartphone,
   UserCheck,
   Users,
@@ -793,6 +794,17 @@ function openWhatsApp(message: string) {
 function openSms(message: string) {
   // "?&body=" is the form both iOS and Android accept without a recipient.
   window.location.href = `sms:?&body=${encodeURIComponent(message)}`;
+}
+
+/**
+ * The phone's or computer's own mail app (Gmail where it is the default) opens with the message
+ * ready and no recipient. Nothing is sent from CODECO; the person reads it and presses send.
+ */
+function openEmail(message: string) {
+  const [first, ...rest] = message.trim().split(/\r?\n/);
+  const subject = first.slice(0, 120);
+  const body = rest.join("\n").trim() || message;
+  window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
 async function copyToClipboard(value: string) {
@@ -5557,6 +5569,7 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
                 file stays the attachment; this is the message that announces it. */}
             <button className="whatsapp-button" type="button" onClick={() => openWhatsApp(contractorMessage(entry))}><MessageCircle size={16} /> {text("Send to contractor", "Naar aannemer sturen")}</button>
             <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => openSms(contractorMessage(entry))}><Smartphone size={15} /> {text("Send as SMS", "Als SMS sturen")}</button>
+            <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => openEmail(contractorMessage(entry))}><Mail size={15} /> {text("Send as email", "Als e-mail sturen")}</button>
             <ReportDownloadButtons disabled={busy} onDownloadPdf={async () => { const history = await recordHistory(client, projectId, entry.id, language); const { downloadControlledDocumentPdf } = await import("@/lib/reports/controlled-document-pdf"); await downloadControlledDocumentPdf(entry, history); }} onDownloadWord={async () => { const history = await recordHistory(client, projectId, entry.id, language); const { downloadControlledDocumentDocx } = await import("@/lib/reports/controlled-document-docx"); await downloadControlledDocumentDocx(entry, history); }} />{!["closed", "cancelled"].includes(entry.status) ? <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy} onClick={() => { setActive(active === entry.id ? null : entry.id); const recipientAnswers = entry.register_type === "technical_instruction" || entry.register_type === "change_order"; setResponse({ decision: recipientAnswers ? "acknowledged" : "approved", comments: "", respondentName: recipientAnswers ? "" : currentUserName, respondentPosition: "", respondentCompany: recipientAnswers ? String(details.requested_to ?? "") : "CODECO N.V." }); setResponseSignature(null); }}><FileCheck2 size={15} /> {text("Record formal response", "Leg formeel antwoord vast")}</button> : null}</div>
             {historyActive === entry.id ? <section className="controlled-document-history">
               <div><span>{text("Created / issued", "Aangemaakt / uitgegeven")}</span><strong>{formatDate(entry.occurred_at, locale)}</strong><small>{String(details.issuer_name ?? details.issued_by ?? currentUserName)} · {String(details.issuer_company ?? "CODECO N.V.")}</small></div>
@@ -5773,6 +5786,7 @@ function SubmittedRecordShare({ finding, scope, projectName, projectCode, buildi
             <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => void copyToClipboard(link.url).then(() => setFeedback(text("Link copied.", "Link gekopieerd."))).catch((error) => setFeedback(userFacingError(error, text)))}><Copy size={16} /> {text("Copy link", "Kopieer link")}</button>
             <button className="whatsapp-button" type="button" onClick={() => openWhatsApp(message(link))}><MessageCircle size={17} /> {text("Open WhatsApp and send", "Open WhatsApp en stuur")}</button>
             <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => openSms(message(link))}><Smartphone size={16} /> {text("Send as SMS", "Als SMS sturen")}</button>
+            <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => openEmail(message(link))}><Mail size={16} /> {text("Send as email", "Als e-mail sturen")}</button>
           </div>
         </>
       ) : (
@@ -6059,6 +6073,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
                   <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => void copyToClipboard(externalShare.url).then(() => setShareFeedback(text("Link copied.", "Link gekopieerd."))).catch((error) => setShareFeedback(userFacingError(error, text)))}><Copy size={16} /> {text("Copy link", "Kopieer link")}</button>
                   <button className="whatsapp-button" type="button" onClick={() => openWhatsApp(externalMessage(finding, externalShare))}><MessageCircle size={17} /> {text("Open WhatsApp and send", "Open WhatsApp en stuur")}</button>
                   <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => openSms(externalMessage(finding, externalShare))}><Smartphone size={16} /> {text("Send as SMS", "Als SMS sturen")}</button>
+                  <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => openEmail(externalMessage(finding, externalShare))}><Mail size={16} /> {text("Send as email", "Als e-mail sturen")}</button>
                   <button className="revoke-share-button" type="button" onClick={() => setRevokeConfirmId(externalShare.shareId)}><X size={16} /> {text("Revoke link", "Link intrekken")}</button>
                 </div>
               </section>

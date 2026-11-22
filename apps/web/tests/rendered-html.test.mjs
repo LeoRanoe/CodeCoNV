@@ -676,6 +676,9 @@ test("implements the customer video workflows without external accounts", async 
   // himself, so the app only opens the phone's own SMS app with the message ready.
   assert.doesNotMatch(`${app}\n${operations}\n${shareActions}`, /twilio|messagebird|sms_gateway|sendSms\(/i);
   assert.match(operations, /sms:\?&body=/);
+  // The same for e-mail: the mail app opens with the message ready; CODECO sends nothing itself.
+  assert.match(operations, /mailto:\?subject=/);
+  assert.doesNotMatch(`${operations}\n${shareActions}`, /nodemailer|sendgrid|smtp/i);
 });
 
 test("minimizes repetitive field typing with controlled quick choices", async () => {
@@ -1348,6 +1351,7 @@ test("keeps the action centre and makes its deadlines and choices true on site",
   assert.match(workspace, /function openSms\(message: string\)/);
   assert.match(workspace, /sms:\?&body=/);
   assert.equal(workspace.match(/Send as SMS|Als SMS sturen/g)?.length, 6);
+  assert.equal(workspace.match(/Send as email|Als e-mail sturen/g)?.length, 6);
 });
 
 test("makes every recorded signature visible on the document it belongs to", async () => {
