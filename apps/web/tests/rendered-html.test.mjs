@@ -1453,7 +1453,8 @@ test("gives the phone back button a screen to go back to", async () => {
 
   // Every screen the user perceives as a page is a history entry with its own address.
   assert.match(app, /const screen: AppScreen = useMemo/);
-  assert.match(app, /useScreenHistory\(screen, applyScreen\)/);
+  assert.match(app, /useScreenHistory\(screen, applyScreen, Boolean\(deliveryLink\)\)/);
+  assert.match(history, /typeof window === "undefined" \|\| waitingForLink/);
   assert.match(app, /const applyScreen = useCallback/);
   // Each entry also remembers the screen underneath it.
   assert.match(history, /window\.history\.pushState\(\{ codecoScreen: screen, codecoBelow: previous \} satisfies HistoryEntry, "", url\)/);

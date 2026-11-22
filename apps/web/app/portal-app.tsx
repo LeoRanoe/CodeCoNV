@@ -96,6 +96,8 @@ export function PortalApp({
   onSwitchProject,
   onSignOut,
   submissionWorkspace,
+  focusShareId = "",
+  clearFocus,
 }: {
   client: SupabaseClient;
   mode: PortalAudience;
@@ -109,6 +111,8 @@ export function PortalApp({
   onSignOut: () => void;
   /** The existing controlled-submission form (RFI, RFA, WCR, inspection request), when the role may originate one. */
   submissionWorkspace?: ReactNode;
+  focusShareId?: string;
+  clearFocus: () => void;
 }) {
   const { language, locale, text } = useLanguage();
   const queryClient = useQueryClient();
@@ -148,7 +152,7 @@ export function PortalApp({
 
   const contractor = useMemo(() => contractorSections(shares) as Record<"assigned" | "pendingActions" | "sharedDocuments" | "history" | "awaiting" | "overdue" | "returned" | "upcoming", PortalShare[]>, [shares]);
   const clientView = useMemo(() => clientSections(shares) as Record<"publications" | "currentPublications" | "progress" | "photos" | "documents" | "review" | "openReview" | "overdueReview" | "issues" | "correspondence", PortalShare[]>, [shares]);
-  const openShare = shares.find((share) => share.id === openShareId) ?? null;
+  const openShare = shares.find((share) => share.id === (openShareId ?? focusShareId)) ?? null;
   const unread = (notificationsQuery.data ?? []).filter((item) => !item.read_at).length;
 
   const sections = mode === "contractor"
@@ -309,7 +313,7 @@ export function PortalApp({
           rights={rights}
           buildingName={buildingName(openShare.building_id)}
           defaultBuildingId={openShare.building_id ?? buildings[0]?.id ?? ""}
-          close={() => setOpenShareId(null)}
+          close={() => { setOpenShareId(null); clearFocus(); }}
           changed={refresh}
         />
       ) : null}

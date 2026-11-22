@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { expect, type Page, test } from "@playwright/test";
 import { createHash } from "node:crypto";
+import { notificationPath } from "../../lib/notifications/record-link.mjs";
 
 /**
  * Word 14 / WD-192: "Inspection scheduled or updated" reaches the person who must carry it out.
@@ -10,7 +11,7 @@ import { createHash } from "node:crypto";
  *  - moving it to another time notifies once more; saving without a change sends nothing;
  *  - the person making the change is never notified of it (assigning it to themselves, or the
  *    executor moving their own inspection);
- *  - the colleague sees it in the notification list and the list opens the inspections.
+ *  - the colleague opens the exact inspection from the list or a delivery link after sign-in.
  * The database trigger has its own test (supabase/tests/041_inspection_notifications.pgtap.sql).
  */
 const planner = { email: process.env.CODECO_E2E_EMAIL, password: process.env.CODECO_E2E_PASSWORD };
@@ -167,7 +168,7 @@ test("moving it notifies the executor again; an unchanged save and the actor's o
   expect(await countFor(executor)).toHaveLength(4);
 });
 
-test("the executor finds it in the notification list, which opens the inspections", async ({ page }, testInfo) => {
+test("the executor opens the exact inspection from the notification list", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-office", "desktop route");
   test.setTimeout(180_000);
   await signIn(page, executor);
@@ -178,10 +179,43 @@ test("the executor finds it in the notification list, which opens the inspection
   await expect(rows.first()).toContainText(/Inspection (planned|updated): /);
   await page.screenshot({ path: testInfo.outputPath("executor-notifications.png"), fullPage: true });
   await rows.first().click();
-  await expect(page.getByRole("button", { name: "Start recommended checklist" }).or(page.locator("[data-workspace-destination=inspections]")).first()).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Record details" })).toContainText(inspectionNumber);
   // Nothing was sent anywhere: the e-mail and push columns stay untouched.
   const sent = await (await api(executor)).from("notifications").select("email_sent_at,push_sent_at").eq("source_id", inspectionId);
   for (const row of sent.data ?? []) { expect(row.email_sent_at).toBeNull(); }
+});
+
+test("a delivery link survives sign-in and opens only the recipient's inspection", async ({ page, browser }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-office", "desktop route");
+  test.setTimeout(180_000);
+  const notifications = await countFor(executor);
+  const target = notificationPath(projectId, notifications[0].id);
+  const freshContext = await browser.newContext();
+  const wrongAccount = await freshContext.newPage();
+  try {
+    for (const [tab, account] of [[page, executor], [wrongAccount, planner]] as const) {
+      await tab.goto(target);
+      await tab.evaluate(() => {
+        localStorage.setItem("codeco-field-guide-seen-v3", "yes");
+        localStorage.setItem("codeco-language-choice", "en");
+      });
+      await tab.reload();
+      const form = tab.locator(".access-form");
+      await form.locator("input[type='email']").fill(account.email!);
+      await form.locator("input[type='password']").fill(account.password!);
+      await form.locator("button[type='submit']").click();
+    }
+    await Promise.all([
+      expect(page.getByRole("dialog", { name: "Record details" })).toContainText(inspectionNumber, { timeout: 60_000 }),
+      expect(wrongAccount.getByText("This notification is unavailable to this account.")).toBeVisible({ timeout: 60_000 }),
+    ]);
+    await expect(page).toHaveURL(new RegExp(`[?&]record=${inspectionId}`));
+    await expect(wrongAccount.getByRole("dialog", { name: "Record details" })).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByRole("dialog", { name: "Record details" })).toContainText(inspectionNumber, { timeout: 60_000 });
+  } finally {
+    await freshContext.close();
+  }
 });
 
 test("a role that cannot manage inspections cannot plan one", async ({}, testInfo) => {

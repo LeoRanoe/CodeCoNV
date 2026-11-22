@@ -19,7 +19,19 @@ export const workforceDeviationThreshold = 0.2;
  * @property {string} [discipline]
  * @property {number} [count]
  * @property {string} [entryType]
+ * @property {{ attendance_status?: string } | null} [spec]
  */
+
+const offSiteStatuses = new Set(["Absent", "On Leave", "Off Shift", "Demobilized"]);
+
+/** Missing status covers attendance records made before statuses were introduced.
+ * @param {string | null | undefined} entryType
+ * @param {unknown} spec
+ */
+export function isOnSiteWorkforce(entryType, spec) {
+  const status = spec && typeof spec === "object" && "attendance_status" in spec ? spec.attendance_status : null;
+  return entryType !== "visitor" && !offSiteStatuses.has(String(status ?? ""));
+}
 
 /**
  * Only the people who are working; a visitor is on site but is not manning the work.
@@ -28,7 +40,7 @@ export const workforceDeviationThreshold = 0.2;
  * @returns {WorkforceCountRow[]}
  */
 function workforceOnly(rows) {
-  return (rows ?? []).filter((row) => (row?.entryType ?? "workforce") === "workforce");
+  return (rows ?? []).filter((row) => isOnSiteWorkforce(row?.entryType, row?.spec));
 }
 
 /**

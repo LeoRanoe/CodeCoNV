@@ -1,5 +1,7 @@
 "use client";
 
+import { isOnSiteWorkforce } from "@/lib/forms/workforce.mjs";
+
 import { SectionNav } from "@/app/section-nav";
 import { locateCoordinates } from "@/lib/browser/geolocation";
 
@@ -152,13 +154,13 @@ import { useLanguage } from "@/lib/i18n";
 import { cacheProjectSnapshot, getCachedProjectSnapshot } from "@/lib/offline/project-cache";
 import { useLiveProjectWeather } from "@/lib/weather-client";
 import { prepareEvidencePhoto, forceSyncOfflineUploads, queueOfflineUpload, removeOfflineUpload } from "@/lib/offline/upload-queue";
-import { photoRefusalMessage, prepareCameraPhotos } from "@/lib/images/normalize-image";
+import { photoAccept, photoRefusalMessage, prepareCameraPhotos } from "@/lib/images/normalize-image";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import type { FormalReportSnapshot } from "@/lib/reports/daily-report-pdf";
 import type { PeriodReportSection, PeriodReportTopic } from "@/lib/reports/period-report-pdf";
 import { assignProjectAction, type InternalMember, type ProjectParty } from "@/lib/supabase/data";
 import { isStorageGatewayConfigured, openProjectFile, uploadProjectFile } from "@/lib/storage/gateway";
-import { isPhotoFile } from "@/lib/media/photo-library.mjs";
+import { isPhotoFile, photoSourceIds } from "@/lib/media/photo-library.mjs";
 import { countOpenFindings } from "@/lib/records/finding-counts.mjs";
 import { createFileOriginResolver, filesForRecord, type FileOriginKind, type FileOriginResolver } from "@/lib/supabase/file-origins";
 import { loadProjectThumbnailUrl } from "@/lib/images/thumbnail";
@@ -883,6 +885,7 @@ export function OperationalWorkspace({
   openProjectAction,
   createProjectAction,
   focusRecordId = "",
+  clearFocusedRecord,
 }: {
   mode: WorkspaceMode;
   client: SupabaseClient;
@@ -934,6 +937,7 @@ export function OperationalWorkspace({
   createProjectAction?: () => void;
   /** The record the action centre sent the user to; it opens expanded and scrolled to. */
   focusRecordId?: string;
+  clearFocusedRecord?: () => void;
 }) {
   const { text } = useLanguage();
   const queryClient = useQueryClient();
@@ -1101,6 +1105,7 @@ export function OperationalWorkspace({
           openRapidVerify={openRapidVerify}
           openManagement={openManagement}
           focusRecordId={focusRecordId}
+          clearFocusedRecord={clearFocusedRecord}
         />
       ) : null}
       {mode === "actions" ? (
@@ -1134,6 +1139,8 @@ export function OperationalWorkspace({
       ) : null}
       {mode === "reports" ? (
         <ReportOperations
+          key={focusRecordId}
+          focusRecordId={focusRecordId}
           data={snapshot}
           reportId={reportId}
           reportNumber={reportNumber}
@@ -1167,6 +1174,8 @@ export function OperationalWorkspace({
       ) : null}
       {mode === "admin" ? (
         <AdminOperations
+          key={focusRecordId}
+          focusRecordId={focusRecordId}
           data={snapshot}
           client={client}
           organizationId={organizationId}
@@ -1226,6 +1235,7 @@ function ProjectOperations({
   openManagement,
   externalSubmissionIntent = false,
   focusRecordId = "",
+  clearFocusedRecord,
 }: {
   data: OperationSnapshot;
   organizationId: string;
@@ -1266,6 +1276,7 @@ function ProjectOperations({
   externalSubmissionIntent?: boolean;
   /** A record the action centre asked for; it opens expanded instead of only its module. */
   focusRecordId?: string;
+  clearFocusedRecord?: () => void;
 }) {
   const { language, locale, text } = useLanguage();
   // The weather at the moment the issue is written: the head of the client's HSE screen
@@ -1321,7 +1332,8 @@ function ProjectOperations({
           : tab === "daily" ? permissions.canAny("reports.create", "reports.edit")
             : true;
   const showForm = wantsForm && mayCreateHere;
-  const [viewedRecord, setViewedRecord] = useState<ViewedWorkspaceRecord | null>(null);
+  const [manualRecord, setViewedRecord] = useState<ViewedWorkspaceRecord | null>(null);
+  const [dismissedRecordId, setDismissedRecordId] = useState("");
   const [editingFindingId, setEditingFindingId] = useState("");
   const [editingHseId, setEditingHseId] = useState("");
   const [editingRegisterId, setEditingRegisterId] = useState("");
@@ -1478,12 +1490,18 @@ function ProjectOperations({
     setRegisterNamedPhotos((current) => ({ ...current, [role]: photo }));
   // A module reached from outside — the bottom bar, a deadline row, the back button —
   // opens the same way as one chosen in the switcher.
+  const previousRecordRoute = useRef({ tab, focusRecordId });
   useEffect(() => {
+    const previous = previousRecordRoute.current;
+    previousRecordRoute.current = { tab, focusRecordId };
+    if (previous.tab === tab && previous.focusRecordId && !focusRecordId) return;
     if (internalTabChange.current) {
       internalTabChange.current = false;
       return;
     }
     setSubmittedFinding(null);
+    setDismissedRecordId("");
+    setViewedRecord(null);
     // A link to one record shows that record; every other way in opens the module with its form.
     setShowForm(tab !== "home" && !focusRecordId);
     setActiveInspection(null);
@@ -1625,6 +1643,7 @@ function ProjectOperations({
   /** "Automatisch": until a date is chosen, the lookup shows today when an inspection exists today. */
   const effectiveInspectionDate = inspectionFilterDate ?? (inspectionDates.includes(todayKey) ? todayKey : "");
   const filteredInspections = data.inspections.filter((inspection) => {
+    if (inspection.id === focusRecordId) return true;
     if (inspectionFilterBuildingId && !(inspection.building_ids?.length ? inspection.building_ids : [inspection.building_id]).includes(inspectionFilterBuildingId)) return false;
     if (inspectionFilterLocationNodeId && inspection.location_node_id !== inspectionFilterLocationNodeId) return false;
     if (effectiveInspectionDate) {
@@ -1666,9 +1685,9 @@ function ProjectOperations({
     "Tap a photo to describe it, mark it or remove it.",
     "Tik op een foto om die te omschrijven, te markeren of te verwijderen.",
   );
-  const scopedFindings = data.findings.filter((finding) => findingScope === "ncr"
+  const scopedFindings = data.findings.filter((finding) => finding.id === focusRecordId || (findingScope === "ncr"
     ? finding.finding_type === "ncr"
-    : finding.finding_type !== "ncr");
+    : finding.finding_type !== "ncr"));
   /** The three headings of the client's HSE form, as they read in a list. */
   const hseCategoryLabels: Record<string, string> = {
     health: text("Health", "Health"),
@@ -1859,11 +1878,12 @@ function ProjectOperations({
     }
     return null;
   };
-  const viewInspection = (inspection: Inspection) => setViewedRecord({
+  const inspectionRecord = (inspection: Inspection): ViewedWorkspaceRecord => ({
     kind: "inspection", id: inspection.id, code: inspection.inspection_number, title: inspection.title,
     status: statusText(inspection.status, text),
-    meta: `${recordContextLabel(inspection.building_id, inspection.location_node_id, inspection.building_ids)} · ${formatDate(inspection.completed_at ?? inspection.started_at, locale)}`,
+    meta: `${recordContextLabel(inspection.building_id, inspection.location_node_id, inspection.building_ids)} · ${formatDate(inspection.completed_at ?? inspection.started_at ?? inspection.planned_at, locale)}`,
   });
+  const viewInspection = (inspection: Inspection) => setViewedRecord(inspectionRecord(inspection));
   const editFinding = (finding: Finding) => {
     const issue = finding.issue_management ?? {};
     setFindingForm({
@@ -1912,11 +1932,12 @@ function ProjectOperations({
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
-  const viewFinding = (finding: Finding) => setViewedRecord({
+  const findingRecord = (finding: Finding): ViewedWorkspaceRecord => ({
     kind: "finding", id: finding.id, code: finding.finding_number, title: finding.title,
     status: statusText(finding.status, text), description: finding.description,
     meta: `${recordContextLabel(finding.building_id, finding.location_node_id, finding.building_ids)} · ${formatDate(finding.created_at, locale)}`,
   });
+  const viewFinding = (finding: Finding) => setViewedRecord(findingRecord(finding));
   const editHse = (event: HseEvent) => {
     setHseForm({
       ...emptyHseIssueForm,
@@ -1951,11 +1972,26 @@ function ProjectOperations({
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
-  const viewHse = (event: HseEvent) => setViewedRecord({
+  const hseRecord = (event: HseEvent): ViewedWorkspaceRecord => ({
     kind: "hse", id: event.id, code: event.event_number, title: event.title,
     status: statusText(event.status, text), description: event.description,
     meta: `${recordContextLabel(event.building_id, event.location_node_id, event.building_ids)} · ${formatDate(event.occurred_at, locale)}`,
   });
+  const viewHse = (event: HseEvent) => setViewedRecord(hseRecord(event));
+  const linkedInspection = tab === "inspections" && data.inspections.find((item) => item.id === focusRecordId);
+  const linkedFinding = (tab === "findings" || tab === "ncr") && data.findings.find((item) => item.id === focusRecordId);
+  const linkedHse = tab === "hse" && data.hseEvents.find((item) => item.id === focusRecordId);
+  const viewedRecord = manualRecord ?? (dismissedRecordId === focusRecordId ? null
+    : linkedInspection ? inspectionRecord(linkedInspection)
+    : linkedFinding ? findingRecord(linkedFinding)
+    : linkedHse ? hseRecord(linkedHse) : null);
+  const closeViewedRecord = () => {
+    setViewedRecord(null);
+    if (viewedRecord?.id === focusRecordId) {
+      setDismissedRecordId(focusRecordId);
+      clearFocusedRecord?.();
+    }
+  };
   const editRegister = (entry: RegisterEntry) => {
     const details = entry.details ?? {};
     setRegisterSpec({ ...((details.spec ?? {}) as SpecValues), __stored: "yes" });
@@ -2036,7 +2072,7 @@ function ProjectOperations({
     const reason = window.prompt(text("Why is this record being withdrawn?", "Waarom wordt deze registratie ingetrokken?"), "");
     if (!reason) return;
     void run(() => withdrawWorkspaceRecord(client, kind, record.id, reason), text(`${record.code} withdrawn. History kept.`, `${record.code} ingetrokken. Historie bewaard.`)).then((okay) => {
-      if (okay) setViewedRecord(null);
+      if (okay && viewedRecord?.id === record.id) closeViewedRecord();
     });
   };
   const registerPresets: Record<string, Array<Partial<ControlledDocumentDraft> & { title: string; details: string }>> = {
@@ -3468,7 +3504,7 @@ function ProjectOperations({
     const key = `${entry.day_report_id}:${entry.building_id}`;
     const day = days.get(key) ?? { key, reportId: entry.day_report_id, buildingId: entry.building_id, headcount: 0, visitors: 0, signedBy: "" };
     if (entry.entry_type === "visitor") day.visitors += 1;
-    else day.headcount += Number(entry.headcount) || 0;
+    else if (isOnSiteWorkforce(entry.entry_type, entry.spec)) day.headcount += Number(entry.headcount) || 0;
     day.signedBy = day.signedBy || entry.signed_by || "";
     days.set(key, day);
     return days;
@@ -3484,6 +3520,7 @@ function ProjectOperations({
     .sort((left, right) => right.reportDate.localeCompare(left.reportDate));
 
   // The client's Workspace page names (Word file, image 15) for the forms that share the register screen.
+  const sourcePhotoIds = photoSourceIds(data.visualCaptures);
   const workspacePageTitles: Record<string, string> = {
     works_ongoing: text("Works ongoing", "Werkzaamheden gaande"),
     works_completed: text("Works completed", "Werkzaamheden afgerond"),
@@ -3509,7 +3546,7 @@ function ProjectOperations({
     ["visual", text("Visual evidence", "Visueel bewijs"), data.visualCaptures.length],
     ["drawings", text("Drawings", "Tekeningen"), data.files.filter((file) => file.category === "drawing" && file.status === "available").length],
     ["tools", text("Field tools", "Veldtools"), data.registerEntries.filter((entry) => ["notepad", "agreement", "technical_instruction"].includes(entry.register_type)).length],
-    ["files", text("Photos", "Foto's"), data.files.filter(isPhotoFile).length],
+    ["files", text("Photos", "Foto's"), data.files.filter((file) => isPhotoFile(file) && !sourcePhotoIds.has(file.id)).length],
     ["assets", text("Assets", "Middelen"), data.files.length + data.inspections.length + data.findings.length + data.hseEvents.length + data.registerEntries.length + (data.dayReports ?? []).length],
   ] as Array<[Exclude<ProjectTab, "home">, string, number]>).filter(([sectionId]) => ({
     inspections: moduleEnabled("inspections"),
@@ -3535,7 +3572,7 @@ function ProjectOperations({
       <label className="finding-photo-capture register-photo-capture">
         <Camera size={22} />
         <span><strong>{registerPhotos.length ? text(`${registerPhotos.length} photos ready`, `${registerPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
-        <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setRegisterPhotos, setRegisterPhotoError); event.currentTarget.value = ""; }} />
+        <input type="file" accept={photoAccept} capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setRegisterPhotos, setRegisterPhotoError); event.currentTarget.value = ""; }} />
       </label>
       <PhotoEvidenceList
         photos={registerPhotos}
@@ -3611,7 +3648,7 @@ function ProjectOperations({
       {/* The record opens over the list it was tapped in. As a panel at the top of the tab
           it was simply off-screen on a phone: tapping "View" looked like nothing at all. */}
       {tab !== "home" && viewedRecord ? (
-        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setViewedRecord(null)}>
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && closeViewedRecord()}>
         <aside className="modal record-readonly-panel" role="dialog" aria-modal="true" aria-label={text("Record details", "Registratiedetails")}>
           <div>
             <span className="record-number">{viewedRecord.code}</span>
@@ -3666,17 +3703,17 @@ function ProjectOperations({
             {viewedRecord.status !== "cancelled" && permissions.can("records.edit") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => {
               if (viewedRecord.kind === "inspection") {
                 const record = data.inspections.find((item) => item.id === viewedRecord.id);
-                if (record) void resumeInspection(record);
+                if (record) { closeViewedRecord(); void resumeInspection(record); }
               } else if (viewedRecord.kind === "finding") {
                 const record = data.findings.find((item) => item.id === viewedRecord.id);
-                if (record) editFinding(record);
+                if (record) { closeViewedRecord(); editFinding(record); }
               } else if (viewedRecord.kind === "hse") {
                 const record = data.hseEvents.find((item) => item.id === viewedRecord.id);
-                if (record) editHse(record);
+                if (record) { closeViewedRecord(); editHse(record); }
               } else if (viewedRecord.kind === "daily_work") {
                 // A day has one closeout: editing it is the day log of that day, already open
                 // above the list with what was saved.
-                setViewedRecord(null);
+                closeViewedRecord();
                 setShowForm(true);
               } else {
                 const record = data.registerEntries.find((item) => item.id === viewedRecord.id);
@@ -3684,7 +3721,7 @@ function ProjectOperations({
               }
             }}><Wrench size={14} /> {text("Edit in form", "Bewerken in formulier")}</button> : null}
             {viewedRecord.status !== "cancelled" && viewedRecord.kind !== "daily_work" && permissions.can("records.edit") ? <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => withdrawRecord(viewedRecord)}>{text("Withdraw", "Intrekken")}</button> : null}
-            <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => setViewedRecord(null)}><X size={14} /> {text("Close", "Sluiten")}</button>
+            <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => closeViewedRecord()}><X size={14} /> {text("Close", "Sluiten")}</button>
           </div>
         </aside>
         </div>
@@ -3736,7 +3773,7 @@ function ProjectOperations({
               <label className="finding-photo-capture inspection-photo-capture">
                 <Camera size={22} />
                 <span><strong>{inspectionPhotos.length ? text(`${inspectionPhotos.length} photos ready`, `${inspectionPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
-                <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setInspectionPhotos, setInspectionPhotoError); event.currentTarget.value = ""; }} />
+                <input type="file" accept={photoAccept} capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setInspectionPhotos, setInspectionPhotoError); event.currentTarget.value = ""; }} />
               </label>
               <RecordBuildingsField
                 id="active-inspection-buildings"
@@ -3825,7 +3862,7 @@ function ProjectOperations({
           {inspectionResumeError ? <p className="field-error" role="alert">{inspectionResumeError}</p> : null}
           {/* An inspection that is still open can be opened again from this list, so a
               started checklist can actually be filled in and completed. */}
-          <RecordList empty={text("No inspections match these filters.", "Geen inspecties gevonden met deze filters.")} rows={filteredInspections.map((inspection) => ({
+          <RecordList focusRecordId={focusRecordId} empty={text("No inspections match these filters.", "Geen inspecties gevonden met deze filters.")} rows={filteredInspections.map((inspection) => ({
             id: inspection.id,
             facets: specFacets(recordSpec(inspection as unknown as Record<string, unknown>)),
             icon: ClipboardCheck,
@@ -3937,7 +3974,7 @@ function ProjectOperations({
                         <label className="record-add-photo">
                           <Camera size={20} />
                           <strong>{text("Add photo", "Foto toevoegen")}</strong>
-                          <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
+                          <input type="file" accept={photoAccept} capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
                         </label>
                       </div>
                       <small className="record-photo-hint">{photoStripHint}</small>
@@ -3979,7 +4016,7 @@ function ProjectOperations({
                 <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => writeRecordDraft("issue", projectId, findingForm)}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button>
                 <label className="record-attachment-count">
                   <Paperclip size={14} /> {text(`Attachments (${findingPhotos.length})`, `Bijlagen (${findingPhotos.length})`)}
-                  <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
+                  <input type="file" accept={photoAccept} capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
                 </label>
                 <StillNeeded items={[
                   exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId ? text("exact location", "exacte locatie") : "",
@@ -4035,7 +4072,7 @@ function ProjectOperations({
                       <label className="finding-photo-capture">
                         <Camera size={22} />
                         <span><strong>{findingPhotos.length ? text(`${findingPhotos.length} photos ready`, `${findingPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
-                        <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
+                        <input type="file" accept={photoAccept} capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
                       </label>
                       <PhotoEvidenceList
                         photos={findingPhotos}
@@ -4255,7 +4292,7 @@ function ProjectOperations({
                         <label className="record-add-photo">
                           <Camera size={20} />
                           <strong>{text("Add photo", "Foto toevoegen")}</strong>
-                          <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setHsePhotos, setHsePhotoError); event.currentTarget.value = ""; }} />
+                          <input type="file" accept={photoAccept} capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setHsePhotos, setHsePhotoError); event.currentTarget.value = ""; }} />
                         </label>
                       </div>
                       <small className="record-photo-hint">{photoStripHint}</small>
@@ -4290,7 +4327,7 @@ function ProjectOperations({
                 <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => writeRecordDraft("hse", projectId, hseForm)}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button>
                 <label className="record-attachment-count">
                   <Paperclip size={14} /> {text(`Attachments (${hsePhotos.length})`, `Bijlagen (${hsePhotos.length})`)}
-                  <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setHsePhotos, setHsePhotoError); event.currentTarget.value = ""; }} />
+                  <input type="file" accept={photoAccept} capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setHsePhotos, setHsePhotoError); event.currentTarget.value = ""; }} />
                 </label>
                 <StillNeeded items={[
                   exactLocationRequired && !hseLocationNodeId ? text("exact location", "exacte locatie") : "",
@@ -4307,7 +4344,7 @@ function ProjectOperations({
               the category, who has to act and by when. A box that is only asked for and
               never read back reads as a box that was not stored. */}
           <SavedRecordsFold formOpen={showForm && !focusRecordId} count={data.hseEvents.length} storageKey={`hse:${projectId}`}>
-          <RecordList empty={text("No formal HSE records yet.", "Nog geen formele HSE-registraties.")} rows={data.hseEvents.map((event) => ({
+          <RecordList focusRecordId={focusRecordId} empty={text("No formal HSE records yet.", "Nog geen formele HSE-registraties.")} rows={data.hseEvents.map((event) => ({
             id: event.id,
             facets: specFacets(recordSpec(event as unknown as Record<string, unknown>)),
             icon: event.event_type === "incident" ? formIcons.hse_incident : formIcons.hse,
@@ -4966,7 +5003,7 @@ function ProjectOperations({
                 <label className="finding-photo-capture register-photo-capture">
                   <Camera size={22} />
                   <span><strong>{registerPhotos.length ? text(`${registerPhotos.length} photos ready`, `${registerPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
-                  <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setRegisterPhotos, setRegisterPhotoError); event.currentTarget.value = ""; }} />
+                  <input type="file" accept={photoAccept} capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setRegisterPhotos, setRegisterPhotoError); event.currentTarget.value = ""; }} />
                 </label>
                 <PhotoEvidenceList
                   photos={registerPhotos}
@@ -5297,7 +5334,7 @@ function ProjectOperations({
 
       {tab === "visual" ? <VisualEvidenceWorkspace data={data} projectId={projectId} buildingId={buildingId} buildingName={buildingName} buildings={buildings} reportId={reportId} parties={parties} client={client} busy={busy} run={run} initialFindingId={visualFindingId} initialFileId={visualFileId} onInitialFileConsumed={() => setVisualFileId("")} initialFiles={initialCameraFiles} onInitialFilesConsumed={onInitialCameraFilesConsumed} start360Upload={visual360Intent} onStart360UploadConsumed={() => setVisual360Intent(false)} /> : null}
 
-      {tab === "documents" ? <ProjectDocumentsHome data={data} client={client} organizationId={organizationId} projectId={projectId} projectName={projectName} parties={parties} reportId={reportId} buildingId={buildingId} buildings={buildings} busy={busy} run={run} openDrawings={() => switchTab("drawings")} openFiles={() => switchTab("assets")} openRegisters={() => switchTab("registers")} createDocument={() => openTask("registers", true)} /> : null}
+      {tab === "documents" ? <ProjectDocumentsHome key={focusRecordId} focusRecordId={focusRecordId} data={data} client={client} organizationId={organizationId} projectId={projectId} projectName={projectName} parties={parties} reportId={reportId} buildingId={buildingId} buildings={buildings} busy={busy} run={run} openDrawings={() => switchTab("drawings")} openFiles={() => switchTab("assets")} openRegisters={() => switchTab("registers")} createDocument={() => openTask("registers", true)} /> : null}
 
       {tab === "drawings" ? <DrawingWorkspace data={data} projectId={projectId} buildingId={buildingId} buildings={buildings} client={client} busy={busy} run={run} initialFindingId={drawingFindingId} initialInspectionId={drawingInspectionId} pendingRecord={pendingRecordPin} onPlaceRecordPin={onPlaceRecordPin} onOpenLinkedRecord={(recordType, recordId) => {
         // The pin points at one record, so the module opens on that record, not on its list.
@@ -6110,7 +6147,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   );
 }
 
-function ReportOperations({ data, reportId, reportNumber, reportStatus, currentUserName, projectId, projectName, busy, run, client, openModule, openDeadlines, openReportCheck, buildings, parties, projectCode, openRecord, projectActions = [] }: { projectActions?: Array<{ id: string; action_number: string; title: string; status: string; priority: string; due_at: string | null; owner_party_id?: string | null; action_category?: string | null }>; data: OperationSnapshot; reportId: string | null; reportNumber: string; reportStatus: string; currentUserName: string; projectId: string; projectName: string; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>; client: SupabaseClient; openModule: (tab: "documents" | "drawings" | "findings" | "ncr" | "hse" | "inspections" | "registers" | "files" | "assets" | "daily") => void; openDeadlines: () => void; openReportCheck?: () => void; buildings: BuildingOption[]; parties: ProjectParty[]; projectCode: string; openRecord: (tab: "findings" | "ncr" | "hse" | "inspections" | "registers" | "daily" | "files", recordId?: string) => void }) {
+function ReportOperations({ focusRecordId, data, reportId, reportNumber, reportStatus, currentUserName, projectId, projectName, busy, run, client, openModule, openDeadlines, openReportCheck, buildings, parties, projectCode, openRecord, projectActions = [] }: { focusRecordId: string; projectActions?: Array<{ id: string; action_number: string; title: string; status: string; priority: string; due_at: string | null; owner_party_id?: string | null; action_category?: string | null }>; data: OperationSnapshot; reportId: string | null; reportNumber: string; reportStatus: string; currentUserName: string; projectId: string; projectName: string; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>; client: SupabaseClient; openModule: (tab: "documents" | "drawings" | "findings" | "ncr" | "hse" | "inspections" | "registers" | "files" | "assets" | "daily") => void; openDeadlines: () => void; openReportCheck?: () => void; buildings: BuildingOption[]; parties: ProjectParty[]; projectCode: string; openRecord: (tab: "findings" | "ncr" | "hse" | "inspections" | "registers" | "daily" | "files", recordId?: string) => void }) {
   const { language, locale, text } = useLanguage();
   const statusLabels = language === "en" ? reportStatusLabelsEnglish : reportStatusLabels;
   const [reviewComment, setReviewComment] = useState("");
@@ -6151,9 +6188,10 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
   ];
   const [reportChoice, setReportChoice] = useState(data.settings?.report_sections?.length ? "project" : "complete");
   // "Eén centraal rapport": Reports opens on the day overview — everything recorded today.
-  const [reportView, setReportView] = useState<"overview" | "create" | "workflow" | "history" | "prompts">("overview");
+  const [reportView, setReportView] = useState<"overview" | "create" | "workflow" | "history" | "prompts">(focusRecordId ? "history" : "overview");
   const [historyType, setHistoryType] = useState<"all" | "daily" | "weekly" | "monthly">("all");
-  const [openHistoryId, setOpenHistoryId] = useState("");
+  const [openHistoryId, setOpenHistoryId] = useState(focusRecordId ? `daily:${focusRecordId}` : "");
+  useRecordFocus(focusRecordId, Boolean(focusRecordId && reportView === "history" && data.dayReports?.some((report) => report.id === focusRecordId)));
   const [periodPreset, setPeriodPreset] = useState<"day" | "week" | "month" | "custom">("month");
   const [periodFilter, setPeriodFilter] = useState<SpecFacetFilter>({});
   const periodFacets = useMemo(() => [...data.findings, ...data.hseEvents, ...data.registerEntries, ...data.inspections]
@@ -6394,7 +6432,7 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
           <section className="report-archive">
             <header><div><span className="record-number">{text("Report history", "Rapporthistorie")}</span><h2>{text("All available reports", "Alle beschikbare rapporten")}</h2></div><label className="form-field"><span>{text("Report type", "Rapporttype")}</span><select value={historyType} onChange={(event) => setHistoryType(event.target.value as typeof historyType)}><option value="all">{text("All reports", "Alle rapporten")}</option><option value="daily">{text("Daily", "Dagrapport")}</option><option value="weekly">{text("Weekly", "Weekrapport")}</option><option value="monthly">{text("Monthly", "Maandrapport")}</option></select></label></header>
             <div className="report-archive-list">
-              {reportArchive.map((report) => <article className={openHistoryId === report.id ? "open" : ""} key={report.id}>
+              {reportArchive.map((report) => <article id={report.type === "daily" ? recordAnchorId(report.id.slice("daily:".length)) : undefined} className={openHistoryId === report.id ? "open" : ""} key={report.id}>
                 <button type="button" onClick={() => setOpenHistoryId((current) => current === report.id ? "" : report.id)}><span className={`report-type-badge ${report.type}`}>{report.type === "weekly" ? text("Weekly", "Week") : report.type === "monthly" ? text("Monthly", "Maand") : text("Daily", "Dag")}</span><span><strong>{report.title}</strong><small>{formatDay(report.start, locale)}{report.end !== report.start ? ` → ${formatDay(report.end, locale)}` : ""} · {report.count} {text("day record(s)", "dagregistratie(s)")}</small></span><span className="report-archive-progress"><b>{report.completeness}%</b><i><em style={{ width: `${report.completeness}%` }} /></i></span><ArrowRight size={15} /></button>
                 {openHistoryId === report.id ? <div className="report-archive-detail"><span>{text("Status", "Status")}: <strong>{statusText(report.status, text)}</strong></span><span>{text("Content", "Inhoud")}: {text("complete record for this period", "volledige registratie over deze periode")}</span><ReportDownloadButtons disabled={busy} onDownloadPdf={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, report.start, report.end); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { reportTitle: report.title, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text("Archived report view downloaded.", "Rapportweergave uit de historie gedownload."))} onDownloadWord={() => run(async () => { const snapshot = await buildPeriodReportSnapshot(client, projectId, report.start, report.end); const { downloadPeriodReportDocx } = await import("@/lib/reports/period-report-docx"); await downloadPeriodReportDocx(snapshot, { reportTitle: report.title, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text("Archived report view downloaded as Word.", "Rapportweergave uit de historie als Word gedownload."))} /></div> : null}
               </article>)}
@@ -6414,13 +6452,13 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
   );
 }
 
-function AdminOperations({ data, client, organizationId, projectId, projectName, reportStatus, buildingId, buildingName, buildings, companyEmployees, projectActions, parties, canManageOrganization, openUserAdmin, openProjectArea, openActionCenter, createProjectAction, busy, run }: { data: OperationSnapshot; client: SupabaseClient; organizationId: string; projectId: string; projectName: string; reportStatus: string; buildingId: string; buildingName: string; buildings: BuildingOption[]; companyEmployees: InternalMember[]; projectActions: Array<{ id: string; title: string; action_number: string; status: string; priority: string; due_at: string | null; owner_user_id?: string | null }>; parties: ProjectParty[]; canManageOrganization: boolean; openUserAdmin: () => void; openProjectArea: (tab: "inspections" | "findings" | "registers" | "visual" | "submissions") => void; openActionCenter: () => void; createProjectAction: () => void; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean> }) {
+function AdminOperations({ focusRecordId, data, client, organizationId, projectId, projectName, reportStatus, buildingId, buildingName, buildings, companyEmployees, projectActions, parties, canManageOrganization, openUserAdmin, openProjectArea, openActionCenter, createProjectAction, busy, run }: { focusRecordId: string; data: OperationSnapshot; client: SupabaseClient; organizationId: string; projectId: string; projectName: string; reportStatus: string; buildingId: string; buildingName: string; buildings: BuildingOption[]; companyEmployees: InternalMember[]; projectActions: Array<{ id: string; title: string; action_number: string; status: string; priority: string; due_at: string | null; owner_user_id?: string | null }>; parties: ProjectParty[]; canManageOrganization: boolean; openUserAdmin: () => void; openProjectArea: (tab: "inspections" | "findings" | "registers" | "visual" | "submissions") => void; openActionCenter: () => void; createProjectAction: () => void; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean> }) {
   const { text } = useLanguage();
   const permissions = useProjectPermissions();
   // A role that may not read a module sees a dash, not a zero that reads like a fact.
   const readsFindings = permissions.can("findings.read");
   const readsInspections = permissions.can("inspections.read");
-  const [section, setSection] = useState<"overview" | "information" | "settings" | "specification" | "portals" | "documents" | "structure" | "templates" | "backup">("overview");
+  const [section, setSection] = useState<"overview" | "information" | "settings" | "specification" | "portals" | "documents" | "structure" | "templates" | "backup">(focusRecordId && permissions.can("portal.share") ? "portals" : "overview");
   const [structureBuildingId, setStructureBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [template, setTemplate] = useState({ module: "inspection", code: "", name: "", prompts: "" });
   const [settings, setSettings] = useState(() => ({
@@ -6477,7 +6515,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
       {section === "documents" ? <DocumentSettings client={client} projectId={projectId} configuration={data.settings?.spec_configuration as Record<string, unknown> | undefined} /> : null}
       {section === "portals" ? (
         <div className="portal-section">
-          {permissions.can("portal.share") ? <PortalRegister client={client} projectId={projectId} parties={parties} /> : null}
+          {permissions.can("portal.share") ? <PortalRegister initialShareId={focusRecordId} client={client} projectId={projectId} parties={parties} /> : null}
           {canManageOrganization ? <PortalMembers client={client} projectId={projectId} parties={parties} /> : null}
         </div>
       ) : null}

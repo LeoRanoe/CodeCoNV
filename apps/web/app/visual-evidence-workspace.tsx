@@ -36,10 +36,11 @@ import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad } from "@/app/photo-
 import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
 import { useLanguage } from "@/lib/i18n";
 import { imageContentType, orderedTour, validTourPosition } from "@/lib/images/content-type.mjs";
-import { normalizeImageFile } from "@/lib/images/normalize-image";
+import { photoAccept, photoRefusalMessage, prepareCameraPhotos, untouchedSourceOf } from "@/lib/images/normalize-image";
 import { currentCompassPoint } from "@/lib/images/compass";
 import { readPhotoDirection } from "@/lib/images/exif-direction.mjs";
 import { compassPointFromDegrees, describePanoramaImage, fieldPhotoMimeTypes, looksLikeDualFisheye, normalizedImagePoint, panoramaFileExtensions, panoramaUploadSource, photoMarkupToneColors, photoTitleFromDescription } from "@/lib/images/field-image.mjs";
+import { fingerprintOriginal } from "@/lib/offline/original-fingerprint";
 import { prepareEvidencePhoto, forceSyncOfflineUploads, listOfflineUploads, preparePanoramaUpload, queueOfflineUpload } from "@/lib/offline/upload-queue";
 import { clearFormDraft, formDraftKey, saveFormDraft } from "@/lib/offline/form-drafts";
 import { downloadProjectFile, isStorageGatewayConfigured, loadProjectFileObjectUrl, openProjectFile } from "@/lib/storage/gateway";
@@ -225,14 +226,28 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
   const [cameraHandoff, setCameraHandoff] = useState(false);
 
   const stagedImageRef = useRef(0);
+  const photoSource = useRef<File | null>(null);
   const uploadingRef = useRef(false);
   useEffect(() => () => { stagedImageRef.current += 1; }, []);
 
-  const stageImage = useCallback((chosen: File | null, type: VisualCapture["capture_type"]) => {
+  const stageImage = useCallback(async (chosen: File | null, type: VisualCapture["capture_type"]) => {
     const generation = ++stagedImageRef.current;
     setFileError("");
     setPhotoMarkerCount(0);
     setPanoramaImage(null);
+    setFile(null);
+    photoSource.current = null;
+    if (chosen && type === "photo") {
+      const { photos, refused } = await prepareCameraPhotos([chosen], maxFileSizeBytes);
+      if (generation !== stagedImageRef.current) return;
+      if (!photos[0]) {
+        setFileError(photoRefusalMessage(refused, text, maxFileSizeBytes / (1024 * 1024)));
+        setShowUpload(true);
+        return;
+      }
+      photoSource.current = untouchedSourceOf(photos[0]) ?? photos[0];
+      chosen = photos[0];
+    }
     // A 360° camera does not always hand over a usable type: Insta360 writes `.insp`, and some
     // desktop exports arrive without a type at all. Both are ordinary images, so the file is
     // given the type it really has instead of being turned away at the door.
@@ -244,7 +259,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     if (!selected) return;
     // Kept on the device until it is saved or discarded; a back press or a dropped tab offers
     // it again when the project opens.
-    if (type === "photo") void saveFormDraft(formDraftKey("quick-photo", projectId), [selected]);
+    if (type === "photo") void saveFormDraft(formDraftKey("quick-photo", projectId), [photoSource.current ?? selected]);
     if (source && !source.mimeType) {
       setFileError(text(
         "This file type cannot be shown as a 360° image. Export the image as JPEG, PNG or WebP.",
@@ -281,7 +296,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       if (!measured) return;
       setCaptureForm((current) => current.directionAutomatic ? { ...current, direction: measured } : current);
     });
-  }, [projectId, text]);
+  }, [maxFileSizeBytes, projectId, text]);
 
   useEffect(() => {
     return () => {
@@ -396,11 +411,9 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     try {
       // The only thing that can stop a 360° image here is an image the browser cannot read at
       // all; how much of the sphere it covers is shown on the form, not enforced.
-      const normalized = captureForm.type === "photo" ? await normalizeImageFile(file) : null;
-      const detected = normalized ? normalized.type : imageContentType(new Uint8Array(await file.slice(0, 16).arrayBuffer()));
+      const detected = imageContentType(new Uint8Array(await file.slice(0, 16).arrayBuffer()));
       if (!detected) throw new Error("invalid-image-type");
-      if (normalized) source = normalized;
-      else if (detected !== file.type) source = new File([file], file.name, { type: detected, lastModified: file.lastModified });
+      if (detected !== file.type) source = new File([file], file.name, { type: detected, lastModified: file.lastModified });
       const dimensions = await imageDimensions(source);
       if (generation !== stagedImageRef.current) return;
       if (captureForm.type === "panorama" && !describePanoramaImage(dimensions.width, dimensions.height).valid) {
@@ -422,6 +435,9 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       ));
       return;
     }
+    const originalFile = captureForm.type === "photo" ? photoSource.current ?? file : null;
+    const original = originalFile ? await fingerprintOriginal(originalFile) : null;
+    if (generation !== stagedImageRef.current) return;
     // The direction is the one thing the picture cannot show, so it stays in the words that
     // travel with it into the register.
     const description = [
@@ -463,7 +479,9 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           tourOrder: captureForm.tourName ? Number(captureForm.tourOrder) : null,
           spec: photoSpecFromDetails({ title: "", description: "", category: "", buildingId: "", locationNodeId: "", direction: "", purpose: captureForm.purpose, purposeOther: captureForm.purposeOther, discipline: captureForm.discipline }),
           capturedAt: new Date(file.lastModified || Date.now()).toISOString(),
-          originalSize: file.size,
+          originalSize: originalFile?.size ?? file.size,
+          original,
+          sourcePhoto: originalFile && originalFile !== file ? originalFile : undefined,
           queuedSize: prepared.blob.size,
           compressed: "compressed" in prepared ? prepared.compressed : prepared.resized,
         });
@@ -599,7 +617,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
       <div className="visual-toolbar">
         <div><span className="record-number">{text("Visual evidence", "Visueel bewijs")}</span></div>
         <div className="visual-toolbar-actions">
-          <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { stageImage(event.currentTarget.files?.[0] ?? null, "photo"); event.currentTarget.value = ""; }} />
+          <input ref={cameraInputRef} hidden type="file" accept={photoAccept} capture="environment" onChange={(event) => { stageImage(event.currentTarget.files?.[0] ?? null, "photo"); event.currentTarget.value = ""; }} />
           {/* The compass is started on the tap that opens the camera: it is the gesture a phone
               needs before it hands out its orientation, and it is the moment the reading matters. */}
           <button className="ui-button ui-button--primary ui-button--md camera-primary-action" type="button" disabled={!isStorageGatewayConfigured} onClick={() => { cameraInputRef.current?.click(); }}><Camera size={17} /> {text("Take photo", "Maak foto")}</button>
@@ -739,7 +757,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           {file && captureForm.type === "photo" && file.size > maxFileSizeBytes ? <p className="field-error">{text("This image exceeds the project file limit.", "Deze afbeelding is groter dan de bestandslimiet van het project.")}</p> : null}
           {fileError ? <p className="field-error" role="alert">{fileError}</p> : null}
           {file && captureForm.description.trim().length < 3 ? <p className="form-intro">{text("Write one line about this photo to save it.", "Schrijf één regel over deze foto om hem op te slaan.")}</p> : null}
-          <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || !file || (captureForm.type === "photo" && file.size > maxFileSizeBytes) || !fieldPhotoMimeTypes.includes(file.type) || captureForm.description.trim().length < 3 || (captureForm.type === "panorama" && (!panoramaImage || Boolean(fileError) || !validTourPosition(captureForm.tourName, captureForm.tourOrder)))} onClick={() => void uploadCapture()}>{busy ? <Loader2 className="spin" size={15} /> : <Camera size={15} />} {captureForm.type === "panorama" ? text("Secure and sync 360° image", "Beveilig en synchroniseer 360°-beeld") : text("Save photo", "Foto opslaan")}</button>
+          <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || !file || (captureForm.type === "photo" && file.size > maxFileSizeBytes) || !(fieldPhotoMimeTypes.includes(file.type) || (captureForm.type === "photo" && file.type === "image/gif")) || captureForm.description.trim().length < 3 || (captureForm.type === "panorama" && (!panoramaImage || Boolean(fileError) || !validTourPosition(captureForm.tourName, captureForm.tourOrder)))} onClick={() => void uploadCapture()}>{busy ? <Loader2 className="spin" size={15} /> : <Camera size={15} />} {captureForm.type === "panorama" ? text("Secure and sync 360° image", "Beveilig en synchroniseer 360°-beeld") : text("Save photo", "Foto opslaan")}</button>
         </div>
       ) : null}
 

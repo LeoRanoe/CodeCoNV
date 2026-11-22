@@ -5,7 +5,7 @@ import { anchorChecklistLibrary, legacyAnchorPrompts } from "@/lib/checklists/an
 import { normalizeExternalShareToken } from "@/lib/external-share/token.mjs";
 import { schemaFeatureMissing } from "@/lib/supabase/schema-compatibility.mjs";
 import { pageAll } from "@/lib/supabase/page-all.mjs";
-import { isPhotoFile } from "@/lib/media/photo-library.mjs";
+import { isPhotoFile, photoSourceIds } from "@/lib/media/photo-library.mjs";
 import type { SpecConfiguration } from "@/lib/forms/spec-forms";
 
 export type ChecklistItem = {
@@ -336,6 +336,7 @@ export type AttendanceRecord = {
   discipline: string;
   headcount: number;
   entry_type?: "workforce" | "visitor" | null;
+  spec?: Record<string, unknown> | null;
   signed_by?: string | null;
   created_at: string;
 };
@@ -700,7 +701,7 @@ export async function loadProjectOperations(
     pageAll((from, to) => client.from("file_links").select("id,file_id,record_type,record_id,relationship,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 50000),
     pageAll((from, to) => client.from("day_closeouts").select("id,building_id,day_report_id,day_summary,work_ongoing,work_performed,progress_percent,delay_cause,delay_hours,delay_reason,contractor_company,contractor_signed_by,contractor_signed_at,contractor_signature_image,signed_by,signed_at,signature_image,tomorrow_plan,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 5000),
     pageAll((from, to) => client.from("record_buildings").select("record_type,record_id,building_id").eq("project_id", projectId).order("id").range(from, to), 50000),
-    pageAll((from, to) => client.from("attendance_entries").select("id,building_id,day_report_id,party_id,discipline,headcount,entry_type,signed_by,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 20000),
+    pageAll((from, to) => client.from("attendance_entries").select("id,building_id,day_report_id,party_id,discipline,headcount,entry_type,signed_by,spec,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 20000),
   ]);
   // The specification's project settings and the restricted incident data (readable with
   // hse.manage only) are newer than the rest; a database or a role without them reads nothing.
@@ -712,7 +713,7 @@ export async function loadProjectOperations(
   const hseSensitive = new Map(((hseSensitiveResult.error ? [] : hseSensitiveResult.data ?? []) as Array<{ event_id: string; data: Record<string, unknown> }>).map((row) => [row.event_id, row.data]));
   // Visitors and the signature arrived with later migrations; a database behind them still
   // lists the counted crew, and one without access to the table simply shows no history.
-  const attendanceCoreResult = attendanceResult.error && schemaFeatureMissing(attendanceResult.error, ["entry_type", "signed_by"])
+  const attendanceCoreResult = attendanceResult.error && schemaFeatureMissing(attendanceResult.error, ["entry_type", "signed_by", "spec"])
     ? await pageAll((from, to) => client.from("attendance_entries").select("id,building_id,day_report_id,party_id,discipline,headcount,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 20000)
     : attendanceResult;
   const compatibleAttendanceResult = attendanceCoreResult.error ? { data: [], error: null } : attendanceCoreResult;
@@ -821,12 +822,13 @@ export async function loadProjectOperations(
   const fileRows = (compatibleFileResult.data ?? []) as FileRecord[];
   const storedVisualCaptureRows = (compatibleVisualCaptureResult.data ?? []) as VisualCapture[];
   const capturedFileIds = new Set(storedVisualCaptureRows.map((capture) => capture.file_id));
+  const sourceFileIds = photoSourceIds(storedVisualCaptureRows);
   // Files are the durable source of truth for project images. Older media-library uploads
   // predate visual_captures, so project them into Visual Evidence and materialise a capture
   // only if somebody adds a marker. This repairs history without a data migration.
   const historicalImageCaptures = fileRows
     // A drawing or a document saved as an image is no photo (the library and the overview use one rule).
-    .filter((file) => isPhotoFile(file) && !capturedFileIds.has(file.id))
+    .filter((file) => isPhotoFile(file) && !capturedFileIds.has(file.id) && !sourceFileIds.has(file.id))
     .map((file): VisualCapture => ({
       id: `file:${file.id}`,
       building_id: file.building_id ?? "",

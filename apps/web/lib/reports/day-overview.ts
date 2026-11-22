@@ -9,6 +9,7 @@
  * A day is a calendar day on site, in Suriname time, never the viewer's own time zone.
  */
 
+import { isOnSiteWorkforce } from "../forms/workforce.mjs";
 export const SITE_TIME_ZONE = "America/Paramaribo";
 
 const siteDayFormat = new Intl.DateTimeFormat("en-CA", { timeZone: SITE_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" });
@@ -33,7 +34,7 @@ type FindingLike = WithStatus & { created_at: string; finding_type: string };
 type HseLike = WithStatus & { occurred_at: string };
 type RegisterLike = WithStatus & { occurred_at: string; register_type: string };
 type WorkLike = { id: string; day_report_id?: string | null; created_at: string; work_ongoing?: string | null; work_performed?: string | null; delay_cause?: string | null; delay_hours?: number | null };
-type AttendanceLike = { id: string; day_report_id?: string | null; created_at: string; headcount: number; entry_type?: string | null };
+type AttendanceLike = { id: string; day_report_id?: string | null; created_at: string; headcount: number; entry_type?: string | null; spec?: unknown };
 type InspectionLike = WithStatus & { completed_at?: string | null; started_at?: string | null; planned_at?: string | null };
 type CaptureLike = WithStatus & { captured_at: string };
 
@@ -88,7 +89,7 @@ export function buildDayOverview<
   const findings = (input.findings ?? []).filter((record) => live(record) && siteDay(record.created_at) === day).sort(byMoment((record) => record.created_at));
   const work = (input.dailyWork ?? []).filter((record) => dayOfReport(record) === day).sort(byMoment((record) => record.created_at));
   const attendance = (input.attendance ?? []).filter((record) => dayOfReport(record) === day);
-  const workers = attendance.filter((record) => record.entry_type !== "visitor");
+  const workers = attendance.filter((record) => isOnSiteWorkforce(record.entry_type, record.spec));
   const registers = (input.registerEntries ?? [])
     .filter((record) => live(record) && record.register_type !== "boq" && siteDay(record.occurred_at) === day)
     .sort(byMoment((record) => record.occurred_at));

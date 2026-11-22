@@ -1,8 +1,8 @@
 "use client";
 
-import { untouchedSourceOf } from "@/lib/images/normalize-image";
+import { photoAccept, photoRefusalMessage, prepareCameraPhotos, untouchedSourceOf } from "@/lib/images/normalize-image";
 import { Camera, Check, ChevronLeft, ChevronRight, MapPin, RotateCcw, Trash2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad, type MarkupOption, type PhotoMarkupContext } from "@/app/photo-markup";
 import { useLanguage } from "@/lib/i18n";
@@ -317,9 +317,6 @@ export function PhotoEvidenceList({
   );
 }
 
-/** What a field form accepts as a photo. */
-export const photoMimeTypes = ["image/jpeg", "image/png", "image/webp"];
-
 /**
  * A photo the form asks for by name and by position: "Picture of Issue", "Picture of
  * Result", "Actual Photo on Original Finish Date", "Photo as Evidence". On the client's
@@ -354,18 +351,15 @@ export function NamedPhotoSlot({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
 
-  const pick = (files: FileList | null) => {
+  const pickGeneration = useRef(0);
+  const pick = async (files: FileList | null) => {
     const file = files?.[0];
     if (!file) return;
-    if (!photoMimeTypes.includes(file.type) || file.size > maxSizeMb * 1024 * 1024) {
-      setError(text(
-        `Use a JPEG, PNG or WebP file up to ${maxSizeMb} MB.`,
-        `Gebruik een JPEG-, PNG- of WebP-bestand tot ${maxSizeMb} MB.`,
-      ));
-      return;
-    }
-    setError("");
-    onChange(toPhotoEvidence(file, defaults));
+    const generation = ++pickGeneration.current;
+    const { photos, refused } = await prepareCameraPhotos([file], maxSizeMb * 1024 * 1024);
+    if (generation !== pickGeneration.current) return;
+    setError(photoRefusalMessage(refused, text, maxSizeMb));
+    if (photos[0]) onChange(toPhotoEvidence(photos[0], defaults));
   };
 
   return (
@@ -402,7 +396,7 @@ export function NamedPhotoSlot({
           </span>
           <input
             type="file"
-            accept="image/jpeg,image/png,image/webp"
+            accept={photoAccept}
             capture="environment"
             onChange={(event) => { pick(event.currentTarget.files); event.currentTarget.value = ""; }}
           />

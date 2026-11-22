@@ -42,6 +42,44 @@ async function sizes(page: Page, selector: string) {
   }));
 }
 
+test("a Workforce draft restores attendance and counts only the crew on site", async ({ page }) => {
+  await signIn(page);
+  await page.locator(".sidebar:visible, .mobile-bottom-nav:visible").getByRole("button", { name: "Workspace", exact: true }).click();
+  await page.locator('[data-workspace-destination="workforce"]').click();
+  const total = page.locator(".workforce-headline strong");
+  const baseline = Number(await total.textContent());
+  const crew = `Attendance check ${Date.now()}`;
+  await page.getByLabel("Crew · optional").fill(crew);
+  await page.getByRole("button", { name: "Add person", exact: true }).click();
+  const status = page.locator(".workforce-row", { hasText: crew }).getByLabel(/^Attendance status of/);
+  await expect(total).toHaveText(String(baseline + 1));
+  for (const offSite of ["Absent", "On Leave", "Off Shift", "Demobilized"]) {
+    await status.selectOption(offSite);
+    await expect(total).toHaveText(String(baseline));
+  }
+  await status.selectOption("Late");
+  await expect(total).toHaveText(String(baseline + 1));
+  await status.selectOption("Absent");
+  await expect(total).toHaveText(String(baseline));
+  await expect.poll(() => page.evaluate((value) => new Promise<boolean>((resolve) => {
+    const request = indexedDB.open("codeco-field-v1");
+    request.onerror = () => resolve(false);
+    request.onsuccess = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains("drafts")) { db.close(); resolve(false); return; }
+      const draft = db.transaction("drafts").objectStore("drafts").getAll();
+      draft.onsuccess = () => {
+        resolve(JSON.stringify(draft.result).includes(value));
+        db.close();
+      };
+      draft.onerror = () => { resolve(false); db.close(); };
+    };
+  }), crew)).toBe(true);
+  await page.reload();
+  await expect(status).toHaveValue("Absent");
+  await expect(total).toHaveText(String(baseline));
+});
+
 test("the register steppers, remove buttons and sync chip are 44 px on a phone and a tablet", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "desktop-office", "Touch targets are a rule up to 1024 px.");
   test.setTimeout(90_000);

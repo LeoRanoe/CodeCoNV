@@ -1,5 +1,6 @@
 "use client";
 
+import { isOnSiteWorkforce } from "@/lib/forms/workforce.mjs";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   AlertTriangle,
@@ -46,6 +47,7 @@ import { TimeField } from "@/app/time-field";
 import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { actionStatusLabels as canonicalActionStatusLabels, labelMap, priorityText } from "@/lib/status-labels";
 import { screenFromSearch, useScreenHistory, type AppScreen } from "@/lib/navigation/app-history";
+import { notificationRecordScreen } from "@/lib/notifications/record-link.mjs";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
 import { photoTitle, photoUploadDescription, samePhotoFile, toPhotoEvidence, type PhotoEvidence, photoSpecFromDetails } from "@/app/photo-evidence";
 import { ClientDashboard } from "@/app/client-dashboard";
@@ -65,7 +67,7 @@ import { ensureDailyBackup } from "@/lib/backups/client";
 import { constructionDisciplines } from "@/lib/forms/disciplines";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 import { ProjectPermissionsProvider, useProjectPermissionsQuery } from "@/lib/permissions/project-permissions";
-import { photoRefusalMessage, prepareCameraPhotos } from "@/lib/images/normalize-image";
+import { photoAccept, photoRefusalMessage, prepareCameraPhotos } from "@/lib/images/normalize-image";
 import { WorkforceForm } from "@/app/workforce-register";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import { currentPushState, enablePushNotifications, type PushState } from "@/lib/notifications/push-client";
@@ -435,8 +437,7 @@ export function CodecoSupervisionApp() {
   /** Which view the action centre opens on; the deadline tile asks for the deadlines. */
   const [actionCenterView, setActionCenterView] = useState<ActionCenterView>("work");
   /**
-   * The record the action centre sent the user to. It is a detail inside a screen, not a
-   * screen of its own, so it stays out of the history and out of the address.
+   * The record a workspace link sent the user to.
    */
   const [focusRecordId, setFocusRecordId] = useState("");
   const [entries, setEntries] = useState<TimelineEntry[]>([]);
@@ -743,6 +744,7 @@ export function CodecoSupervisionApp() {
           setPasswordRecovery(false);
           setSelectedProject(null);
           setSelectedBuilding(null);
+          setFocusRecordId("");
           setWorkspaceStage("projects");
         }
       });
@@ -886,7 +888,7 @@ export function CodecoSupervisionApp() {
   }, [queryClient, reportDate, selectedProject, session, supabase]);
 
   const projectAttendanceTotal = useMemo(
-    () => (dayQuery.data?.attendance ?? []).reduce((total, row) => total + Number(row.headcount ?? 0), 0),
+    () => (dayQuery.data?.attendance ?? []).filter((row) => isOnSiteWorkforce(typeof row.entry_type === "string" ? row.entry_type : null, row.spec)).reduce((total, row) => total + Number(row.headcount ?? 0), 0),
     [dayQuery.data],
   );
   const reportNumber = String(dayQuery.data?.report?.report_number ?? `DR-${reportDate.replaceAll("-", "")}`);
@@ -1045,7 +1047,6 @@ export function CodecoSupervisionApp() {
     setDayHydrated(false);
     setSelectedAction(null);
     setContextBuildingId(null);
-    setFocusRecordId("");
     setProjectTabPreset(undefined);
     setExternalSubmissionIntent(false);
     setActionCenterView("work");
@@ -1054,6 +1055,7 @@ export function CodecoSupervisionApp() {
 
   const chooseProject = (project: ProjectContext) => {
     if (project.id !== selectedProject?.id) resetProjectScopedState();
+    setFocusRecordId("");
     setModal(null);
     setMobileMenuOpen(false);
     setSelectedProject(project);
@@ -1121,7 +1123,8 @@ export function CodecoSupervisionApp() {
     tab: initialProjectTab,
     modal: modal ?? null,
     menu: mobileMenuOpen,
-  }), [activeNav, initialProjectTab, mobileMenuOpen, modal, selectedProject, workspaceStage]);
+    record: focusRecordId,
+  }), [activeNav, focusRecordId, initialProjectTab, mobileMenuOpen, modal, selectedProject, workspaceStage]);
 
   /** Puts the app back on a screen the back button handed to us. */
   const applyScreen = useCallback((restored: AppScreen) => {
@@ -1140,6 +1143,8 @@ export function CodecoSupervisionApp() {
     }
     setActiveNav(navKeys.includes(restored.nav as NavKey) ? restored.nav as NavKey : "vandaag");
     setInitialProjectTab(projectTabKeys.includes(restored.tab as ProjectTabKey) ? restored.tab as ProjectTabKey : "home");
+    setFocusRecordId(restored.record ?? "");
+    setSelectedAction(null);
     // A dialog that only makes sense with a record in hand is not restored from an
     // entry; the screen behind it is what the user asked to go back to.
     // Only a dialog that still exists comes back: an older address can name one that became a
@@ -1153,8 +1158,6 @@ export function CodecoSupervisionApp() {
     window.scrollTo({ top: 0, behavior: "auto" });
   }, [workspaceQuery.data?.projects]);
 
-  useScreenHistory(screen, applyScreen);
-
   // A reload, a shared link or a phone that reopens the installed app lands on the
   // screen the address bar describes instead of at the beginning.
   const restoredFromUrlRef = useRef(false);
@@ -1162,6 +1165,13 @@ export function CodecoSupervisionApp() {
   // the project-less start screen; reading it later found an empty query and every reload
   // dropped the user back on project selection.
   const [initialSearch] = useState(() => (typeof window === "undefined" ? "" : window.location.search));
+  const [deliveryLink, setDeliveryLink] = useState(() => {
+    const query = new URLSearchParams(initialSearch);
+    const id = query.get("notification");
+    const project = query.get("project");
+    return id && project ? { id, project } : null;
+  });
+  useScreenHistory(screen, applyScreen, Boolean(deliveryLink));
   // The projects arrive from the server, so the screen in the address bar can only be
   // restored once they are there. That is exactly what an effect is for.
   useEffect(() => {
@@ -1181,6 +1191,46 @@ export function CodecoSupervisionApp() {
     }
     applyScreen(fromUrl);
   }, [applyScreen, initialSearch, text, workspaceQuery.data?.projects]);
+
+  const openNotificationRecord = (notification: Pick<ProjectNotification, "source_id" | "source_type">) => {
+    if (!selectedProject || !notification.source_id) return;
+    applyScreen(notificationRecordScreen(selectedProject.id, notification.source_type, notification.source_id, Boolean(portalModeFor(permissions))));
+  };
+
+  const notificationPortalMode = Boolean(portalModeFor(permissions));
+  const notificationProjectId = selectedProject?.id;
+  const notificationUserId = session?.user.id;
+  useEffect(() => {
+    if (!deliveryLink || !supabase || !notificationUserId || !workspaceQuery.data) return;
+    if (!workspaceQuery.data.projects.some((project) => project.id === deliveryLink.project)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- an unavailable project has no link to resolve
+      setDeliveryLink(null);
+      return;
+    }
+    if (notificationProjectId !== deliveryLink.project) return;
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase.from("notifications").select("source_type,source_id")
+        .eq("project_id", deliveryLink.project).eq("recipient_user_id", notificationUserId)
+        .eq("id", deliveryLink.id).maybeSingle();
+      if (cancelled) return;
+      if (data?.source_id) applyScreen(notificationRecordScreen(deliveryLink.project, data.source_type, data.source_id, notificationPortalMode));
+      else setToast(text("This notification is unavailable to this account.", "Deze melding is niet beschikbaar voor dit account."));
+      setDeliveryLink(null);
+    })();
+    return () => { cancelled = true; };
+  }, [applyScreen, deliveryLink, notificationPortalMode, notificationProjectId, notificationUserId, supabase, text, workspaceQuery.data]);
+
+  const focusedAction = useQuery({
+    queryKey: ["notification-action", notificationProjectId, focusRecordId, notificationUserId],
+    enabled: Boolean(supabase && notificationUserId && notificationProjectId && focusRecordId && activeNav === "acties"),
+    queryFn: async () => {
+      const result = await supabase!.from("actions").select("*").eq("project_id", notificationProjectId!).eq("id", focusRecordId).maybeSingle();
+      if (result.error) throw result.error;
+      return result.data as ProjectAction | null;
+    },
+  });
+  const actionDetail = modal === "action_detail" ? selectedAction : activeNav === "acties" && focusRecordId ? focusedAction.data : null;
 
   const openProjectStartForAllBuildings = () => {
     setContextBuildingId(ALL_BUILDINGS);
@@ -1285,7 +1335,7 @@ export function CodecoSupervisionApp() {
           if (result.error) throw result.error;
           setPasswordRecovery(false);
           setAccountNotice(text("Password changed.", "Wachtwoord gewijzigd."));
-          window.history.replaceState(null, "", window.location.pathname);
+          if (!deliveryLink) window.history.replaceState(null, "", window.location.pathname);
           setSession((current) => current ? { ...current, user: result.data.user } : current);
         }}
         signOut={() => void performSignOut({ discardUnsent: false })}
@@ -1593,6 +1643,7 @@ export function CodecoSupervisionApp() {
               shiftStart: row.shiftStart,
               shiftEnd: row.shiftEnd,
               crew: row.crew,
+              spec: row.spec,
             })),
           };
         }}
@@ -1668,6 +1719,8 @@ export function CodecoSupervisionApp() {
       <ProjectPermissionsProvider value={permissions}>
         <PortalApp
           client={supabase}
+          focusShareId={focusRecordId}
+          clearFocus={() => setFocusRecordId("")}
           mode={portalMode}
           projectId={selectedProject.id}
           projectName={selectedProject.name}
@@ -1709,6 +1762,7 @@ export function CodecoSupervisionApp() {
       externalSubmissionIntent
       actionCenterView={actionCenterView}
       focusRecordId={focusRecordId}
+      clearFocusedRecord={() => setFocusRecordId("")}
       initialCameraFiles={pendingQuickPhotos}
       onInitialCameraFilesConsumed={() => setPendingQuickPhotos([])}
       dailyForms={dailyForms}
@@ -1764,7 +1818,7 @@ export function CodecoSupervisionApp() {
         aria-hidden="true"
         tabIndex={-1}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept={photoAccept}
         capture="environment"
         onChange={(event) => {
           void receiveQuickCameraPhoto(event.currentTarget.files);
@@ -1958,6 +2012,7 @@ export function CodecoSupervisionApp() {
               externalSubmissionIntent={externalSubmissionIntent}
               actionCenterView={actionCenterView}
               focusRecordId={focusRecordId}
+              clearFocusedRecord={() => setFocusRecordId("")}
               initialCameraFiles={pendingQuickPhotos}
               onInitialCameraFilesConsumed={() => setPendingQuickPhotos([])}
               dailyForms={dailyForms}
@@ -2174,30 +2229,32 @@ export function CodecoSupervisionApp() {
           close={() => setModal(null)}
         />
       ) : null}
-      {modal === "action_detail" && selectedAction ? (
+      {actionDetail ? (
         <ActionDetailModal
-          action={selectedAction}
-          partyName={dayQuery.data?.parties.find((party) => party.id === selectedAction.owner_party_id)?.name ?? "Niet toegewezen"}
+          action={actionDetail}
+          partyName={dayQuery.data?.parties.find((party) => party.id === actionDetail.owner_party_id)?.name ?? "Niet toegewezen"}
           locationNodes={projectLocationsQuery.data ?? []}
-          updates={(dayQuery.data?.actionUpdates ?? []).filter((update) => update.action_id === selectedAction.id)}
+          updates={(dayQuery.data?.actionUpdates ?? []).filter((update) => update.action_id === actionDetail.id)}
           portalPanel={selectedProject ? (
             <>
-              <ActionCategoryField client={supabase} actionId={selectedAction.id} value={selectedAction.action_category} changed={() => void queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] })} />
-              <RecordVerifications client={supabase} projectId={selectedProject.id} recordType="action" recordId={selectedAction.id} />
-              <PortalSharePanel client={supabase} projectId={selectedProject.id} recordType="action" recordId={selectedAction.id} recordTitle={selectedAction.title} parties={dayQuery.data?.parties ?? []} />
+              <ActionCategoryField client={supabase} actionId={actionDetail.id} value={actionDetail.action_category} changed={() => void queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] })} />
+              <RecordVerifications client={supabase} projectId={selectedProject.id} recordType="action" recordId={actionDetail.id} />
+              <PortalSharePanel client={supabase} projectId={selectedProject.id} recordType="action" recordId={actionDetail.id} recordTitle={actionDetail.title} parties={dayQuery.data?.parties ?? []} />
             </>
           ) : null}
           close={() => {
             setSelectedAction(null);
+            setFocusRecordId("");
             setModal(null);
           }}
           transition={async (nextStatus, note) => {
             const saved = await runSynced(
-              () => transitionProjectAction(supabase, { actionId: selectedAction.id, nextStatus, note }),
+              () => transitionProjectAction(supabase, { actionId: actionDetail.id, nextStatus, note }),
               `Actie is centraal bijgewerkt naar ${actionStatusLabels[nextStatus].toLowerCase()}.`,
             );
             if (!saved) return false;
-            setSelectedAction(saved);
+            if (modal === "action_detail") setSelectedAction(saved);
+            else queryClient.setQueryData(["notification-action", notificationProjectId, focusRecordId, notificationUserId], saved);
             await queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject?.id, reportDate] });
             return true;
           }}
@@ -2334,12 +2391,7 @@ export function CodecoSupervisionApp() {
           notifications={notificationQuery.data ?? []}
           loading={notificationQuery.isLoading}
           close={() => setModal(null)}
-          openSource={(sourceType) => {
-            if (sourceType === "action") { setModal(null); navigate("acties"); }
-            else if (sourceType === "finding") { setModal(null); openWorkspaceModule("findings"); }
-            else if (sourceType === "inspection") { setModal(null); openWorkspaceModule("inspections"); }
-            else if (sourceType === "report") { setModal(null); navigate("rapporten"); }
-          }}
+          openSource={openNotificationRecord}
           markRead={async (notificationId) => {
             const saved = await runSynced(
               () => markNotificationRead(supabase, notificationId),
@@ -3025,7 +3077,7 @@ function ProjectStartForm({
   );
 }
 
-function NotificationsModal({ client, notifications, loading, close, markRead, openSource }: { client: SupabaseClient; notifications: ProjectNotification[]; loading: boolean; close: () => void; markRead: (notificationId: string) => Promise<void>; openSource: (sourceType: string | null) => void }) {
+function NotificationsModal({ client, notifications, loading, close, markRead, openSource }: { client: SupabaseClient; notifications: ProjectNotification[]; loading: boolean; close: () => void; markRead: (notificationId: string) => Promise<void>; openSource: (notification: ProjectNotification) => void }) {
   const { locale, text } = useLanguage();
   const [pushState, setPushState] = useState<PushState>("inactive");
   const [pushBusy, setPushBusy] = useState(false);
@@ -3077,7 +3129,7 @@ function NotificationsModal({ client, notifications, loading, close, markRead, o
             <button className={`notification-row ${notification.read_at ? "read" : ""}`} type="button" key={notification.id} onClick={() => {
               // A notification is the way to the record it is about: it is marked read and opened.
               if (!notification.read_at) void markRead(notification.id);
-              openSource(notification.source_type);
+              openSource(notification);
             }}>
               <span className="notification-row-icon">{notification.notification_type.includes("overdue") || notification.notification_type.includes("critical") ? <AlertTriangle size={17} /> : <Bell size={17} />}</span>
               <span><strong>{notificationTitle(notification.title, text)}</strong><span>{notification.body}</span><small>{notification.due_at ? `${text("Deadline", "Deadline")} ${new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(notification.due_at))}` : text("Immediate follow-up", "Directe opvolging")} · {notification.push_status === "sent" ? text("Push sent", "Push verzonden") : notification.push_status === "failed" ? text("Push retry pending", "Nieuwe pushpoging gepland") : notification.push_status === "skipped" ? text("Activate push on a device", "Activeer push op een apparaat") : text("Push queued", "Push in wachtrij")}</small></span>

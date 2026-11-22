@@ -942,6 +942,21 @@ test("orders the photo library by folder and by the day a photo was taken", () =
   assert.equal(dayGroupLabel("", labels), "Zonder datum");
 });
 
+test("on-site totals exclude absent crew but retain late arrivals and legacy rows", () => {
+  const row = { party: "Main contractor", discipline: "Masonry", count: 2 };
+  const rows = [
+    row,
+    ...["Present", "Late", "Absent", "On Leave", "Off Shift", "Demobilized"].map((status) => ({
+      ...row,
+      spec: { attendance_status: status },
+    })),
+    { ...row, entryType: "visitor" },
+  ];
+  assert.equal(workforceHeadcount(rows), 6);
+  assert.equal(workforceByParty(rows)[0].count, 6);
+  assert.equal(workforceByDiscipline(rows)[0].count, 6);
+});
+
 test("totals the workforce per organisation and per trade, and signals a deviation", () => {
   const rows = [
     { partyId: "a", party: "Bouwbedrijf A", discipline: "Metselaar", count: 4 },
@@ -1063,8 +1078,14 @@ test("QA M26: a photo whose upload failed or is pending is not counted", async (
   assert.equal(isPhotoFile({ mime_type: "image/jpeg", category: "photo", status: "pending" }), false);
 });
 
-test("QA M26: the library's historical photo entries leave drawings out", async () => {
+test("QA M26: historical photo entries leave drawings and preserved source files out", async () => {
   const { readFile } = await import("node:fs/promises");
+  const { photoSourceIds } = await import("../lib/media/photo-library.mjs");
   const operations = await readFile(new URL("../lib/supabase/operations.ts", import.meta.url), "utf8");
-  assert.match(operations, /\.filter\(\(file\) => isPhotoFile\(file\) && !capturedFileIds\.has\(file\.id\)\)/);
+  assert.match(operations, /isPhotoFile\(file\) && !capturedFileIds\.has\(file\.id\) && !sourceFileIds\.has\(file\.id\)/);
+  assert.deepEqual([...photoSourceIds([
+    { file_id: "preview", spec: { _original: { file_id: "original" } } },
+    { file_id: "same", spec: { _original: { file_id: "same" } } },
+    { file_id: "older" },
+  ])], ["original"]);
 });
