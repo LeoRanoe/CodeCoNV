@@ -180,7 +180,8 @@ test("the executor finds it in the notification list, which opens the inspection
 
 test("a role that cannot manage inspections cannot plan one", async () => {
   const contractorApi = await api({ email: process.env.CODECO_E2E_CONTRACTOR_EMAIL, password: process.env.CODECO_E2E_CONTRACTOR_PASSWORD });
+  const before = await countFor(executor);
   const refused = await contractorApi.rpc("reschedule_project_inspection", { p_inspection_id: inspectionId, p_planned_at: "2027-04-01T09:00:00Z", p_executed_by: executorId });
   expect(refused.error?.message ?? "").toMatch(/not found or not editable/i);
-  expect(await countFor(executor)).toHaveLength(3);
+  expect(await countFor(executor)).toHaveLength(before.length);
 });
