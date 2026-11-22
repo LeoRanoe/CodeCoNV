@@ -27,7 +27,7 @@ import {
   uploaderStatuses,
 } from "@/lib/documents/document-register.mjs";
 import { saveSpecConfiguration, type OperationSnapshot } from "@/lib/supabase/operations";
-import type { SpecConfiguration } from "@/lib/forms/spec-forms";
+import { projectList, type SpecConfiguration } from "@/lib/forms/spec-forms";
 
 type Party = { id: string; name: string; type: string };
 type Building = { id: string; name: string };
@@ -114,6 +114,7 @@ export function DocumentRegister({
   const [discipline, setDiscipline] = useState("");
   const [status, setStatus] = useState("");
   const [originator, setOriginator] = useState("");
+  const [revision, setRevision] = useState("");
   const [building, setBuilding] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -129,8 +130,12 @@ export function DocumentRegister({
     const base = registerRows(query.data?.documents ?? [], query.data?.revisions ?? []) as RegisterRow[];
     return base.map((row) => ({ ...row, fileName: row.current ? query.data?.fileNames.get(row.current.file_id) : undefined }));
   }, [query.data]);
-  const filtered = sortRegister(filterRegister(rows, { folder, search, discipline, status, originator, building, from, to }), sortKey, direction) as RegisterRow[];
-  const disciplines = [...new Set(rows.map((row) => row.document.discipline).filter(Boolean))].sort() as string[];
+  const filtered = sortRegister(filterRegister(rows, { folder, search, discipline, status, originator, building, revision, from, to }), sortKey, direction) as RegisterRow[];
+  const configuration = (data.settings as { spec_configuration?: SpecConfiguration } | null)?.spec_configuration;
+  const disciplineOptions = useMemo(() => projectList("disciplines", configuration).map((option) => option.value), [configuration]);
+  // The filter offers the project's list and any older value still in use, so no document drops out of it.
+  const disciplines = [...disciplineOptions, ...([...new Set(rows.map((row) => row.document.discipline).filter(Boolean))] as string[]).filter((item) => !disciplineOptions.includes(item)).sort()];
+  const revisions = [...new Set(rows.map((row) => row.current?.revision).filter(Boolean))].sort() as string[];
   const partyName = (id: string | null) => parties.find((party) => party.id === id)?.name ?? "";
   const buildingName = (id: string) => buildings.find((item) => item.id === id)?.name ?? "";
   const folderName = (code: string) => {
@@ -146,6 +151,7 @@ export function DocumentRegister({
     status && statusMeta(status)[language],
     originator && originators.find(([id]) => id === originator)?.[1],
     building && buildingName(building),
+    revision && `${text("Revision", "Revisie")} ${revision}`,
     from && `≥ ${from}`,
     to && `≤ ${to}`,
     search && `“${search}”`,
@@ -191,6 +197,7 @@ export function DocumentRegister({
             <label className="form-field"><span>{text("Status", "Status")}</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">{text("All", "Alle")}</option>{documentStatuses.map((item) => <option key={item.id} value={item.id}>{item[language]}</option>)}</select></label>
             <label className="form-field"><span>{text("Originator", "Opsteller")}</span><select value={originator} onChange={(event) => setOriginator(event.target.value)}><option value="">{text("All", "Alle")}</option>{originators.map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>
             <label className="form-field"><span>{text("Building", "Gebouw")}</span><select value={building} onChange={(event) => setBuilding(event.target.value)}><option value="">{text("All", "Alle")}</option>{buildings.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+            <label className="form-field"><span>{text("Revision", "Revisie")}</span><select value={revision} onChange={(event) => setRevision(event.target.value)}><option value="">{text("All", "Alle")}</option>{revisions.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
             <label className="form-field"><span>{text("Received from", "Ontvangen vanaf")}</span><input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label>
             <label className="form-field"><span>{text("Received to", "Ontvangen tot")}</span><input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label>
             <label className="form-field"><span>{text("Sort", "Sorteren")}</span>
@@ -234,21 +241,41 @@ export function DocumentRegister({
       </div>
       {creating ? (
         <RegisterDocumentDialog client={client} projectId={projectId} folders={folders} parties={parties} buildings={buildings} defaultFolder={folder || "01"}
-          defaultBuildingId={defaultBuildingId} numberPattern={(data.settings as { spec_configuration?: { document_number_pattern?: string } } | null)?.spec_configuration?.document_number_pattern}
+          defaultBuildingId={defaultBuildingId} numberPattern={(data.settings as { spec_configuration?: { document_number_pattern?: string } } | null)?.spec_configuration?.document_number_pattern} disciplineOptions={disciplineOptions}
           close={() => setCreating(false)} done={() => { setCreating(false); refresh(); }} />
       ) : null}
       {openRow ? (
         <DocumentDetail client={client} projectId={projectId} row={openRow} names={query.data?.names ?? new Map()} fileNames={query.data?.fileNames ?? new Map()}
-          folderName={folderName} partyName={partyName} buildingName={buildingName} parties={parties} data={data} defaultBuildingId={defaultBuildingId}
+          folderName={folderName} partyName={partyName} buildingName={buildingName} parties={parties} data={data} defaultBuildingId={defaultBuildingId} disciplineOptions={disciplineOptions} folders={folders}
           close={() => setOpenId(null)} changed={refresh} />
       ) : null}
     </section>
   );
 }
 
-function RegisterDocumentDialog({ client, projectId, folders, parties, buildings, defaultFolder, defaultBuildingId, numberPattern, close, done }: {
+/**
+ * The project's configured discipline list (Management → Workflows & lists → Project disciplines).
+ * A value that is not on the list (a free-text discipline from before the list existed, or one
+ * the project has since retired) stays selectable and is marked, so editing a document never
+ * silently rewrites its discipline.
+ */
+function DisciplineSelect({ value, options, onChange }: { value: string; options: string[]; onChange: (value: string) => void }) {
+  const { text } = useLanguage();
+  const older = value && !options.includes(value);
+  return (
+    <label className="form-field" data-document-field="discipline"><span>{text("Discipline", "Discipline")}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="">{text("None", "Geen")}</option>
+        {older ? <option value={value}>{value} · {text("older value, not on the project list", "oudere waarde, niet op de projectlijst")}</option> : null}
+        {options.map((item) => <option key={item} value={item}>{item}</option>)}
+      </select>
+    </label>
+  );
+}
+
+function RegisterDocumentDialog({ client, projectId, folders, parties, buildings, defaultFolder, defaultBuildingId, numberPattern, disciplineOptions, close, done }: {
   client: SupabaseClient; projectId: string; folders: Array<{ code: string; en: string; nl: string }>; parties: Party[]; buildings: Building[];
-  defaultFolder: string; defaultBuildingId: string; numberPattern?: string; close: () => void; done: (id: string) => void;
+  defaultFolder: string; defaultBuildingId: string; numberPattern?: string; disciplineOptions: string[]; close: () => void; done: (id: string) => void;
 }) {
   const { language, text } = useLanguage();
   const permissions = useProjectPermissions();
@@ -297,9 +324,7 @@ function RegisterDocumentDialog({ client, projectId, folders, parties, buildings
           <label className="form-field"><span>{text("Title (required)", "Titel (verplicht)")}</span><input value={form.title} maxLength={240} onChange={set("title")} /></label>
           <label className="form-field"><span>{text("Folder", "Map")}</span><select value={form.folder} onChange={set("folder")}>{folders.map((item) => <option key={item.code} value={item.code}>{item.code} {language === "nl" ? item.nl : item.en}</option>)}</select></label>
           <label className="form-field"><span>{text("Document type", "Documenttype")}</span><select value={form.type} onChange={set("type")}>{documentTypes.map((item) => <option key={item.id} value={item.id}>{item[language]}</option>)}</select></label>
-          <label className="form-field"><span>{text("Discipline", "Discipline")}</span><input value={form.discipline} maxLength={80} onChange={set("discipline")} list="document-disciplines" />
-            <datalist id="document-disciplines">{["Architectural", "Structural", "Civil", "Mechanical", "HVAC", "Electrical", "Plumbing & Sanitary", "Fire Protection", "External Works"].map((item) => <option key={item} value={item} />)}</datalist>
-          </label>
+          <DisciplineSelect value={form.discipline} options={disciplineOptions} onChange={(value) => setForm((current) => ({ ...current, discipline: value }))} />
           <label className="form-field"><span>{text("Originator / contractor", "Opsteller / aannemer")}</span>
             <select value={form.originatorParty} onChange={set("originatorParty")}><option value="">{text("Other (type below)", "Anders (hieronder typen)")}</option>{parties.map((party) => <option key={party.id} value={party.id}>{party.name}</option>)}</select>
           </label>
@@ -329,17 +354,18 @@ function RegisterDocumentDialog({ client, projectId, folders, parties, buildings
   );
 }
 
-function DocumentDetail({ client, projectId, row, names, fileNames, folderName, partyName, buildingName, parties, data, defaultBuildingId, close, changed }: {
+function DocumentDetail({ client, projectId, row, names, fileNames, folderName, partyName, buildingName, parties, data, defaultBuildingId, disciplineOptions, folders, close, changed }: {
   client: SupabaseClient; projectId: string; row: RegisterRow; names: Map<string, string>; fileNames: Map<string, string>;
   folderName: (code: string) => string; partyName: (id: string | null) => string; buildingName: (id: string) => string; parties: Party[];
-  data: OperationSnapshot; defaultBuildingId: string; close: () => void; changed: () => void;
+  data: OperationSnapshot; defaultBuildingId: string; disciplineOptions: string[]; folders: Array<{ code: string; en: string; nl: string }>; close: () => void; changed: () => void;
 }) {
   const { language, locale, text } = useLanguage();
   const permissions = useProjectPermissions();
   useBackToClose(true, close);
   const canManage = permissions.can("documents.manage");
   const canReview = permissions.can("documents.review");
-  const [mode, setMode] = useState<"" | "revision" | "status" | "link">("");
+  const [mode, setMode] = useState<"" | "revision" | "status" | "link" | "details">("");
+  const [details, setDetails] = useState({ number: row.document.document_number ?? "", title: row.document.title, folder: row.document.folder_code, discipline: row.document.discipline ?? "", type: row.document.document_type ?? "drawing", originatorParty: row.document.originator_party_id ?? "", originatorName: row.document.originator_name ?? "", workPackage: row.document.work_package ?? "" });
   const [revision, setRevision] = useState(suggestNextRevision((row.latest ?? row.current)?.revision));
   // Review applies to the newer revision awaiting review; otherwise to the current one.
   const reviewTarget = row.pending ?? row.current;
@@ -378,6 +404,15 @@ function DocumentDetail({ client, projectId, row, names, fileNames, folderName, 
     if (!revision.trim()) throw new Error(text("Enter the revision mark.", "Vul de revisie in."));
     const uploaded = await uploadProjectFile(client, { projectId, buildingId: row.document.building_ids[0] ?? defaultBuildingId, category: row.document.document_type === "drawing" ? "drawing" : "document", file, onProgress: setProgress });
     const result = await client.rpc("add_project_document_revision", { p_document_id: row.document.id, p_revision: revision.trim(), p_file_id: uploaded.fileId, p_review_status: revisionStatus, p_issue_date: issueDate || null, p_transmittal_ref: transmittal, p_notes: notes });
+    if (result.error) throw result.error;
+  });
+  const saveDetails = () => run(async () => {
+    if (details.title.trim().length < 2) throw new Error(text("Add a title.", "Voeg een titel toe."));
+    const result = await client.rpc("update_project_document", {
+      p_document_id: row.document.id, p_document_number: details.number, p_title: details.title, p_folder_code: details.folder, p_discipline: details.discipline,
+      p_document_type: details.type, p_originator_party_id: details.originatorParty || null, p_originator_name: details.originatorParty ? null : details.originatorName,
+      p_building_ids: row.document.building_ids, p_work_package: details.workPackage,
+    });
     if (result.error) throw result.error;
   });
   const setStatus = () => run(async () => {
@@ -451,6 +486,7 @@ function DocumentDetail({ client, projectId, row, names, fileNames, folderName, 
         <div className="portal-steps">
           {canManage ? <button className={`ui-button ui-button--sm ${mode === "revision" ? "ui-button--primary" : "ui-button--secondary"}`} type="button" onClick={() => setMode(mode === "revision" ? "" : "revision")}><FileUp size={14} /> {text("Upload new revision", "Nieuwe revisie uploaden")}</button> : null}
           {canReview && reviewTarget && !reviewTarget.superseded_at ? <button className={`ui-button ui-button--sm ${mode === "status" ? "ui-button--primary" : "ui-button--secondary"}`} type="button" onClick={() => setMode(mode === "status" ? "" : "status")}>{text("Review status", "Beoordelingsstatus")}</button> : null}
+          {canManage ? <button className={`ui-button ui-button--sm ${mode === "details" ? "ui-button--primary" : "ui-button--secondary"}`} type="button" onClick={() => setMode(mode === "details" ? "" : "details")}>{text("Edit details", "Gegevens wijzigen")}</button> : null}
           {canManage || permissions.can("records.edit") ? <button className={`ui-button ui-button--sm ${mode === "link" ? "ui-button--primary" : "ui-button--secondary"}`} type="button" onClick={() => setMode(mode === "link" ? "" : "link")}><Link2 size={14} /> {text("Link a record", "Record koppelen")}</button> : null}
         </div>
         {mode === "revision" ? (
@@ -468,6 +504,24 @@ function DocumentDetail({ client, projectId, row, names, fileNames, folderName, 
               {progress !== null ? <span role="status">{text("Uploading", "Uploaden")} {progress}%</span> : null}
               <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy} onClick={() => fileInput.current?.click()}>{busy ? <Loader2 className="spin" size={15} /> : <FileUp size={15} />} {text("Choose file and upload", "Bestand kiezen en uploaden")}</button>
             </div>
+          </div>
+        ) : null}
+        {mode === "details" ? (
+          <div className="portal-response-form" data-document-edit>
+            <div className="form-grid form-grid-2">
+              <label className="form-field"><span>{text("Document number", "Documentnummer")}</span><input value={details.number} maxLength={80} onChange={(event) => setDetails({ ...details, number: event.target.value })} /></label>
+              <label className="form-field"><span>{text("Title (required)", "Titel (verplicht)")}</span><input value={details.title} maxLength={240} onChange={(event) => setDetails({ ...details, title: event.target.value })} /></label>
+              <label className="form-field"><span>{text("Folder", "Map")}</span><select value={details.folder} onChange={(event) => setDetails({ ...details, folder: event.target.value })}>{folders.map((item) => <option key={item.code} value={item.code}>{item.code} {language === "nl" ? item.nl : item.en}</option>)}</select></label>
+              <label className="form-field"><span>{text("Document type", "Documenttype")}</span><select value={details.type} onChange={(event) => setDetails({ ...details, type: event.target.value })}>{documentTypes.map((item) => <option key={item.id} value={item.id}>{item[language]}</option>)}</select></label>
+              <DisciplineSelect value={details.discipline} options={disciplineOptions} onChange={(value) => setDetails({ ...details, discipline: value })} />
+              <label className="form-field"><span>{text("Originator / contractor", "Opsteller / aannemer")}</span>
+                <select value={details.originatorParty} onChange={(event) => setDetails({ ...details, originatorParty: event.target.value })}><option value="">{text("Other (type below)", "Anders (hieronder typen)")}</option>{parties.map((party) => <option key={party.id} value={party.id}>{party.name}</option>)}</select>
+              </label>
+              {details.originatorParty ? null : <label className="form-field"><span>{text("Originator name", "Naam opsteller")}</span><input value={details.originatorName} maxLength={180} onChange={(event) => setDetails({ ...details, originatorName: event.target.value })} /></label>}
+              <label className="form-field"><span>{text("Work package", "Werkpakket")}</span><input value={details.workPackage} maxLength={120} onChange={(event) => setDetails({ ...details, workPackage: event.target.value })} /></label>
+            </div>
+            <p className="portal-note">{text("Changing the details does not change the revisions or their status. The change is kept in the document history.", "Wijzigen van de gegevens verandert de revisies en hun status niet. De wijziging blijft in de documenthistorie.")}</p>
+            <div className="portal-response-actions"><button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy} onClick={() => void saveDetails()}>{busy ? <Loader2 className="spin" size={15} /> : null} {text("Save details", "Gegevens opslaan")}</button></div>
           </div>
         ) : null}
         {mode === "status" ? (

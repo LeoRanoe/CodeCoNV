@@ -16,7 +16,7 @@ test.skip(!email || !password, "A fixture account is required (tests/e2e/seed-lo
 async function signIn(page: Page) {
   await page.goto("/supervisie");
   await page.evaluate(() => {
-    localStorage.setItem("codeco-field-guide-seen-v3", "yes");
+    localStorage.setItem("codeco-field-guide-seen-v3", "yes"); localStorage.setItem("codeco-portal-guide-seen-v1-contractor", "yes"); localStorage.setItem("codeco-portal-guide-seen-v1-client", "yes");
     localStorage.setItem("codeco-language-choice", "en");
   });
   await page.reload();
@@ -57,6 +57,9 @@ test("the day overview exports every Workspace form of the day as PDF and Word",
   await form.locator("[data-spec-field='delivered_quantity'] input").fill("12");
   await form.locator("[data-spec-field='unit'] select").selectOption("m³");
   await fillSpecFields(page.locator(".record-form-shell").first());
+  // The fixture project has no storage locations configured (an administrator maintains that list), so the delivery is not stored on site.
+  const storedOnSite = form.locator("[data-spec-field='stored_on_site'] input");
+  if (await storedOnSite.isVisible().catch(() => false)) await storedOnSite.uncheck();
   await page.getByRole("button", { name: "Save register item" }).click();
   await expect(page.getByText(/saved/i).first()).toBeVisible();
 

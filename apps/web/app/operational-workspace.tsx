@@ -62,6 +62,8 @@ import { ContractorSignatureField, RecordSignatures, contractorSignatureDetails,
 import { SpecFields, SpecLinkChips } from "@/app/forms/spec-fields";
 import { WorkspaceSpecDirectory } from "@/app/forms/workspace-spec-directory";
 import { SpecConfigurationPanel } from "@/app/forms/spec-configuration-panel";
+import { ProjectInformationPanel } from "@/app/project-information";
+import { InspectionPlanForm, PlannedInspections } from "@/app/inspection-planner";
 import { SharedLessons } from "@/app/forms/shared-lessons";
 import { InspectionSpecEditor } from "@/app/forms/inspection-spec-editor";
 import { SignoffPanel } from "@/app/forms/signoff-panel";
@@ -191,6 +193,9 @@ import {
   updateFindingRecord,
   updateHseRecord,
   updateInspectionRecord,
+  loadInspectionExecutors,
+  planInspection,
+  rescheduleInspection,
   updateProductionReadiness,
   updateRegisterRecord,
   withdrawWorkspaceRecord,
@@ -2458,6 +2463,22 @@ function ProjectOperations({
     openTask(scope === "ncr" ? "ncr" : "findings", createRecord);
   };
 
+  // Planning for a colleague (Word 14, WD-192): who can be chosen, and the two writes.
+  const executorsQuery = useQuery({ queryKey: ["inspection-executors", projectId], queryFn: () => loadInspectionExecutors(client, projectId), enabled: permissions.can("inspections.manage") && tab === "inspections" });
+  const inspectionExecutors = executorsQuery.data ?? [];
+  const executorName = (userId: string | null | undefined) => (userId ? inspectionExecutors.find((person) => person.id === userId)?.name ?? (userId === currentUserId ? text("you", "u") : text("a colleague", "een collega")) : text("nobody yet", "nog niemand"));
+  const planForColleague = async (executorId: string, plannedAt: string) => {
+    const templateId = inspectionTemplateId || inspectionTemplates[0]?.id;
+    const template = data.templates.find((item) => item.id === templateId);
+    const inspectionBuildingName = buildings.find((building) => building.id === inspectionBuildingId)?.name ?? buildingName;
+    const resolvedTitle = inspectionTitle.trim() || `${template?.name ?? text("Inspection", "Inspectie")} · ${inspectionBuildingName}`;
+    if (!templateId) return;
+    await run(() => planInspection(client, { projectId, buildingId: inspectionBuildingId, buildingIds: inspectionBuildingIds, locationNodeId: inspectionLocationNodeId, templateId, title: resolvedTitle, plannedAt, executedBy: executorId }),
+      text("Inspection planned. The colleague has been notified.", "Inspectie gepland. De collega is op de hoogte gebracht."));
+  };
+  const moveInspection = (inspectionId: string, plannedAt: string, executorId: string) => run(() => rescheduleInspection(client, { inspectionId, plannedAt, executedBy: executorId }),
+    text("Inspection rescheduled. The colleague has been notified.", "Inspectie verplaatst. De collega is op de hoogte gebracht."));
+
   const beginInspection = async () => {
     const templateId = inspectionTemplateId || inspectionTemplates[0]?.id;
     const template = data.templates.find((item) => item.id === templateId);
@@ -3779,9 +3800,11 @@ function ProjectOperations({
                 <label className="form-field"><span>{text("Checklist · recommended for today's work first", "Checklist · aanbevolen voor vandaag eerst")}</span><select value={inspectionTemplateId || inspectionTemplates[0]?.id || ""} onChange={(event) => { setInspectionTemplateId(event.target.value); setInspectionTitle(""); }}>{inspectionTemplates.map((template) => <option value={template.id} key={template.id}>{["LIB-101", "LIB-102", "LIB-103"].includes(template.code) ? "★ " : ""}{template.name} · v{template.version_number}</option>)}</select></label>
                 <details className="inspection-subject-details"><summary>{text("Add a different subject or element · optional", "Ander onderwerp of element toevoegen · optioneel")}</summary><label className="form-field"><span>{text("Subject / element", "Onderwerp / element")}</span><input value={inspectionTitle} onChange={(event) => setInspectionTitle(event.target.value)} placeholder={`${inspectionTemplates.find((template) => template.id === (inspectionTemplateId || inspectionTemplates[0]?.id))?.name ?? text("Inspection", "Inspectie")} · ${buildingName}`} /></label></details>
                 <button className="ui-button ui-button--primary ui-button--md start-checklist-button" type="button" disabled={busy || (exactLocationRequired && !inspectionLocationNodeId)} onClick={() => void beginInspection()}><ClipboardCheck size={15} /> {text("Start recommended checklist", "Start aanbevolen checklist")}</button>
+                {permissions.can("inspections.manage") ? <InspectionPlanForm executors={inspectionExecutors} busy={busy} ready={!(exactLocationRequired && !inspectionLocationNodeId)} onPlan={planForColleague} /> : null}
               </RecordFormSection> : <div className="operation-alert warning"><AlertTriangle size={18} /><div><strong>{text("No project checklist is published yet", "Nog geen projectchecklist gepubliceerd")}</strong><span>{text("Only an administrator can install checklists (Management).", "Alleen een beheerder kan checklists installeren (Management).")}</span></div></div>}
             </RecordFormShell>
           ) : null}
+          {permissions.can("inspections.manage") ? <PlannedInspections inspections={data.inspections.filter((item) => item.status === "planned")} executors={inspectionExecutors} busy={busy} nameOf={executorName} onReschedule={moveInspection} /> : null}
           <div className="operation-form inspection-search">
             <div className="operation-form-heading"><div><h2>{text("Search by building, exact location and date", "Zoek op gebouw, exacte locatie en datum")}</h2></div><span>{filteredInspections.length}</span></div>
             <div className="form-grid-2">
@@ -6397,7 +6420,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
   // A role that may not read a module sees a dash, not a zero that reads like a fact.
   const readsFindings = permissions.can("findings.read");
   const readsInspections = permissions.can("inspections.read");
-  const [section, setSection] = useState<"overview" | "settings" | "specification" | "portals" | "documents" | "structure" | "templates" | "backup">("overview");
+  const [section, setSection] = useState<"overview" | "information" | "settings" | "specification" | "portals" | "documents" | "structure" | "templates" | "backup">("overview");
   const [structureBuildingId, setStructureBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [template, setTemplate] = useState({ module: "inspection", code: "", name: "", prompts: "" });
   const [settings, setSettings] = useState(() => ({
@@ -6449,7 +6472,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
       <header className="secondary-header ui-page-header"><div><h1>{section === "overview" ? text("Management overview", "Beheeroverzicht") : text("Administration and control", "Beheer en controle")}</h1><span className="ui-page-header__code">{projectName}</span></div><div className="management-header-actions">{canManageOrganization ? <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={openUserAdmin}><Users size={15} /> {text("Manage team", "Team beheren")}</button> : null}</div></header>
       <SectionNav
         label={text("Management sections", "Beheeronderdelen")}
-        items={([["overview", text("Overview", "Overzicht")], ["settings", text("Team & rules", "Team & regels")], ...(permissions.can("project.configure") ? [["specification", text("Workflows & lists", "Workflows & lijsten")]] as const : []), ...(permissions.can("portal.share") || canManageOrganization ? [["portals", text("Portals", "Portalen")]] as const : []), ...(permissions.can("project.configure") ? [["documents", text("Document settings", "Documentinstellingen")]] as const : []), ["structure", text("Project setup", "Projectinrichting")], ["templates", text("Quality standards", "Kwaliteitsstandaarden")], ["backup", text("Backup & continuity", "Back-up & continuïteit")]] as const).map(([id, label]) => ({ id, label, selected: section === id, onSelect: () => setSection(id) }))}
+        items={([["overview", text("Overview", "Overzicht")], ["information", text("Project information", "Projectgegevens")], ["settings", text("Team & rules", "Team & regels")], ...(permissions.can("project.configure") ? [["specification", text("Workflows & lists", "Workflows & lijsten")]] as const : []), ...(permissions.can("portal.share") || canManageOrganization ? [["portals", text("Portals", "Portalen")]] as const : []), ...(permissions.can("project.configure") ? [["documents", text("Document settings", "Documentinstellingen")]] as const : []), ["structure", text("Project setup", "Projectinrichting")], ["templates", text("Quality standards", "Kwaliteitsstandaarden")], ["backup", text("Backup & continuity", "Back-up & continuïteit")]] as const).map(([id, label]) => ({ id, label, selected: section === id, onSelect: () => setSection(id) }))}
       />
       {section === "documents" ? <DocumentSettings client={client} projectId={projectId} configuration={data.settings?.spec_configuration as Record<string, unknown> | undefined} /> : null}
       {section === "portals" ? (
@@ -6509,6 +6532,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
           <ControlledDocumentList projectId={projectId} entries={externalSubmissions} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={text("Company / owner reviewer", "Reviewer bedrijf / eigenaar")} client={client} run={run} />
         <div className="management-context"><div><span>{text("Current report", "Huidig rapport")}</span><strong>{statusText(reportStatus, text)}</strong></div><div><span>{text("Rooms and areas", "Ruimtes en zones")}</span><strong>{data.locationNodes.length}</strong></div><div><span>{text("Published checklists", "Gepubliceerde checklists")}</span><strong>{data.templates.filter((item) => item.status === "published").length}</strong></div><div><span>{text("Controlled files", "Beheerde bestanden")}</span><strong>{data.files.length}</strong></div></div>
       </section> : null}
+      {section === "information" ? <ProjectInformationPanel key={projectId} client={client} projectId={projectId} canEdit={permissions.can("project.configure")} /> : null}
       {section === "specification" && permissions.can("project.configure") ? (
         <SpecConfigurationPanel client={client} projectId={projectId} configuration={data.settings?.spec_configuration} busy={busy} run={run} />
       ) : null}

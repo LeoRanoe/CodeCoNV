@@ -24,7 +24,7 @@ async function openAuthenticatedWorkspace(page: Page) {
   await page.goto("/supervisie");
   // These assertions use the English interface; Supervisie itself defaults to Dutch.
   await page.evaluate(() => {
-    localStorage.setItem("codeco-field-guide-seen-v3", "yes");
+    localStorage.setItem("codeco-field-guide-seen-v3", "yes"); localStorage.setItem("codeco-portal-guide-seen-v1-contractor", "yes"); localStorage.setItem("codeco-portal-guide-seen-v1-client", "yes");
     localStorage.setItem("codeco-language-choice", "en");
   });
   await page.reload();

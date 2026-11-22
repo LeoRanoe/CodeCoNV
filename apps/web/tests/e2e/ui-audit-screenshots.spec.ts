@@ -68,7 +68,7 @@ test("capture signed-in UI audit screens at desktop and phone widths", async ({ 
   await page.setViewportSize(viewports[0]);
   await page.goto("/supervisie");
   await page.evaluate(() => {
-    localStorage.setItem("codeco-field-guide-seen-v3", "yes");
+    localStorage.setItem("codeco-field-guide-seen-v3", "yes"); localStorage.setItem("codeco-portal-guide-seen-v1-contractor", "yes"); localStorage.setItem("codeco-portal-guide-seen-v1-client", "yes");
     localStorage.setItem("codeco-language-choice", "en");
   });
   await page.reload();

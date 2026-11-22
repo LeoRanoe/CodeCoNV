@@ -24,7 +24,7 @@
 
 .portal-main { margin-inline: auto; max-width: 1180px; padding: var(--space-5); }
 .portal-main > .field-warning { margin-block-end: var(--space-4); }
-.portal-section { display: grid; gap: var(--space-4); margin-block-start: var(--space-4); }
+.portal-section { display: grid; gap: var(--space-4); grid-template-columns: minmax(0, 1fr); margin-block-start: var(--space-4); }
 .portal-panel .ui-panel__heading { margin-block-end: var(--space-2); }
 .portal-loading { align-items: center; color: var(--muted); display: flex; gap: var(--space-2); }
 

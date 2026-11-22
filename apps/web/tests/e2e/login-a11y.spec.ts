@@ -8,7 +8,7 @@ import { expect, test } from "@playwright/test";
 async function openLogin(page: import("@playwright/test").Page, hash = "") {
   await page.goto("/supervisie");
   await page.evaluate(() => {
-    localStorage.setItem("codeco-field-guide-seen-v3", "yes");
+    localStorage.setItem("codeco-field-guide-seen-v3", "yes"); localStorage.setItem("codeco-portal-guide-seen-v1-contractor", "yes"); localStorage.setItem("codeco-portal-guide-seen-v1-client", "yes");
     localStorage.setItem("codeco-language-choice", "nl");
   });
   // A link from a mail is a fresh page load; a hash-only change would not reload the app.

@@ -3,6 +3,7 @@
 import { AlertTriangle, Copy, Loader2, Minus, Plus, Sigma, UserCheck, Users, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { specLabel } from "@/lib/forms/spec-labels-nl";
+import { isOtherOption } from "@/lib/forms/spec-forms";
 import { attendanceStatuses as specAttendanceStatuses, competencyStatuses as specCompetencyStatuses, shifts as specShifts } from "@/lib/forms/spec-catalogue";
 import { resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { type HandwrittenSignature } from "@/app/signature-pad";
@@ -192,6 +193,9 @@ export function WorkforceRegister({
                 <option value="">{text("Shift", "Dienst")}</option>
                 {specShifts.map((value) => <option key={value} value={value}>{specLabel(value, language)}</option>)}
               </select>
+              {isOtherOption(row.spec?.shift ?? "") ? (
+                <input className="workforce-shift-other" aria-label={text(`Shift description for ${row.discipline}`, `Omschrijving dienst voor ${row.discipline}`)} placeholder={text("Describe the shift", "Omschrijf de dienst")} value={row.spec?.shift_other ?? ""} maxLength={240} required onChange={(event) => setRowSpec(index, "shift_other", event.target.value)} />
+              ) : null}
               <select aria-label={text(`Attendance status of ${row.discipline}`, `Aanwezigheidsstatus van ${row.discipline}`)} value={row.spec?.attendance_status ?? ""} onChange={(event) => setRowSpec(index, "attendance_status", event.target.value)}>
                 <option value="">{text("Attendance", "Aanwezigheid")}</option>
                 {specAttendanceStatuses.map((value) => <option key={value} value={value}>{specLabel(value, language)}</option>)}

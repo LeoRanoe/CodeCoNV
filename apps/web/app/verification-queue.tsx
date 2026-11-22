@@ -174,6 +174,9 @@ export function VerificationWorkspace({
 
   let body: ReactNode;
   if (section === "specs") body = specSearch;
+  else if (section === "history" ? historyQuery.isLoading : portalQuery.isLoading || (section === "dashboard" && historyQuery.isLoading)) {
+    body = <p className="portal-loading" role="status"><Loader2 className="spin" size={16} /> {text("Loading verification…", "Verificatie laden…")}</p>;
+  }
   else if (section === "history") {
     body = (
       <section className="ui-panel">

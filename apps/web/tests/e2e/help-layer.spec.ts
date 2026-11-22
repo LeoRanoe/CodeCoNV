@@ -17,7 +17,7 @@ test("the Help window is on top of the sidebar", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-office", "The sidebar is a desktop layout.");
   await page.goto("/supervisie");
   await page.evaluate(() => {
-    localStorage.setItem("codeco-field-guide-seen-v3", "yes");
+    localStorage.setItem("codeco-field-guide-seen-v3", "yes"); localStorage.setItem("codeco-portal-guide-seen-v1-contractor", "yes"); localStorage.setItem("codeco-portal-guide-seen-v1-client", "yes");
     localStorage.setItem("codeco-language-choice", "en");
   });
   await page.reload();

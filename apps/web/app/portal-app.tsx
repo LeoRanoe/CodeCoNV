@@ -21,6 +21,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { SectionNav } from "@/app/section-nav";
+import { PortalGuide } from "@/app/visual-walkthrough";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 import { useBackToClose } from "@/lib/navigation/app-history";
 import { downloadProjectFile, loadProjectFilePreviewObjectUrl, uploadProjectFile } from "@/lib/storage/gateway";
@@ -285,6 +286,7 @@ export function PortalApp({
           <button className="icon-button" type="button" aria-label={`${text("Notifications", "Meldingen")}${unread ? `, ${unread} ${text("unread", "ongelezen")}` : ""}`} onClick={() => setSection("history")}>
             <Bell size={17} />{unread ? <span className="notification-dot" /> : null}
           </button>
+          <PortalGuide audience={mode === "contractor" ? "contractor" : "client"} onNavigate={(target) => setSection(target.area)} />
           <LanguageSwitcher compact />
           <button className="ui-button ui-button--quiet ui-button--sm" type="button" onClick={onSignOut}><LogOut size={15} /> {text("Sign out", "Afmelden")}</button>
         </div>

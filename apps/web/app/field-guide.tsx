@@ -21,9 +21,10 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLanguage } from "@/lib/i18n";
+import { VisualWalkthrough, type GuideTarget } from "./visual-walkthrough";
 
 const guideStorageKey = "codeco-field-guide-seen-v3";
 
@@ -32,6 +33,8 @@ export type FieldGuideDestination = "today" | "photo" | "inspection" | "finding"
 type FieldGuideProps = {
   canManage: boolean;
   onOpenDestination: (destination: FieldGuideDestination) => void;
+  /** Opens the real screen for a guided-tour step. It must only navigate, never submit anything. */
+  onNavigateGuide?: (target: GuideTarget) => void;
 };
 
 type GuideTask = {
@@ -51,9 +54,11 @@ type GuideReferenceSection = {
   items: Array<{ title: string; copy: string }>;
 };
 
-export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
+export function FieldGuide({ canManage, onOpenDestination, onNavigateGuide }: FieldGuideProps) {
   const { text } = useLanguage();
   const [open, setOpen] = useState(false);
+  const [view, setView] = useState<"tours" | "quick">("tours");
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const [activeTask, setActiveTask] = useState<GuideTask["id"]>("today");
 
   useEffect(() => {
@@ -64,7 +69,8 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
       // The guide still works when private browsing blocks localStorage.
     }
     if (seen) return;
-    const timer = window.setTimeout(() => setOpen(true), 700);
+    // The shared dialog manager returns focus to whatever had it, so the Help button must have it.
+    const timer = window.setTimeout(() => { triggerRef.current?.focus(); setOpen(true); }, 700);
     return () => window.clearTimeout(timer);
   }, []);
 
@@ -98,6 +104,11 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
   const openTask = (destination: FieldGuideDestination) => {
     close();
     onOpenDestination(destination);
+  };
+
+  const openGuideTarget = (target: GuideTarget) => {
+    close();
+    onNavigateGuide?.(target);
   };
 
   const tasks: GuideTask[] = [
@@ -441,7 +452,7 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
 
   return (
     <>
-      <button className="field-guide-trigger" type="button" onClick={() => setOpen(true)} aria-label={text("Help: open built-in guide", "Help: open ingebouwde gids")}>
+      <button ref={triggerRef} className="field-guide-trigger" type="button" onClick={() => setOpen(true)} aria-label={text("Help: open built-in guide", "Help: open ingebouwde gids")}>
         <HelpCircle size={18} />
         <span>{text("Help", "Help")}</span>
       </button>
@@ -453,11 +464,21 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
             <header>
               <div>
                 <span>{text("Built-in field guide", "Ingebouwde veldgids")}</span>
-                <h2 id="field-guide-title">{text("What do you want to do?", "Wat wil je nu doen?")}</h2>
+                <h2 id="field-guide-title">{text("What do you want to do?", "Wat wil je nu doen?")}</h2>
               </div>
               <button type="button" onClick={close} aria-label={text("Close guide", "Sluit gids")}><X size={20} /></button>
             </header>
 
+            {onNavigateGuide ? (
+              <div className="walk-views" role="group" aria-label={text("Guide view", "Gidsweergave")}>
+                <button type="button" aria-pressed={view === "tours"} onClick={() => setView("tours")}>{text("Guided tours", "Rondleidingen")}</button>
+                <button type="button" aria-pressed={view === "quick"} onClick={() => setView("quick")}>{text("Quick help and reference", "Snelle hulp en naslag")}</button>
+              </div>
+            ) : null}
+
+            {onNavigateGuide && view === "tours" ? (
+              <VisualWalkthrough audience="supervisor" canManage={canManage} onNavigate={openGuideTarget} onSkip={close} />
+            ) : (<>
             <div className="field-guide-body">
               <nav className="field-guide-task-picker" aria-label={text("Guide topics", "Gidsonderwerpen")}>
                 {tasks.map((task) => {
@@ -525,6 +546,7 @@ export function FieldGuide({ canManage, onOpenDestination }: FieldGuideProps) {
                 })}
               </div>
             </details>
+            </>)}
 
             <footer>
               <span className="field-guide-automation"><ShieldCheck size={17} /> {text("Automatic: weather, local photo safety, synchronization and daily backup.", "Automatisch: weer, lokale fotobeveiliging, synchronisatie en dagelijkse back-up.")}</span>

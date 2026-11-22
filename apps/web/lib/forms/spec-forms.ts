@@ -42,7 +42,7 @@ export type SpecFormKey =
 type Words = { en: string; nl: string };
 
 /** The lists the workbook marks "project-configurable", with the workbook's values as defaults. */
-export type SpecListKey = "shifts" | "units" | "crews" | "storage_locations" | "risk_likelihoods" | "risk_severities" | "notification_authorities";
+export type SpecListKey = "shifts" | "units" | "crews" | "storage_locations" | "risk_likelihoods" | "risk_severities" | "notification_authorities" | "disciplines";
 export type SpecListConfig = { added?: string[]; retired?: string[]; descriptions?: Record<string, string> };
 export type SpecStageConfig = { required_approvals?: number; approver_user_ids?: string[]; due_days?: number; role_en?: string; role_nl?: string };
 export type SpecWorkflowConfig = {
@@ -66,18 +66,26 @@ export type SpecConfiguration = {
   document_review_days?: number;
 };
 
-/** The Unit list of the form sheets (Works Ongoing row 11, Works Completed row 10, Materials Delivery row 12). */
-const formUnits = ["m", "m²", "m³", "kg", "tonne", "pcs", "number", "lot", "hours", "set", "other"];
+/** The starting disciplines of the Project Documents register, before the project adds its own (Word 4.2). */
+export const documentDisciplineDefaults = ["Architectural", "Structural", "Civil", "Mechanical", "HVAC", "Electrical", "Plumbing & Sanitary", "Fire Protection", "External Works"];
 
 export const specListDefaults: Record<SpecListKey, string[]> = {
   shifts: catalogue.shifts,
-  units: formUnits,
+  units: catalogue.sharedUnits,
   crews: [],
   storage_locations: [],
   risk_likelihoods: catalogue.riskLikelihoods,
   risk_severities: catalogue.riskSeverities,
   notification_authorities: [],
+  disciplines: [...catalogue.workDisciplines, ...documentDisciplineDefaults],
 };
+
+/**
+ * Values of a project list that cannot be retired: the workbook's own work disciplines. The Works
+ * Ongoing, Works Completed and Technical Instructions forms hang their activity guides and
+ * categories on exactly these 17, so the project can add disciplines but not remove these.
+ */
+export const specListLocked: Partial<Record<SpecListKey, string[]>> = { disciplines: catalogue.workDisciplines };
 
 export const specListLabels: Record<SpecListKey, Words> = {
   shifts: { en: "Shifts", nl: "Diensten" },
@@ -87,12 +95,14 @@ export const specListLabels: Record<SpecListKey, Words> = {
   risk_likelihoods: { en: "Risk likelihood definitions", nl: "Definities waarschijnlijkheid" },
   risk_severities: { en: "Severity definitions", nl: "Definities ernst" },
   notification_authorities: { en: "Authorities to notify", nl: "Te melden instanties" },
+  disciplines: { en: "Project disciplines", nl: "Projectdisciplines" },
 };
 
 /** The workbook's values plus the project's own, without the retired ones; "Other" stays last. */
 export function projectList(key: SpecListKey, config?: SpecConfiguration | null): SpecOption[] {
   const list = config?.lists?.[key];
-  const retired = new Set(list?.retired ?? []);
+  const locked = new Set(specListLocked[key] ?? []);
+  const retired = new Set((list?.retired ?? []).filter((value) => !locked.has(value)));
   const values = [...specListDefaults[key], ...(list?.added ?? [])].filter((value, index, all) => value.trim() && all.indexOf(value) === index && !retired.has(value));
   const other = values.filter(isOtherOption);
   return [...values.filter((value) => !isOtherOption(value)), ...other].map((value) => ({ value, description: list?.descriptions?.[value] ?? "" }));
@@ -458,7 +468,7 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     { key: "material_specification", label: w("Material description / specification", "Materiaalomschrijving / specificatie"), kind: "text", required: true },
     { key: "ordered_quantity", label: w("Ordered quantity", "Bestelde hoeveelheid"), kind: "number", required: true, min: 0 },
     { key: "delivered_quantity", label: w("Delivered quantity", "Geleverde hoeveelheid"), kind: "number", required: true, min: 0, hint: w("Zero when nothing was delivered", "Nul als niets is geleverd") },
-    { key: "unit", label: w("Unit", "Eenheid"), kind: "select", options: catalogue.deliveryUnits, required: true, otherExplanation: true },
+    { key: "unit", label: w("Unit", "Eenheid"), kind: "select", options: catalogue.sharedUnits, required: true, otherExplanation: true },
     { key: "delivery_status", label: w("Delivery status", "Leveringsstatus"), kind: "dependent", groups: { all: catalogue.deliveryStatuses.map((value) => ({ value, description: catalogue.materialCategories["Delivery Status"]?.find((option) => option.value === value)?.description ?? "" })) }, parent: "__all", required: true },
     { key: "revised_delivery_date", label: w("Revised delivery date", "Nieuwe leverdatum"), kind: "date", visible: when(is("delivery_status", "Delayed", "Partial Delivery")), required: when(is("delivery_status", "Delayed", "Partial Delivery")) },
     { key: "arrival_condition", label: w("Condition on arrival", "Staat bij aankomst"), kind: "select", options: catalogue.arrivalConditions, required: true, otherExplanation: true },

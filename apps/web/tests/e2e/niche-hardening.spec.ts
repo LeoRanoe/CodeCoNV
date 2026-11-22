@@ -15,7 +15,7 @@ async function openSpecCheck(page: Page) {
 async function open(page: Page, nav: string, tab?: string) {
   await page.addInitScript(() => {
     localStorage.setItem("codeco-language-choice", "en");
-    localStorage.setItem("codeco-field-guide-seen-v3", "yes");
+    localStorage.setItem("codeco-field-guide-seen-v3", "yes"); localStorage.setItem("codeco-portal-guide-seen-v1-contractor", "yes"); localStorage.setItem("codeco-portal-guide-seen-v1-client", "yes");
   });
   await page.goto("/supervisie");
   await page.locator(".access-form input[type=email]").fill(email!);
