@@ -1,3 +1,4 @@
+import { isOnSiteWorkforce } from "../forms/workforce.mjs";
 import { downloadBlob } from "@/lib/browser/download";
 /* eslint-disable jsx-a11y/alt-text -- @react-pdf/renderer Image has no HTML alt prop. */
 import {
@@ -190,8 +191,9 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
   const ncrFindings = findings.filter((entry) => value(entry, "finding_type") === "ncr");
   const hseIncidents = hseEvents.filter((entry) => hseIncidentTypes.includes(value(entry, "event_type")));
   const hseObservations = hseEvents.filter((entry) => !hseIncidentTypes.includes(value(entry, "event_type")));
-  const attendanceTotal = snapshot.attendance.reduce((total, entry) => total + Number(entry.headcount ?? 0), 0);
-  const workforce = Object.entries(snapshot.attendance.reduce<Record<string, number>>((groups, entry) => {
+  const onSiteAttendance = snapshot.attendance.filter((entry) => isOnSiteWorkforce(typeof entry.entry_type === "string" ? entry.entry_type : null, entry.spec));
+  const attendanceTotal = onSiteAttendance.reduce((total, entry) => total + Number(entry.headcount ?? 0), 0);
+  const workforce = Object.entries(onSiteAttendance.reduce<Record<string, number>>((groups, entry) => {
     const discipline = value(entry, "discipline", "Onbekend");
     groups[discipline] = (groups[discipline] ?? 0) + Number(entry.headcount ?? 0);
     return groups;

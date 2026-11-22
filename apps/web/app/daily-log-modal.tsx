@@ -11,7 +11,7 @@ import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
 import { SketchPad } from "@/app/sketch-pad";
 import { useLanguage } from "@/lib/i18n";
 import type { DailyCloseoutAnswers, ProjectStartAnswers } from "@/lib/forms/daily-report";
-import { normalizeImageFile } from "@/lib/images/normalize-image";
+import { photoAccept, normalizeImageFile } from "@/lib/images/normalize-image";
 import { closeoutFromToday, type DayLogToday } from "@/lib/forms/closeout-from-today";
 import { clearFormDraft, loadFormDraft, saveFormDraft } from "@/lib/offline/form-drafts";
 
@@ -551,7 +551,7 @@ export function DailyLogForm({
       className: "daily-log-photos",
       content: (
         <>
-          <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple onChange={(event) => { const files = event.target.files; void addPhotos(files).finally(() => { event.target.value = ""; }); }} />
+          <input ref={cameraInputRef} hidden type="file" accept={photoAccept} capture="environment" multiple onChange={(event) => { const files = event.target.files; void addPhotos(files).finally(() => { event.target.value = ""; }); }} />
           <div className="button-row">
             <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={15} /> {text("Add photo", "Foto toevoegen")}</button>
             <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => setSketching(true)}><PenLine size={15} /> {text("Make a sketch", "Schets maken")}</button>

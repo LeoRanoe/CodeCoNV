@@ -3,7 +3,7 @@
  * own. A screen is what a user would call a page: the project, the destination in the
  * bar, the open module and any full-screen dialog.
  *
- * @typedef {{ project: string | null, nav: string, tab: string, modal: string | null, menu: boolean }} AppScreen
+ * @typedef {{ project: string | null, nav: string, tab: string, modal: string | null, menu: boolean, record?: string | null }} AppScreen
  */
 
 /** @type {AppScreen} */
@@ -13,6 +13,7 @@ export function sameScreen(left, right) {
   return left.project === right.project
     && left.nav === right.nav
     && left.tab === right.tab
+    && (left.record || null) === (right.record || null)
     && left.modal === right.modal
     && left.menu === right.menu;
 }
@@ -20,7 +21,7 @@ export function sameScreen(left, right) {
 /** Only an overlay is closing; everything underneath stays where it was. */
 export function closesOverlay(from, to) {
   const overlayGone = (Boolean(from.modal) && !to.modal) || (from.menu && !to.menu);
-  return overlayGone && from.project === to.project && from.nav === to.nav && from.tab === to.tab;
+  return overlayGone && from.project === to.project && from.nav === to.nav && from.tab === to.tab && (from.record || null) === (to.record || null);
 }
 
 export function screenToSearch(screen) {
@@ -28,6 +29,7 @@ export function screenToSearch(screen) {
   if (screen.project) query.set("project", screen.project);
   if (screen.nav !== emptyScreen.nav) query.set("nav", screen.nav);
   if (screen.tab !== emptyScreen.tab) query.set("tab", screen.tab);
+  if (screen.project && screen.record) query.set("record", screen.record);
   if (screen.modal) query.set("modal", screen.modal);
   const search = query.toString();
   return search ? `?${search}` : "";
@@ -44,6 +46,7 @@ export function screenFromSearch(search) {
     nav,
     // A link to Issues or Project Docs without a module opens that module, not the workspace grid.
     tab: query.get("tab") ?? destinationTabs[nav] ?? emptyScreen.tab,
+    ...(query.get("record") ? { record: query.get("record") } : {}),
     modal: query.get("modal"),
     // A drawer is never restored from a link; it is only ever opened by hand.
     menu: false,

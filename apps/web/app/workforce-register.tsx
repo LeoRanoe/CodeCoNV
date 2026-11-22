@@ -18,6 +18,7 @@ import {
   workforceByDiscipline,
   workforceByParty,
   workforceDeviations,
+  workforceHeadcount,
 } from "@/lib/forms/workforce.mjs";
 
 /**
@@ -56,10 +57,6 @@ export type VisitorRow = {
   shiftStart: string;
   shiftEnd: string;
 };
-
-export function workforceTotal(rows: WorkforceRow[]) {
-  return rows.reduce((sum, row) => sum + row.count, 0);
-}
 
 /** Adds a trade, or raises the line that already carries it, so the same trade never doubles. */
 export function addWorkforceRow(
@@ -304,7 +301,7 @@ export function WorkforceForm({
   draftKey: string;
   close: () => void;
   /** Returns the crew of the last workday that had one, or null when there is none yet. */
-  copyPreviousWorkday: (buildingId: string) => Promise<{ reportDate: string; rows: WorkforceRow[] } | null>;
+  copyPreviousWorkday: (buildingId?: string) => Promise<{ reportDate: string; rows: WorkforceRow[] } | null>;
   save: (
     perBuilding: Array<{ buildingId: string; rows: WorkforceRow[]; visitors: VisitorRow[] }>,
     note: string,
@@ -337,6 +334,7 @@ export function WorkforceForm({
   const [copyNote, setCopyNote] = useState("");
   /** undefined while the last workday is still being looked up, null when there is none. */
   const [previousDay, setPreviousDay] = useState<{ reportDate: string; rows: WorkforceRow[] } | null | undefined>(undefined);
+  const [previousTotal, setPreviousTotal] = useState<number | null>(null);
   const [note, setNote] = useState(initialNote);
   const [visitorDraft, setVisitorDraft] = useState(() => ({ partyId: parties[0]?.id ?? "", visitorName: "" }));
 
@@ -384,17 +382,16 @@ export function WorkforceForm({
 
   const buildingTotals = buildings.map((building) => ({
     building,
-    count: workforceTotal(rowsByBuilding[building.id] ?? []),
+    count: workforceHeadcount(rowsByBuilding[building.id] ?? rowsForBuilding(building.id)),
   }));
   const filledBuildings = buildings.filter((building) => (rowsByBuilding[building.id] ?? []).length > 0
     || (visitorsByBuilding[building.id] ?? []).length > 0);
   // The deviation is judged on the day as a whole: a crew moved from one building to the
   // other is not a shortage, and comparing per building would call it one twice.
   const total = buildingTotals.reduce((sum, entry) => sum + entry.count, 0);
-  const allRows = buildings.flatMap((building) => rowsByBuilding[building.id] ?? []);
+  const allRows = buildings.flatMap((building) => rowsByBuilding[building.id] ?? rowsForBuilding(building.id));
   const byParty = workforceByParty(allRows);
   const byDiscipline = workforceByDiscipline(allRows);
-  const previousTotal = previousDay ? workforceTotal(previousDay.rows) : null;
   const deviations = workforceDeviations({ total, expected: expectedWorkers, previous: previousTotal });
 
   // Every other form in the app numbers its sections, and a number that jumps from 1 to 3
@@ -445,6 +442,16 @@ export function WorkforceForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [buildingId]);
 
+  useEffect(() => {
+    let active = true;
+    void copyPreviousWorkday()
+      .then((previous) => { if (active) setPreviousTotal(previous ? workforceHeadcount(previous.rows) : null); })
+      .catch(() => { if (active) setPreviousTotal(null); });
+    return () => { active = false; };
+    // The project stays fixed while this form is mounted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]);
+
   const copyPrevious = () => {
     setCopyNote("");
     if (!previousDay) {
@@ -461,7 +468,7 @@ export function WorkforceForm({
       && existing.discipline === row.discipline
       && (existing.crew ?? "") === (row.crew ?? ""))
       ? current
-      : [...current, row], rows);
+      : [...current, { ...row, spec: undefined }], rows);
     setRows(merged);
     setCopyNote(text(`Crew of ${previousDay.reportDate} taken over.`, `Bezetting van ${previousDay.reportDate} overgenomen.`));
   };
@@ -539,7 +546,7 @@ export function WorkforceForm({
             icon={<Users size={17} />}
             step={1}
             title={text("Workforce by trade", "Bezetting per discipline")}
-            count={workforceTotal(rows)}
+            count={workforceHeadcount(rows)}
             action={(
               <div className="workforce-toolbar">
                 <button className="ui-button ui-button--quiet ui-button--md" type="button" disabled={previousDay === undefined} onClick={copyPrevious}>

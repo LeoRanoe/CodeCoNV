@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { expect, type Page, test } from "@playwright/test";
 import { createHash } from "node:crypto";
+import { notificationPath } from "../../lib/notifications/record-link.mjs";
 
 /**
  * Word 14 / WD-192: "Inspection scheduled or updated" reaches the person who must carry it out.
@@ -10,7 +11,7 @@ import { createHash } from "node:crypto";
  *  - moving it to another time notifies once more; saving without a change sends nothing;
  *  - the person making the change is never notified of it (assigning it to themselves, or the
  *    executor moving their own inspection);
- *  - the colleague sees it in the notification list and the list opens the inspections.
+ *  - the colleague opens the exact inspection from the list or a delivery link after sign-in.
  * The database trigger has its own test (supabase/tests/041_inspection_notifications.pgtap.sql).
  */
 const planner = { email: process.env.CODECO_E2E_EMAIL, password: process.env.CODECO_E2E_PASSWORD };
@@ -167,7 +168,7 @@ test("moving it notifies the executor again; an unchanged save and the actor's o
   expect(await countFor(executor)).toHaveLength(4);
 });
 
-test("the executor finds it in the notification list, which opens the inspections", async ({ page }, testInfo) => {
+test("the executor opens the exact inspection from the notification list", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-office", "desktop route");
   test.setTimeout(180_000);
   await signIn(page, executor);
@@ -178,10 +179,120 @@ test("the executor finds it in the notification list, which opens the inspection
   await expect(rows.first()).toContainText(/Inspection (planned|updated): /);
   await page.screenshot({ path: testInfo.outputPath("executor-notifications.png"), fullPage: true });
   await rows.first().click();
-  await expect(page.getByRole("button", { name: "Start recommended checklist" }).or(page.locator("[data-workspace-destination=inspections]")).first()).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Record details" })).toContainText(inspectionNumber);
   // Nothing was sent anywhere: the e-mail and push columns stay untouched.
   const sent = await (await api(executor)).from("notifications").select("email_sent_at,push_sent_at").eq("source_id", inspectionId);
   for (const row of sent.data ?? []) { expect(row.email_sent_at).toBeNull(); }
+});
+
+test("a delivery link survives sign-in and opens only the recipient's inspection", async ({ page, browser }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-office", "desktop route");
+  test.setTimeout(180_000);
+  const notifications = await countFor(executor);
+  const target = notificationPath(projectId, notifications[0].id);
+  const freshContext = await browser.newContext();
+  const wrongAccount = await freshContext.newPage();
+  try {
+    for (const [tab, account] of [[page, executor], [wrongAccount, planner]] as const) {
+      await tab.goto(target);
+      await tab.evaluate(() => {
+        localStorage.setItem("codeco-field-guide-seen-v3", "yes");
+        localStorage.setItem("codeco-language-choice", "en");
+      });
+      await tab.reload();
+      const form = tab.locator(".access-form");
+      await form.locator("input[type='email']").fill(account.email!);
+      await form.locator("input[type='password']").fill(account.password!);
+      await form.locator("button[type='submit']").click();
+    }
+    await Promise.all([
+      expect(page.getByRole("dialog", { name: "Record details" })).toContainText(inspectionNumber, { timeout: 60_000 }),
+      expect(wrongAccount.getByText("This notification is unavailable to this account.")).toBeVisible({ timeout: 60_000 }),
+    ]);
+    await expect(page).toHaveURL(new RegExp(`[?&]record=${inspectionId}`));
+    await expect(wrongAccount.getByRole("dialog", { name: "Record details" })).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByRole("dialog", { name: "Record details" })).toContainText(inspectionNumber, { timeout: 60_000 });
+  } finally {
+    await freshContext.close();
+  }
+});
+
+test("with two inspections, each notification opens its own record: in the app, from a delivery link after sign-in, after a reload, and never for another account", async ({ page, browser }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-office", "desktop route");
+  test.setTimeout(300_000);
+  const plannerApi = await api(planner);
+  const template = (await plannerApi.from("inspections").select("building_id,template_id,location_node_id").eq("id", inspectionId).single()).data!;
+  const stamp = Date.now().toString(36);
+  const planned = await plannerApi.rpc("plan_project_inspection", {
+    p_project_id: projectId, p_building_id: template.building_id, p_template_id: template.template_id,
+    p_title: `Second inspection ${stamp}`, p_planned_at: "2027-05-01T09:00:00Z", p_executed_by: executorId,
+    p_idempotency_key: `second-${stamp}`, p_location_node_id: template.location_node_id,
+  });
+  expect(planned.error).toBeNull();
+  const second = { id: planned.data.id as string, number: planned.data.inspection_number as string };
+  const first = { id: inspectionId, number: inspectionNumber };
+  expect(second.number).not.toBe(first.number);
+  const executorApi = await api(executor);
+  const received = (await executorApi.from("notifications").select("id,source_id").eq("notification_type", "inspection_scheduled").in("source_id", [first.id, second.id])).data ?? [];
+  const notificationFor = (id: string) => received.find((row) => row.source_id === id)!.id as string;
+  expect(received.filter((row) => row.source_id === second.id)).toHaveLength(1);
+
+  const detail = (tab: Page) => tab.getByRole("dialog", { name: "Record details" });
+  const opensOnly = async (tab: Page, mine: { id: string; number: string }, other: { number: string }) => {
+    await expect(detail(tab)).toContainText(mine.number, { timeout: 60_000 });
+    await expect(detail(tab)).not.toContainText(other.number);
+    await expect(tab).toHaveURL(new RegExp(`[?&]record=${mine.id}`));
+  };
+
+  // In the app: the list, then the row of each inspection.
+  await signIn(page, executor);
+  for (const [mine, other] of [[second, first], [first, second]] as const) {
+    await page.getByRole("button", { name: /^Notifications/ }).click();
+    await page.getByRole("dialog").locator(".notification-row", { hasText: mine.number }).first().click();
+    await opensOnly(page, mine, other);
+    await page.keyboard.press("Escape");
+    await expect(detail(page)).toHaveCount(0);
+  }
+  // Each delivery link, in the signed-in session, and again after a reload.
+  for (const [mine, other] of [[second, first], [first, second]] as const) {
+    await page.goto(notificationPath(projectId, notificationFor(mine.id)));
+    await opensOnly(page, mine, other);
+    await page.reload();
+    await opensOnly(page, mine, other);
+  }
+  // From a signed-out browser: sign in, and the link still opens that inspection.
+  const signedOut = await browser.newContext();
+  const fromEmail = await signedOut.newPage();
+  const stranger = await browser.newContext();
+  const strangers = [await stranger.newPage(), await stranger.newPage()];
+  try {
+    await fromEmail.goto(notificationPath(projectId, notificationFor(second.id)));
+    await fromEmail.evaluate(() => { localStorage.setItem("codeco-field-guide-seen-v3", "yes"); localStorage.setItem("codeco-language-choice", "en"); });
+    await fromEmail.reload();
+    await fromEmail.locator(".access-form input[type='email']").fill(executor.email);
+    await fromEmail.locator(".access-form input[type='password']").fill(executor.password);
+    await fromEmail.locator(".access-form button[type='submit']").click();
+    await opensOnly(fromEmail, second, first);
+    // Another member of the project and the contractor cannot use the recipient's link.
+    const others = [planner, { email: process.env.CODECO_E2E_CONTRACTOR_EMAIL, password: process.env.CODECO_E2E_CONTRACTOR_PASSWORD }];
+    for (const [index, account] of others.entries()) {
+      const tab = index === 0 ? strangers[0] : (await browser.newContext()).newPage();
+      const open = await tab;
+      await open.goto(notificationPath(projectId, notificationFor(second.id)));
+      await open.evaluate(() => { localStorage.setItem("codeco-field-guide-seen-v3", "yes"); localStorage.setItem("codeco-portal-guide-seen-v1-contractor", "yes"); localStorage.setItem("codeco-language-choice", "en"); });
+      await open.reload();
+      await open.locator(".access-form input[type='email']").fill(account.email!);
+      await open.locator(".access-form input[type='password']").fill(account.password!);
+      await open.locator(".access-form button[type='submit']").click();
+      await expect(open.getByText("This notification is unavailable to this account."), index === 0 ? "another project member" : "the contractor").toBeVisible({ timeout: 60_000 });
+      await expect(open.getByRole("dialog", { name: "Record details" })).toHaveCount(0);
+      if (index === 1) await open.context().close();
+    }
+  } finally {
+    await signedOut.close();
+    await stranger.close();
+  }
 });
 
 test("a role that cannot manage inspections cannot plan one", async ({}, testInfo) => {

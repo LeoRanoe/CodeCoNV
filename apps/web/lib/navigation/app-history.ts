@@ -24,6 +24,7 @@ export type AppScreen = {
   modal: string | null;
   /** The mobile "more" drawer. */
   menu: boolean;
+  record?: string | null;
 };
 
 export { emptyScreen, sameScreen, closesOverlay, screenToSearch, screenFromSearch, historyActionFor } from "@/lib/navigation/screen-url.mjs";
@@ -39,7 +40,7 @@ type HistoryEntry = { codecoScreen?: AppScreen; codecoBelow?: AppScreen | null }
  * - closing a dialog consumes the entry it added, so back does not reopen it;
  * - the back button hands the stored screen back to the app instead of leaving it.
  */
-export function useScreenHistory(screen: AppScreen, applyScreen: (screen: AppScreen) => void) {
+export function useScreenHistory(screen: AppScreen, applyScreen: (screen: AppScreen) => void, waitingForLink = false) {
   const currentRef = useRef<AppScreen | null>(null);
   // Set while the app is following the back button, so restoring never pushes again.
   const restoringRef = useRef(false);
@@ -49,7 +50,7 @@ export function useScreenHistory(screen: AppScreen, applyScreen: (screen: AppScr
   }, [applyScreen]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || waitingForLink) return;
     const previous = currentRef.current;
     const action = historyActionFor(previous, screen, restoringRef.current);
     // The flag only covers the one render that follows the back button; leaving it on
@@ -79,7 +80,7 @@ export function useScreenHistory(screen: AppScreen, applyScreen: (screen: AppScr
       return;
     }
     window.history.pushState({ codecoScreen: screen, codecoBelow: previous } satisfies HistoryEntry, "", url);
-  }, [screen]);
+  }, [screen, waitingForLink]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

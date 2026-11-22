@@ -6,6 +6,7 @@
  * a default, and nothing is counted from a standard value. Tables use the same Dutch words as
  * the screens (lib/status-labels.ts), never a stored code.
  */
+import { isOnSiteWorkforce } from "../forms/workforce.mjs";
 import { labelFor, partyTypeLabels, recordStatusLabels, recordTypeLabels, severityLabels } from "../status-labels.ts";
 import { reportDay, reportDelayCause, reportInspection, reportVariation, reportWeather, reportWind } from "./report-vocabulary.ts";
 
@@ -133,7 +134,7 @@ export function buildDailyReportModel(records: ReportRecords): DailyReportModel 
   const reportDate = text(report.report_date);
 
   // ---- attendance -----------------------------------------------------------------------
-  const workers = attendance.filter((entry) => entry.entry_type !== "visitor");
+  const workers = attendance.filter((entry) => isOnSiteWorkforce(text(entry.entry_type) || null, entry.spec));
   const visitors = attendance.filter((entry) => entry.entry_type === "visitor");
   const workerTotal = workers.reduce((total, entry) => total + (Number(entry.headcount) || 0), 0);
   const attendanceByGroup = new Map<string, { organisation: string; discipline: string; building: string; headcount: number }>();

@@ -1,4 +1,6 @@
-import { imageContentType, isHeifImage } from "@/lib/images/content-type.mjs";
+import { heifContentType, imageContentType } from "@/lib/images/content-type.mjs";
+
+export const photoAccept = "image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,image/avif,.jpg,.jpeg,.png,.webp,.gif,.heic,.heif,.avif";
 
 /**
  * The file a camera handed over, with the type its bytes actually have. Some Android cameras
@@ -7,15 +9,18 @@ import { imageContentType, isHeifImage } from "@/lib/images/content-type.mjs";
  * turned into a JPEG when this browser can open it. Returns null for anything else.
  */
 export async function normalizeImageFile(file: File): Promise<File | null> {
-  const head = new Uint8Array(await file.slice(0, 32).arrayBuffer());
+  const head = new Uint8Array(await file.slice(0, 256).arrayBuffer());
   const detected = imageContentType(head);
-  if (detected) {
+  if (detected && detected !== "image/gif") {
     if (detected === file.type) return file;
     return new File([file], file.name, { type: detected, lastModified: file.lastModified });
   }
-  if (isHeifImage(head)) {
-    const converted = await convertToJpeg(file);
-    if (converted) untouchedSources.set(converted, heifTyped(file));
+  const originalType = detected || heifContentType(head);
+  if (originalType) {
+    const type = originalType === "image/heic" && (file.type === "image/heif" || /\.heif$/i.test(file.name)) ? "image/heif" : originalType;
+    const source = file.type === type ? file : new File([file], file.name, { type, lastModified: file.lastModified });
+    const converted = await convertToJpeg(source) ?? (type === "image/heic" || type === "image/heif" ? await convertHeicToJpeg(source) : null);
+    if (converted) untouchedSources.set(converted, source);
     return converted;
   }
   return null;
@@ -23,7 +28,7 @@ export async function normalizeImageFile(file: File): Promise<File | null> {
 
 /**
  * Decision #3 (Word 5.2 "Preserve original evidence files", Photos workbook row 8 "retain original
- * file"): a HEIC/HEIF/AVIF photo is shown and marked up as a JPEG, and its untouched bytes are stored
+ * file"): a GIF/HEIC/HEIF/AVIF photo is shown and marked up as a JPEG, and its untouched bytes are stored
  * next to it as the original. Keyed by the JPEG this module made, so nothing else can claim it.
  */
 const untouchedSources = new WeakMap<File, File>();
@@ -31,10 +36,11 @@ export function untouchedSourceOf(file: File): File | undefined {
   return untouchedSources.get(file);
 }
 
-function heifTyped(file: File) {
-  if (["image/heic", "image/heif", "image/avif"].includes(file.type)) return file;
-  const type = /\.avif$/i.test(file.name) ? "image/avif" : /\.heif$/i.test(file.name) ? "image/heif" : "image/heic";
-  return new File([file], file.name, { type, lastModified: file.lastModified });
+async function convertHeicToJpeg(file: File) {
+  if (typeof document === "undefined") return null;
+  const { heicTo } = await import("heic-to/csp");
+  const jpeg = await heicTo({ blob: file, type: "image/jpeg", quality: 0.9 });
+  return new File([jpeg], `${(file.name || "photo").replace(/\.[^.]+$/, "")}.jpg`, { type: "image/jpeg", lastModified: file.lastModified });
 }
 
 export type PhotoRefusal = { name: string; reason: "heic" | "unsupported" | "too-large" };
@@ -48,10 +54,13 @@ export async function prepareCameraPhotos(files: FileList | File[] | null | unde
   const photos: File[] = [];
   const refused: PhotoRefusal[] = [];
   for (const file of Array.from(files ?? [])) {
-    const head = new Uint8Array(await file.slice(0, 32).arrayBuffer().catch(() => new ArrayBuffer(0)));
+    if (file.size > maxBytes) {
+      refused.push({ name: file.name || "photo", reason: "too-large" });
+      continue;
+    }
     const normalized = await normalizeImageFile(file).catch(() => null);
     if (!normalized) {
-      refused.push({ name: file.name || "photo", reason: isHeifImage(head) || /\.(heic|heif|avif)$/i.test(file.name) ? "heic" : "unsupported" });
+      refused.push({ name: file.name || "photo", reason: /\.(heic|heif|avif)$/i.test(file.name) || /^image\/(heic|heif|avif)$/.test(file.type) ? "heic" : "unsupported" });
       continue;
     }
     if (normalized.size > maxBytes) {
@@ -71,12 +80,12 @@ export function photoRefusalMessage(
 ) {
   return refused.map(({ name, reason }) => reason === "heic"
     ? text(
-      `${name}: HEIC photo this browser cannot open. Not added. Choose a JPEG, or set the camera to "Most compatible".`,
-      `${name}: HEIC-foto die deze browser niet kan openen. Niet toegevoegd. Kies een JPEG, of zet de camera op "Meest compatibel".`,
+      `${name}: this HEIC, HEIF or AVIF photo could not be decoded. Try reopening the original or choosing a JPEG.`,
+      `${name}: deze HEIC-, HEIF- of AVIF-foto kon niet worden geopend. Probeer het origineel opnieuw of kies een JPEG.`,
     )
     : reason === "too-large"
       ? text(`${name}: larger than ${maxMegabytes ?? ""} MB. Not added.`, `${name}: groter dan ${maxMegabytes ?? ""} MB. Niet toegevoegd.`)
-      : text(`${name}: not a JPEG, PNG or WebP photo. Not added.`, `${name}: geen JPEG-, PNG- of WebP-foto. Niet toegevoegd.`)).join(" ");
+      : text(`${name}: choose a JPEG, PNG, WebP, GIF, HEIC, HEIF or AVIF photo.`, `${name}: kies een JPEG-, PNG-, WebP-, GIF-, HEIC-, HEIF- of AVIF-foto.`)).join(" ");
 }
 
 async function decode(file: File): Promise<{ source: CanvasImageSource; width: number; height: number; release: () => void } | null> {
