@@ -123,7 +123,8 @@ test("moving it notifies the executor again; an unchanged save and the actor's o
   await signIn(page, planner);
   await openInspections(page);
   const planned = page.locator(`[data-planned-inspection='${inspectionNumber}']`);
-  await expect(planned).toBeVisible();
+  // A cold CI runner can take longer than the default 15 s to load the project's inspections after sign-in.
+  await expect(planned).toBeVisible({ timeout: 60_000 });
   // The control is disabled while nothing has changed: an unchanged save cannot be made from the screen.
   await expect(planned.getByRole("button", { name: `Reschedule ${inspectionNumber}` })).toBeDisabled();
   await planned.getByLabel(`Planned for ${inspectionNumber}`).fill("2027-03-02T10:30");
@@ -178,7 +179,8 @@ test("the executor finds it in the notification list, which opens the inspection
   for (const row of sent.data ?? []) { expect(row.email_sent_at).toBeNull(); }
 });
 
-test("a role that cannot manage inspections cannot plan one", async () => {
+test("a role that cannot manage inspections cannot plan one", async ({}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-office", "desktop route");
   const contractorApi = await api({ email: process.env.CODECO_E2E_CONTRACTOR_EMAIL, password: process.env.CODECO_E2E_CONTRACTOR_PASSWORD });
   const before = await countFor(executor);
   const refused = await contractorApi.rpc("reschedule_project_inspection", { p_inspection_id: inspectionId, p_planned_at: "2027-04-01T09:00:00Z", p_executed_by: executorId });
