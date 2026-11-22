@@ -6,7 +6,7 @@ import { specConditionHolds, specForms, specMissing } from "../lib/forms/spec-fo
 
 test("F03: the database's form rules are the rules of lib/forms/spec-forms.ts", async () => {
   const sql = await readFile(new URL("../../../supabase/migrations/202611240006_align_materials_delivery_workbook.sql", import.meta.url), "utf8");
-  const stored = JSON.parse(sql.match(/select '(\{.*?\})'::jsonb;\n\$rules\$/s)[1].replace(/''/g, "'"));
+  const stored = JSON.parse(sql.match(/select '(\{.*?\})'::jsonb;\r?\n\$rules\$/s)[1].replace(/''/g, "'"));
   assert.deepEqual(stored, specServerRules());
 });
 

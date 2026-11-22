@@ -1,5 +1,6 @@
 "use client";
 
+import { untouchedSourceOf } from "@/lib/images/normalize-image";
 import { Camera, Check, ChevronLeft, ChevronRight, MapPin, RotateCcw, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
@@ -51,7 +52,8 @@ export function photoSpecFromDetails(details: PhotoEvidenceDetails): Record<stri
   const spec: Record<string, string> = {};
   if (details.purpose) spec.photo_purpose = details.purpose;
   if (details.purpose && /^other\b/i.test(details.purpose) && details.purposeOther?.trim()) spec.photo_purpose_other = details.purposeOther.trim();
-  if (details.discipline && ["Progress Documentation", "Technical / Quality Evidence"].includes(details.purpose ?? "")) spec.discipline = details.discipline;
+  // D05 decision: one optional 17-discipline field for any purpose (workbook Photos F6, F7, H6).
+  if (details.discipline && details.purpose) spec.discipline = details.discipline;
   if (details.locationDetail?.trim()) spec.location_detail = details.locationDetail.trim();
   return spec;
 }
@@ -70,6 +72,8 @@ export type PhotoEvidence = {
   file: File;
   /** The untouched original. §4.16: the original photo is always kept. */
   original: File;
+  /** The untouched HEIC/HEIF/AVIF bytes when `original` is the JPEG made from them (decision #3). */
+  untouched?: File;
   details: PhotoEvidenceDetails;
   markerCount: number;
 };
@@ -103,6 +107,7 @@ export function toPhotoEvidence(file: File, defaults: Partial<PhotoEvidenceDetai
     id: newId(),
     file,
     original: file,
+    untouched: untouchedSourceOf(file),
     markerCount: 0,
     details: {
       title: "",
@@ -521,12 +526,12 @@ export function PhotoDetailSheet({
           <div className={workbookPhoto ? "" : "form-grid-2"}>
             <label className="form-field">
               <span>{text("Photo purpose", "Doel van de foto")}</span>
-              <select required={workbookPhoto} value={photo.details.purpose ?? ""} onChange={(event) => patch({ purpose: event.target.value, discipline: undefined, purposeOther: undefined })}>
+              <select required={workbookPhoto} value={photo.details.purpose ?? ""} onChange={(event) => patch({ purpose: event.target.value, purposeOther: undefined })}>
                 <option value="">{text("Choose…", "Kies…")}</option>
                 {photoPurposes.map((purpose) => <option key={purpose} value={purpose}>{specLabel(purpose, language)}</option>)}
               </select>
             </label>
-            {["Progress Documentation", "Technical / Quality Evidence"].includes(photo.details.purpose ?? "") ? (
+            {photo.details.purpose ? (
               <label className="form-field">
                 <span>{text("Photo category / work discipline", "Fotocategorie / werkdiscipline")}</span>
                 <select value={photo.details.discipline ?? ""} onChange={(event) => patch({ discipline: event.target.value })}>

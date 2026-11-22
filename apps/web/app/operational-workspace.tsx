@@ -2674,7 +2674,7 @@ function ProjectOperations({
     setError: Dispatch<SetStateAction<string>>,
   ) => {
     if (!files) return;
-    const maximumMegabytes = data.settings?.max_file_size_mb ?? 25;
+    const maximumMegabytes = data.settings?.max_file_size_mb ?? 100;
     // Read now: the input is emptied for the next photo as soon as this returns.
     const candidates = Array.from(files);
     // Judged by the bytes, like every other camera button: an Android camera that labels a
@@ -4552,7 +4552,7 @@ function ProjectOperations({
                         value={registerNamedPhotos.delay_status ?? null}
                         onChange={(photo) => setNamedPhoto("delay_status", photo)}
                         markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId }}
-                        maxSizeMb={data.settings?.max_file_size_mb ?? 25}
+                        maxSizeMb={data.settings?.max_file_size_mb ?? 100}
                         defaults={{ category: "progress" }}
                       />
                     </div>
@@ -4601,7 +4601,7 @@ function ProjectOperations({
                         value={registerNamedPhotos.delay_completion ?? null}
                         onChange={(photo) => setNamedPhoto("delay_completion", photo)}
                         markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId }}
-                        maxSizeMb={data.settings?.max_file_size_mb ?? 25}
+                        maxSizeMb={data.settings?.max_file_size_mb ?? 100}
                         defaults={{ category: "progress" }}
                       />
                     </div>
@@ -4656,7 +4656,7 @@ function ProjectOperations({
                         value={registerNamedPhotos.change_scope ?? null}
                         onChange={(photo) => setNamedPhoto("change_scope", photo)}
                         markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId }}
-                        maxSizeMb={data.settings?.max_file_size_mb ?? 25}
+                        maxSizeMb={data.settings?.max_file_size_mb ?? 100}
                         defaults={{ category: "overview" }}
                       />
                     </div>
@@ -4690,7 +4690,7 @@ function ProjectOperations({
                         value={registerNamedPhotos.agreement_evidence ?? null}
                         onChange={(photo) => setNamedPhoto("agreement_evidence", photo)}
                         markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId }}
-                        maxSizeMb={data.settings?.max_file_size_mb ?? 25}
+                        maxSizeMb={data.settings?.max_file_size_mb ?? 100}
                         defaults={{ category: "overview" }}
                       />
                     </div>
@@ -4740,7 +4740,7 @@ function ProjectOperations({
                         value={registerNamedPhotos.agreement_completion ?? null}
                         onChange={(photo) => setNamedPhoto("agreement_completion", photo)}
                         markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId }}
-                        maxSizeMb={data.settings?.max_file_size_mb ?? 25}
+                        maxSizeMb={data.settings?.max_file_size_mb ?? 100}
                         defaults={{ category: "repair" }}
                       />
                     </div>
@@ -4783,7 +4783,7 @@ function ProjectOperations({
                       value={registerNamedPhotos.lesson_issue ?? null}
                       onChange={(photo) => setNamedPhoto("lesson_issue", photo)}
                       markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId }}
-                      maxSizeMb={data.settings?.max_file_size_mb ?? 25}
+                      maxSizeMb={data.settings?.max_file_size_mb ?? 100}
                       defaults={{ category: "deficiency" }}
                     />
                     <NamedPhotoSlot
@@ -4792,7 +4792,7 @@ function ProjectOperations({
                       value={registerNamedPhotos.lesson_result ?? null}
                       onChange={(photo) => setNamedPhoto("lesson_result", photo)}
                       markupContext={{ ...markupOptions, defaultBuildingId: registerBuildingId }}
-                      maxSizeMb={data.settings?.max_file_size_mb ?? 25}
+                      maxSizeMb={data.settings?.max_file_size_mb ?? 100}
                       defaults={{ category: "repair" }}
                     />
                   </div>
@@ -6328,6 +6328,7 @@ function ReportOperations({ data, reportId, reportNumber, reportStatus, currentU
             disabled={busy || !activeSections.length || !period.start || !period.end || period.end < period.start}
             onDownloadPdf={() => run(async () => { const snapshot = filterPeriodSnapshot(await buildPeriodReportSnapshot(client, projectId, period.start, period.end), periodFilter); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded.`, `${periodLabel} voor ${projectName} gedownload.`))}
             onDownloadWord={() => run(async () => { const snapshot = filterPeriodSnapshot(await buildPeriodReportSnapshot(client, projectId, period.start, period.end), periodFilter); const { downloadPeriodReportDocx } = await import("@/lib/reports/period-report-docx"); await downloadPeriodReportDocx(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded as Word.`, `${periodLabel} voor ${projectName} als Word gedownload.`))}
+            onDownloadExcel={() => run(async () => { const snapshot = filterPeriodSnapshot(await buildPeriodReportSnapshot(client, projectId, period.start, period.end), periodFilter); const { periodReportWorkbook } = await import("@/lib/reports/period-report-xlsx.mjs"); const title = `${periodLabel} · ${selectedReport.title}`; const blob = await periodReportWorkbook(snapshot, { title, language, filters: Object.entries(periodFilter ?? {}).filter(([, chosen]) => Array.isArray(chosen) ? chosen.length : Boolean(chosen)).map(([key, chosen]) => `${key}: ${Array.isArray(chosen) ? chosen.join(', ') : String(chosen)}`).join('; ') }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `${title.replace(/[^\p{L}\p{N} ._-]+/gu, '-')} ${period.start} ${period.end}.xlsx`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }, text("Excel workbook downloaded.", "Excel-werkmap gedownload."))}
           />
           <PublishToClient
             client={client}
@@ -6400,7 +6401,7 @@ function AdminOperations({ data, client, organizationId, projectId, projectName,
   const [structureBuildingId, setStructureBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [template, setTemplate] = useState({ module: "inspection", code: "", name: "", prompts: "" });
   const [settings, setSettings] = useState(() => ({
-    maxFileSizeMb: data.settings?.max_file_size_mb ?? 25,
+    maxFileSizeMb: data.settings?.max_file_size_mb ?? 100,
     leadHours: data.settings?.notification_lead_hours ?? 24,
     retentionDays: data.settings?.retention_days?.toString() ?? "",
     reportPrefix: data.settings?.report_prefix ?? "DR",

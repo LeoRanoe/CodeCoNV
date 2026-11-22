@@ -515,7 +515,7 @@ export function MediaLibraryWorkspace({
           locationNodeId: data.locationNodes.some((node) => node.id === photo.details.locationNodeId && (!node.building_id || node.building_id === libraryBuildingId)) ? photo.details.locationNodeId : null,
           capturedAt: photo.details.capturedAt,
           spec: { ...photoSpecFromDetails(photo.details), ...(photo.details.capturedAt && photo.original.lastModified ? { original_capture_at: new Date(photo.original.lastModified).toISOString() } : {}) },
-          sourcePhoto: photo.file !== photo.original ? photo.original : undefined,
+          sourcePhoto: photo.untouched ?? (photo.file !== photo.original ? photo.original : undefined),
         };
       },
       "photo",
@@ -856,7 +856,7 @@ export function MediaLibraryWorkspace({
                   onChange={(event) => {
                     const purpose = event.target.value;
                     setPendingCapture((photos) => photos.map((photo) => photo.details.purpose === purpose ? photo : {
-                      ...photo, details: { ...photo.details, purpose, discipline: undefined, purposeOther: undefined },
+                      ...photo, details: { ...photo.details, purpose, purposeOther: undefined },
                     }));
                   }}>
                   <option value="">{text("Choose for all photos…", "Kies voor alle foto's…")}</option>

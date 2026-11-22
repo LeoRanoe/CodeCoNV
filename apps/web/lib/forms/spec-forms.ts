@@ -566,9 +566,10 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
   ],
   photo: [
     { key: "photo_purpose", label: w("Photo purpose", "Doel van de foto"), kind: "select", options: catalogue.photoPurposes, required: true, otherExplanation: true },
-    // Photo category (workbook row 4): the 17 disciplines, after the purpose, when the photo
-    // documents construction work.
-    { ...discipline("discipline", false, w("Photo category / work discipline", "Fotocategorie / werkdiscipline")), visible: when(is("photo_purpose", "Progress Documentation", "Technical / Quality Evidence")) },
+    // D05 decision (21-11-2026): workbook rows 4 and 5 are one field. F6, F7 and H6 all name the 17
+    // Work discipline values (E7 repeats the purposes by mistake); F6 and D7 make it optional and G6
+    // shows it after the purpose. No purpose-to-category mapping exists, so the purpose does not filter it.
+    { ...discipline("discipline", false, w("Photo category / work discipline", "Fotocategorie / werkdiscipline")), visible: when(filled("photo_purpose")) },
     { key: "building_area", label: w("Work location", "Werklocatie"), kind: "location" },
     { key: "location_detail", label: w("Location detail", "Locatiedetail"), kind: "text" },
     relatedRecord(),

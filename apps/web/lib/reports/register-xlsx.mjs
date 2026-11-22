@@ -24,12 +24,10 @@ function columnName(index) {
 
 /** @param {{ title: string, metadata: string[], headers: string[], rows: (string | number | null | undefined)[][] }} report */
 export async function registerWorkbook({ title, metadata, headers, rows }) {
-  const zip = new JSZip();
-  zip.file("[Content_Types].xml", `${xml}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`);
-  zip.file("_rels/.rels", `${xml}<Relationships xmlns="${packageRelationships}"><Relationship Id="rId1" Type="${relationships}/officeDocument" Target="xl/workbook.xml"/></Relationships>`);
-  zip.file("xl/workbook.xml", `${xml}<workbook xmlns="${spreadsheet}" xmlns:r="${relationships}"><sheets><sheet name="Register" sheetId="1" r:id="rId1"/></sheets></workbook>`);
-  zip.file("xl/_rels/workbook.xml.rels", `${xml}<Relationships xmlns="${packageRelationships}"><Relationship Id="rId1" Type="${relationships}/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`);
+  return reportWorkbook({ title, metadata, sheets: [{ name: "Register", headers, rows }] });
+}
 
+function sheetXml(title, metadata, headers, rows) {
   const headerRow = metadata.length + 3;
   const worksheet = [[title], ...metadata.map((line) => [line]), [], headers, ...rows];
   const sheetData = worksheet.map((values, index) => {
@@ -47,7 +45,35 @@ export async function registerWorkbook({ title, metadata, headers, rows }) {
     return `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`;
   }).join("");
   const views = `<sheetViews><sheetView workbookViewId="0"><pane ySplit="${headerRow}" topLeftCell="A${headerRow + 1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`;
-  const range = `A${headerRow}:${columnName(headers.length - 1)}${worksheet.length}`;
-  zip.file("xl/worksheets/sheet1.xml", `${xml}<worksheet xmlns="${spreadsheet}">${views}<cols>${columns}</cols><sheetData>${sheetData}</sheetData><autoFilter ref="${range}"/></worksheet>`);
+  const range = `A${headerRow}:${columnName(Math.max(0, headers.length - 1))}${worksheet.length}`;
+  return `${xml}<worksheet xmlns="${spreadsheet}">${views}<cols>${columns}</cols><sheetData>${sheetData}</sheetData><autoFilter ref="${range}"/></worksheet>`;
+}
+
+/** Excel sheet names: at most 31 characters, none of []:*?/\, unique within the workbook. */
+function sheetName(name, used) {
+  const base = String(name || "Sheet").replace(/[[\]:*?/\\]/g, " ").trim().slice(0, 31) || "Sheet";
+  let candidate = base;
+  for (let index = 2; used.has(candidate.toLowerCase()); index += 1) candidate = `${base.slice(0, 27)} (${index})`;
+  used.add(candidate.toLowerCase());
+  return candidate;
+}
+
+/**
+ * A native workbook with one sheet per section, each headed by the report title and its metadata
+ * (period, cut-off, filters, generation time: Word 11).
+ * @param {{ title: string, metadata: string[], sheets: { name: string, headers: string[], rows: (string | number | null | undefined)[][] }[] }} report
+ */
+export async function reportWorkbook({ title, metadata, sheets }) {
+  const zip = new JSZip();
+  const used = new Set();
+  const named = sheets.map((sheet) => ({ ...sheet, name: sheetName(sheet.name, used) }));
+  const overrides = named.map((_, index) => `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("");
+  zip.file("[Content_Types].xml", `${xml}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${overrides}</Types>`);
+  zip.file("_rels/.rels", `${xml}<Relationships xmlns="${packageRelationships}"><Relationship Id="rId1" Type="${relationships}/officeDocument" Target="xl/workbook.xml"/></Relationships>`);
+  zip.file("xl/workbook.xml", `${xml}<workbook xmlns="${spreadsheet}" xmlns:r="${relationships}"><sheets>${named.map((sheet, index) => `<sheet name="${escapeXml(sheet.name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`).join("")}</sheets></workbook>`);
+  zip.file("xl/_rels/workbook.xml.rels", `${xml}<Relationships xmlns="${packageRelationships}">${named.map((_, index) => `<Relationship Id="rId${index + 1}" Type="${relationships}/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`).join("")}</Relationships>`);
+  named.forEach((sheet, index) => {
+    zip.file(`xl/worksheets/sheet${index + 1}.xml`, sheetXml(title, metadata, sheet.headers, sheet.rows));
+  });
   return zip.generateAsync({ type: "blob", mimeType: contentType, compression: "DEFLATE" });
 }

@@ -1,3 +1,4 @@
+import { inQuietHours, quietHoursFor } from "@/lib/notifications/quiet-hours.mjs";
 import { logEvent } from "@/lib/observability/log";
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -13,7 +14,7 @@ type QueuedPush = {
   push_attempts: number;
 };
 
-export type NotificationPushResult = { configured: boolean; queued: number; sent: number; failed: number; skipped: number; revoked: number };
+export type NotificationPushResult = { configured: boolean; queued: number; sent: number; failed: number; skipped: number; revoked: number; deferred?: number };
 
 function configuration() {
   const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim() ?? "";
@@ -78,14 +79,21 @@ export async function sendPendingPushNotifications(admin: SupabaseClient, projec
   const projectIds = [...new Set(queue.map((item) => item.project_id))];
   const userIds = [...new Set(queue.map((item) => item.recipient_user_id))];
   const [settingsResult, subscriptionsResult] = await Promise.all([
-    admin.from("project_settings").select("project_id,push_notifications_enabled").in("project_id", projectIds),
+    admin.from("project_settings").select("project_id,push_notifications_enabled,spec_configuration").in("project_id", projectIds),
     admin.from("push_subscriptions").select("id,user_id,endpoint,p256dh,auth_secret,failure_count").in("user_id", userIds).eq("status", "active"),
   ]);
   if (settingsResult.error) throw new Error(settingsResult.error.message);
   if (subscriptionsResult.error) throw new Error(subscriptionsResult.error.message);
   const enabled = new Map((settingsResult.data ?? []).map((row) => [String(row.project_id), row.push_notifications_enabled !== false]));
+  // Quiet hours (decision #12): the message stays pending and goes out with the first dispatch after them.
+  const now = new Date();
+  const quiet = new Map((settingsResult.data ?? []).map((row) => [String(row.project_id), inQuietHours(now, quietHoursFor(row.spec_configuration))]));
 
   for (const notification of queue) {
+    if (quiet.get(notification.project_id) ?? inQuietHours(now, quietHoursFor(null))) {
+      result.deferred = (result.deferred ?? 0) + 1;
+      continue;
+    }
     if (enabled.get(notification.project_id) === false) {
       await admin.from("notifications").update({ push_status: "skipped", push_last_error: null }).eq("id", notification.id);
       result.skipped += 1;

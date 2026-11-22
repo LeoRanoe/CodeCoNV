@@ -1,13 +1,14 @@
 # CODECO specification completion checklist
 
 **Audit baseline** · `150e3ae45444ec369b300054dcc3559ec8fbc883` · 21 November 2026  
-**Release status** · Open. See [Implementation status](#implementation-status), the [Workspace workbook fidelity pass](#workspace-workbook-fidelity-pass) and [DECISIONS-PENDING.md](DECISIONS-PENDING.md). This document covers all 17 audit findings, 15 Workspace forms, 10 menu areas, 15 supplied images, 277 workbook form rows and 147 activity rows.
+**Release status** · Every client decision is made and recorded (sixth pass); remaining items need CODECO accounts or hardware (see the end of [DECISIONS-PENDING.md](DECISIONS-PENDING.md)). See [Implementation status](#implementation-status), the [Workspace workbook fidelity pass](#workspace-workbook-fidelity-pass) and [DECISIONS-PENDING.md](DECISIONS-PENDING.md). This document covers all 17 audit findings, 15 Workspace forms, 10 menu areas, 15 supplied images, 277 workbook form rows and 147 activity rows.
 
 Close a checkbox only when the change is merged and its acceptance evidence can be reproduced. For behavior that depends on a client decision, record the approved rule and the acceptance evidence. The evidence required depends on the item: an isolated fixture, a schema check, a browser scenario, an export, an access review, or a production-config verification. Keep legacy records and attachments readable through any schema or workflow change.
 
 ## Contents
 
 - [Implementation status](#implementation-status)
+- [Sixth pass · every client decision made](#sixth-pass--every-client-decision-made)
 - [Fifth implementation pass](#fifth-implementation-pass--sources-resolve-seven-decision-rows)
 - [Second implementation pass and fresh audit](#second-implementation-pass-and-fresh-audit--21-november-2026)
 - [Independent re-audit](#independent-re-audit)
@@ -63,6 +64,20 @@ Status words: **Implemented and verified** means the change is on the branch and
 | Playwright with the fake Blob store | 10 passed: the document journey (register A, upload B, routing refused while B is under review, approve B, route to client, released revision shown), client approver approves in the client portal, contractor photo evidence closed in Rapid Verify, camera capture and photo stacks, desktop upload. |
 | UI stability audit (CLAUDE.md) | 72 screens, 0 findings, worst layout shift 0.017. |
 | Not run in this pass | Phone/tablet variants of the changed screens beyond the stability audit, offline replay in the browser for F08 (covered at database level), the Word section 17 NCR and TI journeys end to end, production-sized registers, real camera/storage/notification delivery, backup restore. |
+
+## Sixth pass · every client decision made
+
+**Instruction** · 21 November 2026, the CODECO project owner: the client makes no further decisions; decide each open question from the client's material and in the application's best interest. All 15 rows of [DECISIONS-PENDING.md](DECISIONS-PENDING.md) are now decisions, each with its source. None is pending. This is the recorded approval for each item that was previously "awaiting client decision".
+
+| Decision | Expected behaviour | Code / migration | Evidence | Status |
+|---|---|---|---|---|
+| D05 Photos classification (workbook Photos F6, F7, H6, D7, G6) | One optional 17-discipline field after the purpose, for every purpose; changing the purpose keeps it | `lib/forms/spec-forms.ts`, `app/photo-evidence.tsx`, `app/visual-evidence-workspace.tsx`, `app/media-library-workspace.tsx` | Node `spec-forms`; browser photo journey (`word-17-journeys` F05, `camera-capture`, `media-and-sharing`) | Verified locally |
+| #3 Original evidence and limits (Word §5.2, §16, §20 item 8; Photos row 8) | HEIC/HEIF/AVIF originals stored untouched next to the JPEG view; HEIC/HEIF/AVIF accepted by the upload gateway; 100 MB per file by default | `lib/images/normalize-image.ts`, upload route, migration `202611250001` | pgTAP 006 (default 100 MB); TypeScript; browser photo journeys | Verified locally |
+| #12 Quiet hours and daily run (Word §13–§15) | Pushes wait 20:00–07:00 project time (per-project override); the daily run at 07:15 Paramaribo sends what waited | `lib/notifications/quiet-hours.mjs`, `lib/notifications/push.ts`, `vercel.json` | Node `quiet-hours.test.mjs` (2), `rendered-html` schedule check | Verified locally |
+| #13 Excel for period reports (Word §4.4, §11) | Every period report downloads as XLSX, one sheet per section, with period, cut-off, filters, generation time; literal text, numbers as numbers | `lib/reports/period-report-xlsx.mjs`, `lib/reports/register-xlsx.mjs` (`reportWorkbook`), `app/report-download-buttons.tsx`, `app/operational-workspace.tsx` | Node `period-report-xlsx.test.mjs` | Verified locally |
+| #4, #5, #6 (contractor-initiated forms), #7, #8, #10, #11, #14, #15 | As recorded in the decision list | Existing behaviour or earlier migrations | Earlier pass evidence | Verified |
+
+**Verification · sixth pass** (local stack, clean reset through `202611250001`, fake Blob store, production build): pgTAP **887 passed across 40 files**; schema lint clean; Node **305/305** (new `quiet-hours`, `period-report-xlsx`); ESLint, Stylelint, TypeScript pass; Playwright desktop and all viewports for `word-17-journeys`, `camera-capture`, `media-and-sharing`, `requirements-final`, `inspection-workflow`, `role-views`, `sheet-forms`, `ui-stability-audit`: **51 passed, 0 failed**; UI stability audit **72 screens, 0 findings, worst layout shift 0.041**. `tests/spec-server-rules.test.mjs` now reads the stored rules whatever the line endings of the migration file.
 
 ## Fifth implementation pass · sources resolve seven decision rows
 

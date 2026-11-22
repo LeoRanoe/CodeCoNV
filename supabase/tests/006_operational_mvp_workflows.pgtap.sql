@@ -34,7 +34,7 @@ select lives_ok(
 select is((select count(*) from public.project_settings), 1::bigint, 'project settings are initialized automatically');
 select is((select count(*) from public.checklist_templates where status = 'published'), 5::bigint, 'inspection, HSE, and three CODECO anchor templates are published');
 select is((select count(*) from public.checklist_items), 65::bigint, 'default and CODECO anchor templates contain 65 explicit checks');
-select is((select max_file_size_mb from public.project_settings), 25, 'free-pilot file limit defaults to 25 MB');
+select is((select max_file_size_mb from public.project_settings), 100, 'the file limit defaults to 100 MB so originals are stored untouched (decision #3)');
 select ok(not (select email_notifications_enabled from public.project_settings), 'project email notifications are disabled by default');
 select ok((select push_notifications_enabled from public.project_settings), 'project push notifications are enabled by default');
 

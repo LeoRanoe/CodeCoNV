@@ -1,17 +1,20 @@
 "use client";
 
-import { FileText, FileType2 } from "lucide-react";
+import { FileSpreadsheet, FileText, FileType2 } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
 
 export function ReportDownloadButtons({
   onDownloadPdf,
   onDownloadWord,
+  onDownloadExcel,
   disabled = false,
   variant = "compact",
   className = "",
 }: {
   onDownloadPdf: () => unknown;
   onDownloadWord: () => unknown;
+  /** Word 11: Excel where the report is tabular (decision #13). */
+  onDownloadExcel?: () => unknown;
   disabled?: boolean;
   variant?: "compact" | "prominent";
   className?: string;
@@ -26,6 +29,11 @@ export function ReportDownloadButtons({
       <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={disabled} onClick={() => void onDownloadWord()}>
         <FileType2 size={iconSize} /> Word
       </button>
+      {onDownloadExcel ? (
+        <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={disabled} onClick={() => void onDownloadExcel()}>
+          <FileSpreadsheet size={iconSize} /> Excel
+        </button>
+      ) : null}
     </div>
   );
 }
