@@ -402,7 +402,7 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     { key: "hse_type", label: w("Issue type", "Soort melding"), kind: "select", options: catalogue.hseTypes, required: true },
     { key: "hse_category", label: w("Category", "Categorie"), kind: "dependent", groups: catalogue.hseCategories, parent: "hse_type", required: true },
     person("person_involved", w("Person / contractor involved", "Betrokken persoon / aannemer"), { hint: w("No medical details here", "Geen medische gegevens hier") }),
-    { key: "potential_consequences", label: w("Potential consequence", "Mogelijk gevolg"), kind: "multi", options: [...catalogue.potentialConsequences, "Not Applicable"], required: true, otherExplanation: true },
+    { key: "potential_consequences", label: w("Potential consequence", "Mogelijk gevolg"), kind: "multi", options: catalogue.potentialConsequences, required: true, otherExplanation: true },
     { key: "risk_likelihood", label: w("Risk likelihood", "Waarschijnlijkheid"), kind: "select", listKey: "risk_likelihoods", required: true },
     { key: "risk_severity", label: w("Potential severity", "Mogelijke ernst"), kind: "select", listKey: "risk_severities", required: true },
     { key: "risk_rating", label: w("Risk rating", "Risicoklasse"), kind: "rating", required: true, visible: when(all(filled("risk_likelihood"), filled("risk_severity"))) },
