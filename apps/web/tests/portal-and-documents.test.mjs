@@ -5,6 +5,7 @@ import {
   documentFoldersFor,
   filterRegister,
   registerCsv,
+  registerTable,
   registerRows,
   sortRegister,
   suggestNextRevision,
@@ -53,6 +54,10 @@ test("the register searches by number, title or file name and filters by status 
   assert.deepEqual(filterRegister(rows, { search: "ground" }).map((row) => row.document.id), ["2"]);
   assert.deepEqual(filterRegister(rows, { status: "approved" }).map((row) => row.document.id), ["1"]);
   assert.deepEqual(filterRegister(rows, { building: "b1" }).map((row) => row.document.id), ["1"]);
+  assert.deepEqual(filterRegister(rows, { revision: "B" }).map((row) => row.document.id), ["2"], "the Revision filter keeps only documents whose current revision matches");
+  assert.deepEqual(filterRegister(rows, { revision: "0" }).map((row) => row.document.id), ["1"]);
+  assert.deepEqual(filterRegister(rows, { discipline: "Structural" }).map((row) => row.document.id), ["1"], "the discipline filter keeps the saved discipline");
+  assert.deepEqual(filterRegister(rows, { discipline: "Marine Works" }).map((row) => row.document.id), [], "a discipline nobody carries returns nothing");
   assert.deepEqual(filterRegister(rows, { from: "2026-11-10" }).map((row) => row.document.id), ["2"]);
   assert.deepEqual(sortRegister(rows, "number").map((row) => row.document.document_number), ["A-101", "S-201"]);
   assert.deepEqual(sortRegister(rows, "received", "desc").map((row) => row.document.id), ["2", "1"]);
@@ -151,4 +156,15 @@ test("F15: only a current, reviewer-approved revision is offered for portal rele
   }
   assert.equal(revisionReleasable({ review_status: "approved", superseded_at: null }), true);
   assert.equal(revisionReleasable({ review_status: "approved", superseded_at: "2026-11-21T10:00:00Z" }), false);
+});
+
+test("an export carries the saved discipline, project-specific or older free text, as stored", () => {
+  const rows = [
+    { document: { id: "1", document_number: "M-1", title: "Quay wall", folder_code: "01", discipline: "Marine Works", building_ids: [] }, current: { revision: "A", review_status: "submitted", uploaded_at: "2026-11-05T00:00:00Z" }, history: [] },
+    { document: { id: "2", document_number: "M-2", title: "Old note", folder_code: "01", discipline: "grondwerk (oud)", building_ids: [] }, current: { revision: "A", review_status: "submitted", uploaded_at: "2026-11-06T00:00:00Z" }, history: [] },
+  ];
+  const table = registerTable(rows);
+  const at = table.headers.indexOf("Discipline");
+  assert.deepEqual(table.rows.map((row) => row[at]), ["Marine Works", "grondwerk (oud)"]);
+  assert.match(registerCsv(rows), /Marine Works/);
 });

@@ -17,7 +17,7 @@ test.skip(!email || !password, "A fixture account is required (tests/e2e/seed-lo
 async function signIn(page: Page) {
   await page.goto("/supervisie");
   await page.evaluate(() => {
-    localStorage.setItem("codeco-field-guide-seen-v3", "yes");
+    localStorage.setItem("codeco-field-guide-seen-v3", "yes"); localStorage.setItem("codeco-portal-guide-seen-v1-contractor", "yes"); localStorage.setItem("codeco-portal-guide-seen-v1-client", "yes");
     localStorage.setItem("codeco-language-choice", "en");
   });
   await page.reload();
@@ -95,6 +95,9 @@ for (const sheet of sheets) {
       await expect(category).toHaveValue("");
       await expect(category.locator('option[value="Cement & Binders"]')).toHaveCount(0);
       await category.selectOption("Quantity Shortage");
+      const unit = form.locator('[data-spec-field="unit"] select');
+      await expect(unit.locator('option[value="cm"]')).toHaveCount(1);
+      await unit.selectOption("mm");
       await expect(form.locator('[data-spec-field="planned_delivery_at"] input')).not.toHaveValue("");
       const stored = form.locator('[data-spec-field="stored_on_site"] input');
       if (await stored.isVisible()) await stored.uncheck();

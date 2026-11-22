@@ -9,6 +9,7 @@ import {
   riskRatings,
   specListDefaults,
   specListLabels,
+  specListLocked,
   type SpecConfiguration,
   type SpecListKey,
   type SpecStageConfig,
@@ -66,6 +67,7 @@ export function SpecConfigurationPanel({ client, projectId, configuration, busy,
       <div className="operation-form">
         <div className="operation-form-heading"><div><h2>{text("Project lists", "Projectlijsten")}</h2></div></div>
         <p className="form-helper">{text("The workbook marks these lists as project-configurable. A retired value is no longer offered; records that carry it keep it.", "Het werkboek noemt deze lijsten projectafhankelijk. Een ingetrokken waarde wordt niet meer aangeboden; registraties die hem dragen houden hem.")}</p>
+        {listKey === "disciplines" ? <p className="form-helper">{text("The 17 workbook disciplines stay: the Works Ongoing, Works Completed and Technical Instructions forms depend on them. Add the project's own disciplines here; Project Documents offers all of them. Records keep the discipline they were saved with.", "De 17 werkboekdisciplines blijven: de formulieren Werkzaamheden gaande, Werkzaamheden afgerond en Technische instructies hangen eraan. Voeg hier de eigen disciplines van het project toe; Projectdocumenten biedt ze allemaal aan. Registraties houden de discipline waarmee ze zijn opgeslagen.")}</p> : null}
         <label className="form-field">
           <span>{text("List", "Lijst")}</span>
           <select value={listKey} onChange={(event) => setListKey(event.target.value as SpecListKey)}>
@@ -75,13 +77,14 @@ export function SpecConfigurationPanel({ client, projectId, configuration, busy,
         <div className="form-field">
         <ul className="spec-config-values">
           {values.length ? values.map((value) => {
-            const retired = (list.retired ?? []).includes(value);
+            const locked = (specListLocked[listKey] ?? []).includes(value);
+            const retired = !locked && (list.retired ?? []).includes(value);
             const own = (list.added ?? []).includes(value);
             return (
               <li key={value}>
                 <label className="spec-choice">
-                  <input type="checkbox" checked={!retired} onChange={(event) => setList({ retired: event.target.checked ? (list.retired ?? []).filter((item) => item !== value) : [...(list.retired ?? []), value] })} />
-                  <span>{specLabel(value, language)}{own ? ` · ${text("added by the project", "toegevoegd door het project")}` : ""}</span>
+                  <input type="checkbox" checked={!retired} disabled={locked} onChange={(event) => setList({ retired: event.target.checked ? (list.retired ?? []).filter((item) => item !== value) : [...(list.retired ?? []), value] })} />
+                  <span>{specLabel(value, language)}{own ? ` · ${text("added by the project", "toegevoegd door het project")}` : ""}{locked ? ` · ${text("workbook standard", "standaard van het werkboek")}` : ""}</span>
                 </label>
                 {listKey === "risk_likelihoods" || listKey === "risk_severities" ? (
                   <input aria-label={text(`Definition of ${value}`, `Definitie van ${value}`)} placeholder={text("Project definition (shown beside the option)", "Projectdefinitie (naast de keuze getoond)")} value={list.descriptions?.[value] ?? ""} maxLength={240} onChange={(event) => setList({ descriptions: { ...list.descriptions, [value]: event.target.value } })} />
@@ -93,9 +96,9 @@ export function SpecConfigurationPanel({ client, projectId, configuration, busy,
         </ul>
         </div>
         <div className="form-field spec-people-add">
-          <input value={newValue} maxLength={120} aria-label={text("New value", "Nieuwe waarde")} placeholder={text("New value", "Nieuwe waarde")} onChange={(event) => setNewValue(event.target.value)} />
+          <input value={newValue} maxLength={listKey === "disciplines" ? 80 : 120} aria-label={text("New value", "Nieuwe waarde")} placeholder={text("New value", "Nieuwe waarde")} onChange={(event) => setNewValue(event.target.value)} />
           <span />
-          <button type="button" className="ui-button ui-button--secondary ui-button--sm" disabled={!newValue.trim() || values.includes(newValue.trim())} onClick={() => { setList({ added: [...(list.added ?? []), newValue.trim()] }); setNewValue(""); }}><Plus size={14} aria-hidden="true" /> {text("Add", "Toevoegen")}</button>
+          <button type="button" className="ui-button ui-button--secondary ui-button--sm" disabled={!newValue.trim() || values.some((value) => value.toLowerCase() === newValue.trim().toLowerCase())} onClick={() => { setList({ added: [...(list.added ?? []), newValue.trim()] }); setNewValue(""); }}><Plus size={14} aria-hidden="true" /> {text("Add", "Toevoegen")}</button>
         </div>
       </div>
 

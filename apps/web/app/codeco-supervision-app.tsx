@@ -1860,6 +1860,18 @@ export function CodecoSupervisionApp() {
                 if (destination === "photo") { openQuickAdd(); return; }
                 openWorkspaceModule(destination === "inspection" ? "inspections" : "findings");
               }}
+              onNavigateGuide={(target) => {
+                // Guide steps only navigate. A form tile is opened, never submitted.
+                navigate(target.area as NavKey);
+                if (!target.tile) return;
+                let tries = 0;
+                const openTile = () => {
+                  const tile = document.querySelector<HTMLElement>(`[data-workspace-destination='${target.tile}']`);
+                  if (tile) { tile.click(); return; }
+                  if (++tries < 20) window.setTimeout(openTile, 150);
+                };
+                window.setTimeout(openTile, 150);
+              }}
             />
             <LiveWeatherChip location={selectedProject?.location ?? ""} />
             <LanguageSwitcher compact />
@@ -2325,6 +2337,7 @@ export function CodecoSupervisionApp() {
           openSource={(sourceType) => {
             if (sourceType === "action") { setModal(null); navigate("acties"); }
             else if (sourceType === "finding") { setModal(null); openWorkspaceModule("findings"); }
+            else if (sourceType === "inspection") { setModal(null); openWorkspaceModule("inspections"); }
             else if (sourceType === "report") { setModal(null); navigate("rapporten"); }
           }}
           markRead={async (notificationId) => {
@@ -3304,6 +3317,8 @@ function notificationTitle(stored: string, text: (english: string, dutch: string
     ["Kritieke bevinding ", text("Critical finding ", "Kritieke bevinding ")],
     ["Actie aan jou toegewezen: ", text("Action assigned to you: ", "Actie aan jou toegewezen: ")],
     ["Issue aan jou toegewezen: ", text("Issue assigned to you: ", "Issue aan jou toegewezen: ")],
+    ["Inspectie ingepland: ", text("Inspection planned: ", "Inspectie ingepland: ")],
+    ["Inspectie bijgewerkt: ", text("Inspection updated: ", "Inspectie bijgewerkt: ")],
   ];
   for (const [dutch, shown] of prefixes) if (stored.startsWith(dutch)) return shown + stored.slice(dutch.length);
   return stored;

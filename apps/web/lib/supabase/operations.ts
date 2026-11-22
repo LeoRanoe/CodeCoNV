@@ -62,6 +62,8 @@ export type Inspection = {
   signed_by?: string | null;
   signed_at?: string | null;
   signature_image?: string | null;
+  /** Who carries the inspection out; set when it is planned for someone. */
+  executed_by?: string | null;
   /** Fields of the client's developer specification (lib/forms/spec-forms.ts). */
   spec?: Record<string, unknown> | null;
 };
@@ -677,7 +679,7 @@ export async function loadProjectOperations(
   const [templateResult, libraryResult, inspectionResult, findingResult, findingProgressResult, hseResult, registerResult, boqProgressResult, fileResult, settingsResult, backupResult, locationResult, readinessResult, visualCaptureResult, visualAnnotationResult, drawingPinResult, drawingMarkupResult, mediaFolderResult, externalShareResult, dayReportResult, fileLinkResult, dailyWorkResult, recordBuildingResult, attendanceResult] = await Promise.all([
     client.from("checklist_templates").select("id,project_id,module,code,name,description,version_number,status").or(`project_id.is.null,project_id.eq.${projectId}`).order("name"),
     client.from("checklist_library_templates").select("code,module,category,name,description,prompts,sort_order").eq("active", true).order("sort_order"),
-    pageAll((from, to) => client.from("inspections").select("id,building_id,location_node_id,template_id,inspection_number,title,status,planned_at,started_at,completed_at,signed_by,signed_at,signature_image,spec").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 10000),
+    pageAll((from, to) => client.from("inspections").select("id,building_id,location_node_id,template_id,inspection_number,title,status,planned_at,started_at,completed_at,executed_by,signed_by,signed_at,signature_image,spec").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 10000),
     pageAll((from, to) => client.from("findings").select("id,building_id,location_node_id,finding_number,finding_type,title,description,severity,priority,status,responsible_party_id,assigned_user_id,due_at,cause,proposed_correction,final_measure,issue_management,verified_by,verified_at,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 20000),
     pageAll((from, to) => client.from("finding_progress_updates").select("id,finding_id,progress_percent,disposition,note,inspected_at,created_at").eq("project_id", projectId).order("inspected_at", { ascending: false }).order("id").range(from, to), 20000),
     pageAll((from, to) => client.from("hse_events").select(`${hseSignedColumns},${hseExtraColumns}`).eq("project_id", projectId).order("occurred_at", { ascending: false }).order("id").range(from, to), 10000),
@@ -1074,6 +1076,38 @@ export async function startInspection(client: SupabaseClient, input: { projectId
   const created = { ...(result.data as Inspection), location_node_id: (result.data as Inspection).location_node_id ?? input.locationNodeId ?? null };
   await setRecordBuildings(client, { projectId: input.projectId, recordType: "inspection", recordId: created.id, buildingIds: input.buildingIds ?? [input.buildingId] });
   return { ...created, building_ids: input.buildingIds ?? [input.buildingId] };
+}
+
+/** People an inspection can be planned for: project people who manage inspections (Word 14, WD-192). */
+export async function loadInspectionExecutors(client: SupabaseClient, projectId: string) {
+  const result = await client.rpc("list_inspection_executors", { p_project_id: projectId });
+  if (result.error) return [] as Array<{ id: string; name: string }>;
+  return ((result.data ?? []) as Array<{ user_id: string; display_name: string }>).map((row) => ({ id: row.user_id, name: row.display_name }));
+}
+
+/** Plans an inspection for a colleague at a given time; the colleague is notified by the database. */
+export async function planInspection(client: SupabaseClient, input: { projectId: string; buildingId: string; buildingIds?: string[]; locationNodeId?: string; templateId: string; title: string; plannedAt: string; executedBy: string }) {
+  const result = await client.rpc("plan_project_inspection", {
+    p_project_id: input.projectId,
+    p_building_id: input.buildingId,
+    p_template_id: input.templateId,
+    p_title: input.title,
+    p_planned_at: input.plannedAt,
+    p_executed_by: input.executedBy,
+    p_idempotency_key: `inspection-plan:${crypto.randomUUID()}`,
+    p_location_node_id: input.locationNodeId || null,
+  });
+  fail(result.error);
+  const created = result.data as Inspection;
+  await setRecordBuildings(client, { projectId: input.projectId, recordType: "inspection", recordId: created.id, buildingIds: input.buildingIds ?? [input.buildingId] });
+  return { ...created, building_ids: input.buildingIds ?? [input.buildingId] };
+}
+
+/** Moves a planned inspection to another time and/or colleague. */
+export async function rescheduleInspection(client: SupabaseClient, input: { inspectionId: string; plannedAt: string; executedBy: string }) {
+  const result = await client.rpc("reschedule_project_inspection", { p_inspection_id: input.inspectionId, p_planned_at: input.plannedAt, p_executed_by: input.executedBy });
+  fail(result.error);
+  return result.data as Inspection;
 }
 
 /**

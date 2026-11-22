@@ -44,7 +44,7 @@ function run(args) {
 if (mode === "start") {
   const built = await run(["build"]);
   if (built !== 0) process.exit(built);
-  process.exit(await run(["start"]));
+  process.exit(await run(["start", "--hostname", "127.0.0.1"]));
 } else {
-  process.exit(await run(["dev"]));
+  process.exit(await run(["dev", "--hostname", "127.0.0.1"]));
 }

@@ -96,7 +96,9 @@ test("Materials Delivery uses its own groups, dependent categories, and units", 
   assert.deepEqual(legacy, { material_group: "Material Group", material_category: "Other Material", material_category_other: "Geotextile" });
   assert.deepEqual(fieldOptions(category, { material_group: "Delivery Status" }).map(({ value }) => value), catalogue.materialCategories["Delivery Status"].map(({ value }) => value));
   assert.deepEqual(setSpecValue("delivery", legacy, "material_group", "Delivery Discrepancy"), { material_group: "Delivery Discrepancy", material_category: "" });
-  assert.deepEqual(fieldOptions(unit, {}).map(({ value }) => value), ["m", "m²", "m³", "kg", "tonne", "pcs", "number", "lot", "hours", "set", "other"]);
+  const approvedUnits = ["m", "m²", "m³", "mm", "cm", "kg", "tonne", "pcs", "number", "lot", "hours", "set", "other"];
+  assert.deepEqual(fieldOptions(unit, {}).map(({ value }) => value), approvedUnits);
+  assert.deepEqual(projectList("units").map(({ value }) => value), approvedUnits);
   assert.ok(specMissing("delivery", { delivery_status: "Scheduled" }).includes("Planned delivery date/time"));
   assert.ok(specMissing("delivery", { inspection_result: "Accepted", stored_on_site: "yes" }).includes("Storage location"));
 });
@@ -340,5 +342,27 @@ test("F07: each activity's guide prompts are answered, stored with the prompt, r
     assert.ok(specFacts(form, stored).some(([label, text]) => label === "Activity details" && text.includes("Grid lines A-D")), "reopened and printed");
     const changed = setSpecValue(form, stored, "activity", "Topographic Survey");
     assert.equal(changed.activity_answers, undefined, `${form}: a new activity clears the answers`);
+  }
+});
+
+test("the project discipline list keeps the workbook's 17 and takes the project's own (WD-181-06, WD-053-05)", () => {
+  const standard = projectList("disciplines", null).map((option) => option.value);
+  assert.deepEqual(standard.slice(0, 17), catalogue.workDisciplines, "the workbook's disciplines come first and unchanged");
+  assert.ok(standard.includes("Structural") && standard.includes("External Works"), "the document register's starting disciplines are on the list");
+  const config = { lists: { disciplines: { added: ["Marine Works", "Geotechnical"], retired: ["Civil", "Foundations & Substructure", "Marine Works"] } } };
+  const values = projectList("disciplines", config).map((option) => option.value);
+  assert.ok(values.includes("Geotechnical"), "a project discipline is offered");
+  assert.ok(!values.includes("Civil"), "a starting document discipline can be retired");
+  assert.ok(!values.includes("Marine Works"), "a project's own discipline can be retired");
+  assert.ok(values.includes("Foundations & Substructure"), "a workbook discipline can never be retired: the activity guides hang on it");
+  assert.deepEqual(projectList("disciplines", { lists: { shifts: { added: ["Late"] } } }).map((option) => option.value), standard, "another list's additions do not leak in");
+  assert.deepEqual(projectList("shifts", config).map((option) => option.value), projectList("shifts", null).map((option) => option.value), "the discipline list does not touch another list");
+});
+
+test("the workbook forms keep the 17 controlled disciplines whatever the project adds", () => {
+  const config = { lists: { disciplines: { added: ["Marine Works"] } } };
+  for (const form of ["works_ongoing", "works_completed", "technical_instruction"]) {
+    const field = specForms[form].find((item) => item.key === "discipline");
+    assert.deepEqual(fieldOptions(field, {}, config).map((option) => option.value), catalogue.workDisciplines, form);
   }
 });

@@ -83,6 +83,7 @@ jobs:
         id: seed
         run: |
           eval "$(npx --yes supabase@2.109.1 status -o env | grep -E '^(API_URL|PUBLISHABLE_KEY|SECRET_KEY)=')"
+          echo "::add-mask::$SECRET_KEY"
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$PUBLISHABLE_KEY"
@@ -95,6 +96,7 @@ jobs:
           {
             echo "CODECO_E2E_SUPABASE_URL=$API_URL"
             echo "CODECO_E2E_PUBLISHABLE_KEY=$PUBLISHABLE_KEY"
+            echo "CODECO_E2E_SECRET_KEY=$SECRET_KEY"
           } >> "$GITHUB_ENV"
           cd apps/web
           CODECO_E2E_SUPABASE_URL=$API_URL CODECO_E2E_PUBLISHABLE_KEY=$PUBLISHABLE_KEY CODECO_E2E_SECRET_KEY=$SECRET_KEY \
@@ -106,7 +108,7 @@ jobs:
         working-directory: apps/web
         # media-and-sharing needs sample media files and a private Blob store; it is run
         # against a preview deployment, not in this job (see docs/operations/production-readiness.md).
-        run: npx playwright test form-field-stacking dictation controlled-document two-party-signature inspection-workflow day-report-lifecycle dialogs role-views mobile-forms field-readiness layout-hygiene offline-account-isolation offline-app offline-create-and-sync offline-records responsive-audit responsive-workspace viewport-walk sheet-forms spec-registers works-completed-focus rapid-verify-values word-17-journeys
+        run: npx playwright test form-field-stacking dictation controlled-document two-party-signature inspection-workflow day-report-lifecycle dialogs role-views mobile-forms field-readiness layout-hygiene offline-account-isolation offline-app offline-create-and-sync offline-records responsive-audit responsive-workspace viewport-walk sheet-forms spec-registers works-completed-focus rapid-verify-values word-17-journeys project-information-disciplines inspection-notification visual-walkthrough launch-units rapid-verify-delayed
       - name: Capture UI audit screens
         if: always() && steps.seed.outcome == 'success'
         working-directory: apps/web

@@ -28,7 +28,7 @@ const actionTitle = `Clear debris ${suffix}`;
 async function signIn(page: Page, account: { email?: string; password?: string }) {
   await page.goto("/supervisie");
   await page.evaluate(() => {
-    localStorage.setItem("codeco-field-guide-seen-v3", "yes");
+    localStorage.setItem("codeco-field-guide-seen-v3", "yes"); localStorage.setItem("codeco-portal-guide-seen-v1-contractor", "yes"); localStorage.setItem("codeco-portal-guide-seen-v1-client", "yes");
     localStorage.setItem("codeco-language-choice", "en");
   });
   await page.reload();
@@ -193,6 +193,9 @@ test("a contractor reports an action complete with a photo and Rapid Verify clos
   await nav(page, "Rapid Verify");
   await openSection(page, ".verification-workspace", /Action verification/);
   const row = page.locator(".verification-row").filter({ hasText: actionTitle });
+  // The history lists record numbers, not titles: remember this action's own number to find its row afterwards.
+  const recordNumber = ((await row.innerText()).match(/ACT-\d{4}-\d{4}/) ?? [])[0];
+  expect(recordNumber, "the action's record number on its verification row").toBeTruthy();
   await row.getByRole("button", { name: "Verify" }).click();
   const dialog = page.getByRole("dialog", { name: /Verify/ });
   await dialog.getByRole("radio", { name: "Pass" }).click();
@@ -201,7 +204,7 @@ test("a contractor reports an action complete with a photo and Rapid Verify clos
   await expect(dialog).toHaveCount(0);
   await expect(page.locator(".verification-row").filter({ hasText: actionTitle })).toHaveCount(0);
   await openSection(page, ".verification-workspace", /Verification history/);
-  await expect(page.locator(".portal-table").getByText("Checked on site.")).toBeVisible();
+  await expect(page.locator(".portal-table tr").filter({ hasText: recordNumber! }).getByText("Checked on site.", { exact: true })).toBeVisible();
   await page.context().close();
 });
 

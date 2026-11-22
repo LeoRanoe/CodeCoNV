@@ -8,7 +8,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { specServerRules } from "./generate-spec-server-rules.mjs";
 
-const file = new URL("../../../supabase/migrations/202611240006_align_materials_delivery_workbook.sql", import.meta.url);
+const file = new URL("../../../supabase/migrations/202611250005_approved_launch_units.sql", import.meta.url);
 const sql = await readFile(file, "utf8");
 const json = JSON.stringify(specServerRules()).replace(/'/g, "''");
 const next = sql.replace(/select '(\{.*?\})'::jsonb;\n\$rules\$/s, () => `select '${json}'::jsonb;\n$rules$`);
