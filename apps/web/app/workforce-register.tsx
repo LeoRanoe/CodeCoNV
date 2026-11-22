@@ -452,16 +452,6 @@ export function WorkforceForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftKey]);
 
-  useEffect(() => {
-    let active = true;
-    void copyPreviousWorkday()
-      .then((previous) => { if (active) setPreviousTotal(previous ? workforceHeadcount(previous.rows) : null); })
-      .catch(() => { if (active) setPreviousTotal(null); });
-    return () => { active = false; };
-    // The project stays fixed while this form is mounted.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftKey]);
-
   const copyPrevious = () => {
     setCopyNote("");
     if (!previousDay) {

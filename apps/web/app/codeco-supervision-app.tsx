@@ -1560,7 +1560,7 @@ export function CodecoSupervisionApp() {
                   folderId: null,
                   folderName: text("Daily progress", "Dagvoortgang"),
                   kind: "photo",
-                  sourcePhoto: photo.file !== photo.original ? photo.original : undefined,
+                  sourcePhoto: photo.untouched ?? (photo.file !== photo.original ? photo.original : undefined),
                   file: prepared.blob,
                   fileName: prepared.fileName,
                   mimeType: prepared.mimeType,
@@ -1805,6 +1805,8 @@ export function CodecoSupervisionApp() {
             signOut={(discardUnsent) => void performSignOut({ discardUnsent })}
           />
         ) : null}
+        {/* A link that is not this account's says so here too; the portal returns before the shared toast below. */}
+        {toast ? <div className="toast" role="status" aria-live="polite"><CheckCircle2 size={18} /> {toast}</div> : null}
       </ProjectPermissionsProvider>
     );
   }
