@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { expect, type Page, test } from "@playwright/test";
+import { createHash } from "node:crypto";
 
 /**
  * Word 14 / WD-192: "Inspection scheduled or updated" reaches the person who must carry it out.
@@ -18,7 +19,8 @@ const url = process.env.CODECO_E2E_SUPABASE_URL;
 const key = process.env.CODECO_E2E_PUBLISHABLE_KEY;
 const secret = process.env.CODECO_E2E_SECRET_KEY;
 // A second member who may manage inspections: created locally by this spec, provisioned for this project only.
-const executor = { email: "field-supervisor-a@codeco.test", password: "Local-E2E-FieldSupervisor-A-2026!", name: "Field Supervisor" };
+// The password is derived from the local service key (same as project-information-disciplines.spec.ts), never written in the repository.
+const executor = { email: "field-supervisor-a@codeco.test", password: `Fx-${createHash("sha256").update(`${secret ?? ""}:field-supervisor-a`).digest("base64url").slice(0, 28)}!1`, name: "Field Supervisor" };
 
 test.skip(!planner.email || !url || !key || !secret, "The fixture account and the local Supabase keys are required.");
 test.describe.configure({ mode: "serial" });
@@ -49,6 +51,9 @@ test.beforeAll(async () => {
     const created = await admin.auth.admin.createUser({ email: executor.email, password: executor.password, email_confirm: true, user_metadata: { display_name: executor.name } });
     if (created.error) throw created.error;
     id = created.data.user.id;
+  } else {
+    const updated = await admin.auth.admin.updateUserById(id, { password: executor.password });
+    if (updated.error) throw updated.error;
   }
   executorId = id;
   const provisioned = await plannerApi.rpc("provision_internal_user", { p_organization_id: project.data.organization_id, p_user_id: id, p_display_name: executor.name, p_role_code: "supervisor", p_project_id: projectId });
