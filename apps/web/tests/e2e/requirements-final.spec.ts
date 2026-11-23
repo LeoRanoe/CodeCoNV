@@ -87,7 +87,7 @@ test("the main menu follows the client's mind map and the overview shows every p
   test.setTimeout(120_000);
   await signIn(page, supervisor);
   const labels = (await page.locator(".sidebar .nav-button").allInnerTexts()).map((label) => label.trim());
-  expect(labels).toEqual(["Overview", "Workspace", "Actions", "Rapid Verify", "Project Documents", "Records & Photos", "Reports", "Management"]);
+  expect(labels).toEqual(["Overview", "Workspace", "Actions", "Rapid Verify", "Project Documents", "Records & Photos", "Reports", "Contractor Portal", "Client Portal", "Management"]);
   const panels = page.locator(".overview-panels");
   await expect(panels).toBeVisible();
   for (const heading of ["Progress", "Quality", "HSE", "Inspections", "Verification", "Contractors", "Documents"]) {
@@ -217,6 +217,8 @@ test("Records & Photos, the register reports, the action views and document sett
   const archive = page.locator(".records-archive");
   await expect(archive.getByRole("heading", { name: "Records & Photos" })).toBeVisible();
   for (const section of [/Photo library/, /Attachments/, /Record history/, /Submitted forms/]) await openSection(page, ".records-archive", section);
+  // Submitted forms opens on the folders; All records is the flat list with its filters.
+  await archive.locator("[data-records-folder='all']").click();
   await expect(archive.getByLabel("Form type")).toBeVisible();
 
   await nav(page, "Reports");

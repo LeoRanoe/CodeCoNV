@@ -97,6 +97,7 @@ export function PortalApp({
   onSignOut,
   submissionWorkspace,
   focusShareId = "",
+  preview = false,
   clearFocus,
 }: {
   client: SupabaseClient;
@@ -112,6 +113,8 @@ export function PortalApp({
   /** The existing controlled-submission form (RFI, RFA, WCR, inspection request), when the role may originate one. */
   submissionWorkspace?: ReactNode;
   focusShareId?: string;
+  /** Supervision's read-only view of this portal: no replies, no read receipts, no notifications, no top bar. */
+  preview?: boolean;
   clearFocus: () => void;
 }) {
   const { language, locale, text } = useLanguage();
@@ -132,6 +135,7 @@ export function PortalApp({
   });
   const notificationsQuery = useQuery({
     queryKey: ["portal-notifications", projectId],
+    enabled: !preview,
     queryFn: async () => {
       const result = await client.from("notifications").select("id,title,body,source_id,created_at,read_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(30);
       if (result.error) throw result.error;
@@ -143,7 +147,7 @@ export function PortalApp({
   const snapshot = snapshotQuery.data;
   const shares = useMemo(() => snapshot?.shares ?? [], [snapshot]);
   const context = contextQuery.data;
-  const rights = { respond: Boolean(context?.can_respond), review: Boolean(context?.can_review), approve: Boolean(context?.can_approve) };
+  const rights = preview ? { respond: false, review: false, approve: false } : { respond: Boolean(context?.can_respond), review: Boolean(context?.can_review), approve: Boolean(context?.can_approve) };
   const buildingName = (id: string | null) => buildings.find((building) => building.id === id)?.name ?? "";
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["portal-snapshot", projectId] });
@@ -154,6 +158,8 @@ export function PortalApp({
   const clientView = useMemo(() => clientSections(shares) as Record<"publications" | "currentPublications" | "progress" | "photos" | "documents" | "review" | "openReview" | "overdueReview" | "issues" | "correspondence", PortalShare[]>, [shares]);
   const openShare = shares.find((share) => share.id === (openShareId ?? focusShareId)) ?? null;
   const unread = (notificationsQuery.data ?? []).filter((item) => !item.read_at).length;
+  /** Inside the supervisor workspace the page already has its own main landmark. */
+  const Main = (preview ? "div" : "main") as "main";
 
   const sections = mode === "contractor"
     ? [
@@ -269,10 +275,9 @@ export function PortalApp({
       body = <PortalHistory client={client} snapshot={snapshot!} notifications={notificationsQuery.data ?? []} open={setOpenShareId} refresh={refresh} />;
     }
   }
-
   return (
     <div className="portal-shell">
-      <header className="portal-topbar">
+      {preview ? null : <header className="portal-topbar">
         <div className="portal-brand">{brand}</div>
         <div className="portal-identity">
           <strong>{mode === "contractor" ? text("Contractor portal", "Aannemersportaal") : text("Client portal", "Opdrachtgeversportaal")}</strong>
@@ -294,9 +299,16 @@ export function PortalApp({
           <LanguageSwitcher compact />
           <button className="ui-button ui-button--quiet ui-button--sm" type="button" onClick={onSignOut}><LogOut size={15} /> {text("Sign out", "Afmelden")}</button>
         </div>
-      </header>
-      <main id="main-content" tabIndex={-1} className="portal-main">
-        {!contextQuery.isLoading && !context ? (
+      </header>}
+      <Main id={preview ? undefined : "main-content"} tabIndex={preview ? undefined : -1} className="portal-main">
+        {preview ? (
+          <p className="portal-note portal-preview-note" role="note">
+            {mode === "contractor"
+              ? text("Preview of the Contractor Portal: every item shared with a contractor on this project. Read-only: nothing here is sent, answered or counted as viewed.", "Voorbeeld van het Aannemersportaal: alles wat met een aannemer in dit project is gedeeld. Alleen lezen: er wordt niets verstuurd, beantwoord of als gezien geteld.")
+              : text("Preview of the Client Portal: every item shared with the client on this project. Read-only: nothing here is sent, answered or counted as viewed.", "Voorbeeld van het Opdrachtgeversportaal: alles wat met de opdrachtgever in dit project is gedeeld. Alleen lezen: er wordt niets verstuurd, beantwoord of als gezien geteld.")}
+          </p>
+        ) : null}
+        {!preview && !contextQuery.isLoading && !context ? (
           <p className="field-warning" role="alert">{text("Your account is not linked to a contractor or client organisation on this project yet. Ask CODECO to link it.", "Je account is in dit project nog niet aan een aannemer of opdrachtgever gekoppeld. Vraag CODECO dit te doen.")}</p>
         ) : null}
         <SectionNav
@@ -304,13 +316,14 @@ export function PortalApp({
           items={sections.map((item) => ({ id: item.id, label: item.label, count: item.count, selected: section === item.id, onSelect: () => setSection(item.id) }))}
         />
         <div className="portal-section">{body}</div>
-      </main>
+      </Main>
       {openShare && snapshot ? (
         <ShareDetail
           client={client}
           share={openShare}
           snapshot={snapshot}
           rights={rights}
+          preview={preview}
           buildingName={buildingName(openShare.building_id)}
           defaultBuildingId={openShare.building_id ?? buildings[0]?.id ?? ""}
           close={() => { setOpenShareId(null); clearFocus(); }}
@@ -632,9 +645,9 @@ function responseFields(share: PortalShare, text: (en: string, nl: string) => st
   return [];
 }
 
-function ShareDetail({ client, share, snapshot, rights, buildingName, defaultBuildingId, close, changed }: {
+function ShareDetail({ client, share, snapshot, rights, preview = false, buildingName, defaultBuildingId, close, changed }: {
   client: SupabaseClient; share: PortalShare; snapshot: PortalSnapshot; rights: { respond: boolean; review: boolean; approve: boolean };
-  buildingName: string; defaultBuildingId: string; close: () => void; changed: () => void;
+  preview?: boolean; buildingName: string; defaultBuildingId: string; close: () => void; changed: () => void;
 }) {
   const { language, locale, text } = useLanguage();
   useBackToClose(true, close);
@@ -647,7 +660,8 @@ function ShareDetail({ client, share, snapshot, rights, buildingName, defaultBui
   const [error, setError] = useState("");
   const fileInput = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => { void recordPortalAccess(client, share.id, "view"); }, [client, share.id]);
+  // Supervision looking at a portal is not the contractor or client viewing it.
+  useEffect(() => { if (!preview) void recordPortalAccess(client, share.id, "view"); }, [client, preview, share.id]);
 
   const steps = portalStepsFor(share, rights) as string[];
   const files = snapshot.shareFiles.filter((item) => item.share_id === share.id);
@@ -665,7 +679,7 @@ function ShareDetail({ client, share, snapshot, rights, buildingName, defaultBui
     const file = snapshot.files.get(fileId);
     try {
       await downloadProjectFile(client, fileId, file?.original_name ?? "file");
-      void recordPortalAccess(client, share.id, "download", fileId);
+      if (!preview) void recordPortalAccess(client, share.id, "download", fileId);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : text("The file could not be downloaded.", "Het bestand kon niet worden gedownload."));
     }

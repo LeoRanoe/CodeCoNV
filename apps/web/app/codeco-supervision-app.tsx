@@ -33,6 +33,7 @@ import {
   Share,
   ShieldCheck,
   Trash2,
+  HardHat,
   Users,
   UserPlus,
   X,
@@ -173,10 +174,10 @@ function CompanyLogo({ subtitle }: { subtitle?: string }) {
   );
 }
 
-type NavKey = "vandaag" | "project" | "acties" | "projectdocs" | "records" | "punchlist" | "verify" | "rapporten" | "meer";
+type NavKey = "vandaag" | "project" | "acties" | "projectdocs" | "records" | "punchlist" | "verify" | "rapporten" | "contractorportal" | "clientportal" | "meer";
 
 type ProjectTabKey = "home" | "inspections" | "findings" | "ncr" | "hse" | "daily" | "workforce" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files" | "assets";
-const navKeys: NavKey[] = ["vandaag", "project", "acties", "projectdocs", "records", "punchlist", "verify", "rapporten", "meer"];
+const navKeys: NavKey[] = ["vandaag", "project", "acties", "projectdocs", "records", "punchlist", "verify", "rapporten", "contractorportal", "clientportal", "meer"];
 const projectTabKeys: ProjectTabKey[] = ["home", "inspections", "findings", "ncr", "hse", "daily", "workforce", "documents", "registers", "visual", "drawings", "tools", "files", "assets"];
 type ModalKey = "action_create" | "action_detail" | "report" | "project_start" | "user_admin" | "notifications" | "manage_buildings" | "switch_project" | "offline" | null;
 /** The dialogs a back press or an address may reopen: those that need no record in hand. */
@@ -241,6 +242,9 @@ const navigation: { id: NavKey; label: string; icon: LucideIcon; badge?: string 
   { id: "projectdocs", label: "Project Documents", icon: FolderOpen },
   { id: "records", label: "Records & Photos", icon: Images },
   { id: "rapporten", label: "Rapporten", icon: FileText },
+  /* Supervision sees what each portal shows (menu areas 8 and 9 of the client's mind map), read-only. */
+  { id: "contractorportal", label: "Contractor Portal", icon: HardHat },
+  { id: "clientportal", label: "Client Portal", icon: Users },
   { id: "meer", label: "Beheer", icon: Settings },
 ];
 
@@ -671,7 +675,8 @@ export function CodecoSupervisionApp() {
     : id === "verify" ? permissions.can("files.read")
       : id === "punchlist" ? permissions.can("findings.read")
         : id === "rapporten" ? permissions.canAny("reports.read", "reports.readapproved")
-          : true;
+          : id === "contractorportal" || id === "clientportal" ? permissions.can("records.read")
+            : true;
   const localizedNavigation = navigation.filter((item) => navAllowed(item.id)).map((item) => ({
     ...item,
     label: ({
@@ -683,6 +688,8 @@ export function CodecoSupervisionApp() {
       punchlist: "Issues",
       verify: "Rapid Verify",
       rapporten: text("Reports", "Rapporten"),
+      contractorportal: text("Contractor Portal", "Aannemersportaal"),
+      clientportal: text("Client Portal", "Opdrachtgeversportaal"),
       // One name for the screen, whoever opens it; what is on it follows the role.
       meer: text("Management", "Beheer"),
     } satisfies Record<NavKey, string>)[item.id],
@@ -1945,7 +1952,23 @@ export function CodecoSupervisionApp() {
         {/* Keyed on the project: a module that switches to another project starts over
             instead of carrying the previous project's selection, filters and drafts. */}
         <main id="main-content" tabIndex={-1} className={`main-content${unsavedPhotos ? " has-resume-bar" : ""}`} key={selectedProject?.id ?? "no-project"}>
-          {activeNav === "vandaag" ? (
+          {activeNav === "contractorportal" || activeNav === "clientportal" ? (
+            <PortalApp
+              preview
+              client={supabase}
+              focusShareId=""
+              clearFocus={() => undefined}
+              mode={activeNav === "contractorportal" ? "contractor" : "client"}
+              projectId={selectedProject!.id}
+              projectName={projectName}
+              projects={[]}
+              buildings={selectedProject?.buildings.map((building) => ({ id: building.id, name: building.name })) ?? []}
+              userName={currentUserName}
+              brand={null}
+              onSwitchProject={() => undefined}
+              onSignOut={() => undefined}
+            />
+          ) : activeNav === "vandaag" ? (
             <>
             <ClientDashboard
               entries={entries}
@@ -2077,7 +2100,7 @@ export function CodecoSupervisionApp() {
           );
         })}
         <button
-          className={`mobile-nav-button ${["projectdocs", "records", "punchlist", "verify", "rapporten", "meer"].includes(activeNav) ? "active" : ""}`}
+          className={`mobile-nav-button ${["projectdocs", "records", "punchlist", "verify", "rapporten", "contractorportal", "clientportal", "meer"].includes(activeNav) ? "active" : ""}`}
           type="button"
           aria-expanded={mobileMenuOpen}
           aria-controls="mobile-module-menu"
@@ -2132,7 +2155,7 @@ export function CodecoSupervisionApp() {
                 </span>
                 <ChevronRight size={17} />
               </button>
-              {localizedNavigation.filter((item) => ["projectdocs", "records", "punchlist", "verify", "rapporten", "meer"].includes(item.id)).map((item) => {
+              {localizedNavigation.filter((item) => ["projectdocs", "records", "punchlist", "verify", "rapporten", "contractorportal", "clientportal", "meer"].includes(item.id)).map((item) => {
                 const Icon = item.icon;
                 return (
                   <button className={activeNav === item.id ? "active" : ""} type="button" onClick={() => navigate(item.id)} key={item.id}>
