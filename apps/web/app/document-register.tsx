@@ -88,6 +88,7 @@ async function loadRegister(client: SupabaseClient, projectId: string) {
  * and an export.
  */
 export function DocumentRegister({
+  initialDocumentId,
   client,
   projectId,
   projectName,
@@ -96,6 +97,7 @@ export function DocumentRegister({
   data,
   defaultBuildingId,
 }: {
+  initialDocumentId?: string;
   client: SupabaseClient;
   projectId: string;
   projectName: string;
@@ -120,7 +122,7 @@ export function DocumentRegister({
   const [to, setTo] = useState("");
   const [sortKey, setSortKey] = useState("number");
   const [direction, setDirection] = useState<"asc" | "desc">("asc");
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(initialDocumentId || null);
   const [creating, setCreating] = useState(false);
   const queryKey = ["document-register", projectId];
   const query = useQuery({ queryKey, queryFn: () => loadRegister(client, projectId) });

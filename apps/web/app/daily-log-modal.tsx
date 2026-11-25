@@ -5,13 +5,14 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { BuildingMultiPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { RecordFormSection, RecordFormShell } from "@/app/forms/record-form-shell";
+import { useSignedSubmit } from "@/app/forms/sign-submit";
 import { formIcons } from "@/app/forms/form-icons";
 import { PhotoEvidenceList, toPhotoEvidence, type PhotoEvidence } from "@/app/photo-evidence";
 import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
 import { SketchPad } from "@/app/sketch-pad";
 import { useLanguage } from "@/lib/i18n";
 import type { DailyCloseoutAnswers, ProjectStartAnswers } from "@/lib/forms/daily-report";
-import { normalizeImageFile } from "@/lib/images/normalize-image";
+import { photoAccept, normalizeImageFile } from "@/lib/images/normalize-image";
 import { closeoutFromToday, type DayLogToday } from "@/lib/forms/closeout-from-today";
 import { clearFormDraft, loadFormDraft, saveFormDraft } from "@/lib/offline/form-drafts";
 
@@ -551,7 +552,7 @@ export function DailyLogForm({
       className: "daily-log-photos",
       content: (
         <>
-          <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple onChange={(event) => { const files = event.target.files; void addPhotos(files).finally(() => { event.target.value = ""; }); }} />
+          <input ref={cameraInputRef} hidden type="file" accept={photoAccept} capture="environment" multiple onChange={(event) => { const files = event.target.files; void addPhotos(files).finally(() => { event.target.value = ""; }); }} />
           <div className="button-row">
             <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => cameraInputRef.current?.click()}><Camera size={15} /> {text("Add photo", "Foto toevoegen")}</button>
             <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => setSketching(true)}><PenLine size={15} /> {text("Make a sketch", "Schets maken")}</button>
@@ -662,6 +663,16 @@ export function DailyLogForm({
 
   const todayLabel = new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "America/Paramaribo" }).format(new Date());
 
+  const signing = useSignedSubmit({
+    value: daySignature,
+    onChange: setDaySignature,
+    submit: () => void submit(),
+    title: text("Sign and save this day", "Onderteken en sla deze dag op"),
+    declaration: text("I confirm that this record reflects what I saw and recorded on site today.", "Ik bevestig dat deze registratie weergeeft wat ik vandaag op de bouwplaats heb gezien en vastgelegd."),
+    // The popup is for the forms that show the day signature; the focused forms have none.
+    enabled: problems.length === 0 && ordered.some((block) => block.id === "signature"),
+  });
+
   return (
     <RecordFormShell
       code={`${text("Day log", "Daglog")} · ${todayLabel}`}
@@ -675,7 +686,8 @@ export function DailyLogForm({
       validation={triedSave ? problems : []}
       busy={busy}
       saveLabel={text("Save daily log", "Daglog opslaan")}
-      onSave={() => void submit()}
+      onSave={signing.request}
+      overlay={signing.dialog}
       onCancel={close}
       className="wide sectioned-record-form daily-log-form"
       headerAside={draftState === "restored" ? (

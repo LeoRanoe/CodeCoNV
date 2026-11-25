@@ -1,6 +1,7 @@
 import { openSection } from "./section-nav";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { mkdir, readFile } from "node:fs/promises";
+import { finishSigning } from "./sign-popup";
 
 /**
  * One multi-building day, end to end, through the screens a supervisor uses: start the day
@@ -87,7 +88,7 @@ test("a two-building day is started, closed, submitted, approved, frozen, signed
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const workforce = page.locator(".workforce-form");
   const selects = workforce.locator(".workforce-sections select");
-  for (const [building, discipline, count] of [["Hoofdgebouw", "Timmerlieden", 4], ["Nieuwbouw Oost", "Elektriciens", 3]] as const) {
+  for (const [building, discipline, count] of [["Hoofdgebouw", "Carpenter / formwork", 4], ["Nieuwbouw Oost", "Electrician", 3]] as const) {
     await workforce.getByRole("tab", { name: new RegExp(`^${building}`) }).click();
     await selects.nth(0).selectOption({ label: "Hoofdaannemer E2E" });
     await selects.nth(1).selectOption({ label: discipline });
@@ -97,6 +98,7 @@ test("a two-building day is started, closed, submitted, approved, frozen, signed
   await workforce.getByPlaceholder("For example: two crews moved to the other building.")
     .fill("Concrete crew starts tomorrow; today only formwork and reinforcement.");
   await workforce.getByRole("button", { name: /Confirm attendance/ }).click();
+  await finishSigning(page);
   await expect(page.getByText(/7 people recorded for today/)).toBeVisible();
   // The counted day is listed under the form, per building.
   await expect(page.locator(".record-row").filter({ hasText: "4 people on site" })).toBeVisible();
@@ -115,6 +117,7 @@ test("a two-building day is started, closed, submitted, approved, frozen, signed
   await dayLog.getByLabel("Work completed today").fill("Formwork of axis A to C installed and checked.");
   await dayLog.getByLabel("Plan for tomorrow").fill("Concrete pour of the ground floor slab.");
   await dayLog.getByRole("button", { name: "Save daily log" }).click();
+  await finishSigning(page);
   await expect(page.getByText(/Daily log saved/)).toBeVisible();
   await expect(page.locator(".record-row").filter({ hasText: "Formwork and reinforcement" }).first()).toBeVisible();
   await page.locator(".sidebar").getByRole("button", { name: "Overview", exact: true }).click();

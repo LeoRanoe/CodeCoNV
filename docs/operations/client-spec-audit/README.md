@@ -6,6 +6,7 @@
 - [Workspace pages and all 15 attachments](WORKSPACE.md)
 - [Workbook field, workflow and activity trace](WORKBOOK.md)
 - [Word requirements and full menu coverage](APPLICATION.md)
+- [Local user acceptance test and production parity check](USER-ACCEPTANCE-TEST.md)
 
 The workbook is the field and workflow reference, the Word file defines product behavior and acceptance, and images 1–14 are annotated change requests and bug reports. Image 15 supplies the full menu, role model and end-to-end workflow, including Client Portal. The attached Word file contains sections 1–20 and ends after its appendices. A similarly named “FINAL with Client Portal” document referenced in repository notes was not part of this review. Conflicting instructions remain visible as acceptance decisions. This is an audit of the checked-out source and local fixtures. No application code or production data was changed.
 

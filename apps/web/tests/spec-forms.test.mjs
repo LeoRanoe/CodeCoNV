@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as catalogue from "../lib/forms/spec-catalogue.ts";
-import { activitiesFor, canChooseDecision, cleanSpecValues, fieldOptions, isSheetRow, isSheetSlot, matrixRating, projectList, sensitiveKeys, setSpecValue, sheetKeys, sheetLayouts, specFacts, specFollowUps, specForms, specLinks, specMissing, upgradeSpecValues, workflowProfiles } from "../lib/forms/spec-forms.ts";
+import { issueCategoryDisciplines, activitiesFor, canChooseDecision, cleanSpecValues, fieldOptions, isSheetRow, isSheetSlot, matrixRating, projectList, sensitiveKeys, setSpecValue, sheetKeys, sheetLayouts, specFacts, specFollowUps, specForms, specLinks, specMissing, upgradeSpecValues, workflowProfiles } from "../lib/forms/spec-forms.ts";
 import { availableActions, effectiveProfile, signoffHistoryEntries, signoffProfiles, signoffState } from "../lib/forms/signoff.ts";
 import { facetOptions, filterPeriodSnapshot, matchesSpecFacets, recordSpec, specFacets } from "../lib/forms/spec-facets.ts";
-import { specLabel } from "../lib/forms/spec-labels-nl.ts";
-import { specValueNl } from "../lib/forms/spec-catalogue-nl.ts";
+import { hasSpecLabelNl, specLabel } from "../lib/forms/spec-labels-nl.ts";
 import { buildRecordDirectory, filterRecordDirectory } from "../lib/records/record-directory.mjs";
 
 /**
@@ -13,15 +12,15 @@ import { buildRecordDirectory, filterRecordDirectory } from "../lib/records/reco
  * lib/forms/spec-catalogue.ts and applied per form by lib/forms/spec-forms.ts.
  */
 test("the catalogue carries the workbook's lists exactly", () => {
-  assert.equal(catalogue.workDisciplines.length, 17);
+  assert.equal(catalogue.workDisciplines.length, 18);
   assert.equal(catalogue.workDisciplines[0], "Preliminaries & Site Establishment");
   // Every discipline has its activities, and the Activity Detail Guide has a row for each.
   for (const discipline of catalogue.workDisciplines) assert.ok(activitiesFor(discipline).length > 0, discipline);
-  assert.equal(Object.values(catalogue.activities).flat().length, 147);
+  assert.equal(Object.values(catalogue.activities).flat().length, 159);
   const pour = activitiesFor("Concrete & Reinforced Concrete").find((activity) => activity.value === "Concrete Pouring");
   assert.ok(pour?.description.startsWith("Place, compact"));
-  assert.ok(pour?.completionOptions.includes("Other"));
-  // Technical Instructions use the same 17 disciplines for their category list.
+  assert.ok(pour?.completionOptions.includes("Other completed work"));
+  // Technical Instructions use the same 18 disciplines for their category list.
   assert.deepEqual(Object.keys(catalogue.instructionCategories), catalogue.workDisciplines);
   assert.deepEqual(catalogue.issueTypes, ["Quality", "Equipment", "Materials", "Schedule", "Operational", "Technical / Design", "Commercial / Contractual"]);
   assert.deepEqual(catalogue.recordStatuses, ["Open", "Assigned", "In Progress", "Pending Verification", "Closed", "Cancelled"]);
@@ -58,14 +57,12 @@ test("required fields follow the workbook, conditional ones only when their trig
   assert.ok(empty.includes("Delay cause type"));
   // The PDR is its sheet, row by row: the critical-path question is asked on it.
   assert.ok(empty.includes("Critical path impact"));
-  // Closed needs a closure note; an open record does not.
-  assert.ok(!specMissing("issue", { workflow_status: "Open" }).includes("Resolution / closure note"));
-  assert.ok(specMissing("issue", { workflow_status: "Closed" }).includes("Resolution / closure note"));
-  // An approved change order needs the approved amount and days; who approved and when is
+  // v5.0: the closure note and the approved amount / days are entered in the Close / Approve dialog, so a
+  // closed Issue or an approved Change Order asks for nothing more in the form; who approved and when is
   // recorded by the database, never typed.
+  assert.ok(!specMissing("issue", { workflow_status: "Closed" }).includes("Resolution / closure note"));
   const approved = specMissing("change_order", { approval_status: "Approved" });
-  for (const label of ["Approved amount", "Approved days"]) assert.ok(approved.includes(label), label);
-  for (const label of ["Approved by", "Approval date"]) assert.ok(!approved.includes(label), label);
+  for (const label of ["Approved amount", "Approved days", "Approved by", "Approval date"]) assert.ok(!approved.includes(label), label);
   // A rejected completion needs a linked NCR or issue.
   assert.ok(specMissing("works_completed", { inspection_status: "Inspected - Rejected" }).includes("Linked NCR / issue"));
   // Agreements Made rows 11 and 12: an action needs its owner and due date.
@@ -92,11 +89,14 @@ test("a delivery that differs from its order asks for a discrepancy note", () =>
 test("Materials Delivery uses its own groups, dependent categories, and units", () => {
   const category = specForms.delivery.find((field) => field.key === "material_category");
   const unit = specForms.delivery.find((field) => field.key === "unit");
-  const legacy = upgradeSpecValues("delivery", { material_group: "Other Material", material_group_other: "Geotextile" });
-  assert.deepEqual(legacy, { material_group: "Material Group", material_category: "Other Material", material_category_other: "Geotextile" });
-  assert.deepEqual(fieldOptions(category, { material_group: "Delivery Status" }).map(({ value }) => value), catalogue.materialCategories["Delivery Status"].map(({ value }) => value));
-  assert.deepEqual(setSpecValue("delivery", legacy, "material_group", "Delivery Discrepancy"), { material_group: "Delivery Discrepancy", material_category: "" });
-  const approvedUnits = ["m", "m²", "m³", "mm", "cm", "kg", "tonne", "pcs", "number", "lot", "hours", "set", "other"];
+  // A record of the v2 workbook kept its category in material_group; it is moved under the group that lists it.
+  const legacy = upgradeSpecValues("delivery", { material_group: "Portland cement (bags)" });
+  assert.deepEqual(legacy, { material_group: "Cement & Binders", material_category: "Portland cement (bags)" });
+  assert.deepEqual(upgradeSpecValues("delivery", { material_group: "Other Material", material_group_other: "Geotextile" }), { material_group: "Other Material", material_group_other: "Geotextile" });
+  assert.deepEqual(fieldOptions(category, { material_group: "Cement & Binders" }).map(({ value }) => value), catalogue.materialCategories["Cement & Binders"].map(({ value }) => value));
+  assert.deepEqual(setSpecValue("delivery", legacy, "material_group", "Insulation"), { material_group: "Insulation", material_category: "" });
+  // Developer package v5: the Units list of Materials Delivery row 12 and the Shared Dropdown Lists.
+  const approvedUnits = ["m", "m²", "m³", "kg", "tonne", "pcs", "set", "lot", "bags", "trips / loads", "litre (L)", "sheets", "rolls", "days", "hours", "other"];
   assert.deepEqual(fieldOptions(unit, {}).map(({ value }) => value), approvedUnits);
   assert.deepEqual(projectList("units").map(({ value }) => value), approvedUnits);
   assert.ok(specMissing("delivery", { delivery_status: "Scheduled" }).includes("Planned delivery date/time"));
@@ -156,10 +156,13 @@ test("the workbook status is shown, never asked; decisions are a reviewer's and 
   assert.equal(canChooseDecision(approval, "Approved", false), false);
   assert.equal(canChooseDecision(approval, "Submitted", false), true);
   assert.equal(canChooseDecision(approval, "Approved", true), true);
-  for (const [form, key] of [["lessons_learned", "review_status"], ["works_completed", "inspection_status"], ["delivery", "inspection_result"], ["ncr", "verification_result"]]) {
+  // v5.0: a lesson has no review step; submitting it shares it, so its status is set by the workflow.
+  assert.equal(specForms.lessons_learned.find((field) => field.key === "review_status")?.derived, true);
+  for (const [form, key] of [["works_completed", "inspection_status"], ["delivery", "inspection_result"]]) {
+    // (the NCR verification result is entered in the Close / Verify dialog since v5.0)
     assert.ok(specForms[form].find((field) => field.key === key)?.decision, `${form}.${key}`);
   }
-  for (const [form, key] of [["change_order", "approved_by"], ["change_order", "approved_on"], ["ncr", "verified_by"], ["lessons_learned", "reviewed_by"]]) {
+  for (const [form, key] of [["change_order", "approved_by"], ["change_order", "approved_on"], ["lessons_learned", "reviewed_by"]]) {
     assert.equal(specForms[form].find((field) => field.key === key)?.auto, true, `${form}.${key}`);
   }
 });
@@ -238,7 +241,7 @@ test("every workbook value has a Dutch label; the stored value stays English", (
     if (Array.isArray(value)) value.forEach((item) => values.add(item));
     else for (const [group, options] of Object.entries(value)) { values.add(group); for (const option of options) { values.add(option.value); for (const item of option.completionOptions ?? []) values.add(item); } }
   }
-  const missing = [...values].filter((value) => !specValueNl[value]);
+  const missing = [...values].filter((value) => !hasSpecLabelNl(value));
   assert.deepEqual(missing, []);
   assert.equal(specLabel("Near Miss", "nl"), "Bijna-ongeval");
   assert.equal(specLabel("Near Miss", "en"), "Near Miss");
@@ -306,7 +309,7 @@ test("every Workspace form is its workbook sheet, row by row", () => {
   assert.deepEqual(order("issue").slice(0, 8), ["identified_at", "issue_type", "issue_category", "@title", "@description", "@location", "discipline", "priority"]);
   assert.deepEqual(order("hse").slice(0, 6), ["observed_at", "hse_type", "hse_category", "@title", "@description", "@location"]);
   assert.deepEqual(order("change_order").slice(0, 8), ["request_date", "change_type", "change_category", "@title", "@description", "change_reason", "originator", "@location"]);
-  assert.deepEqual(order("delivery").slice(0, 4), ["#delivery_at", "supplier", "purchase_order", "delivery_note_number"]);
+  assert.deepEqual(order("delivery").slice(0, 4), ["@title", "#delivery_at", "supplier", "purchase_order"]);
   assert.deepEqual(order("lessons_learned").slice(0, 6), ["recorded_on", "project_phase", "lesson_category", "@title", "situation", "what_happened"]);
   // Literal labels and lists of the sheets (checked 20-11-2026).
   const field = (form, key) => specForms[form].find((item) => item.key === key);
@@ -325,7 +328,7 @@ test("F07: each activity's guide prompts are answered, stored with the prompt, r
   const { activityPrompts, cleanSpecValues, rowsFor, setSpecValue, specFacts, specForms, activitiesFor } = await import("../lib/forms/spec-forms.ts");
   const { workDisciplines } = await import("../lib/forms/spec-catalogue.ts");
   const activities = workDisciplines.flatMap((name) => activitiesFor(name).map((activity) => ({ name, activity })));
-  assert.equal(activities.length, 147, "all 147 guide rows");
+  assert.equal(activities.length, 159, "all 159 guide rows");
   for (const { name, activity } of activities) {
     const prompts = activityPrompts({ discipline: name, activity: activity.value });
     assert.ok(prompts.length >= 4, `${activity.value} has its prompts`);
@@ -345,9 +348,9 @@ test("F07: each activity's guide prompts are answered, stored with the prompt, r
   }
 });
 
-test("the project discipline list keeps the workbook's 17 and takes the project's own (WD-181-06, WD-053-05)", () => {
+test("the project discipline list keeps the workbook's 18 and takes the project's own (WD-181-06, WD-053-05)", () => {
   const standard = projectList("disciplines", null).map((option) => option.value);
-  assert.deepEqual(standard.slice(0, 17), catalogue.workDisciplines, "the workbook's disciplines come first and unchanged");
+  assert.deepEqual(standard.slice(0, 18), catalogue.workDisciplines, "the workbook's disciplines come first and unchanged");
   assert.ok(standard.includes("Structural") && standard.includes("External Works"), "the document register's starting disciplines are on the list");
   const config = { lists: { disciplines: { added: ["Marine Works", "Geotechnical"], retired: ["Civil", "Foundations & Substructure", "Marine Works"] } } };
   const values = projectList("disciplines", config).map((option) => option.value);
@@ -359,10 +362,28 @@ test("the project discipline list keeps the workbook's 17 and takes the project'
   assert.deepEqual(projectList("shifts", config).map((option) => option.value), projectList("shifts", null).map((option) => option.value), "the discipline list does not touch another list");
 });
 
-test("the workbook forms keep the 17 controlled disciplines whatever the project adds", () => {
+test("the workbook forms keep the 18 controlled disciplines whatever the project adds", () => {
   const config = { lists: { disciplines: { added: ["Marine Works"] } } };
   for (const form of ["works_ongoing", "works_completed", "technical_instruction"]) {
     const field = specForms[form].find((item) => item.key === "discipline");
     assert.deepEqual(fieldOptions(field, {}, config).map((option) => option.value), catalogue.workDisciplines, form);
   }
 });
+
+test("an Issue category with a fixed discipline sets it, and changing away clears only an automatic one", () => {
+  const quality = setSpecValue("issue", {}, "issue_type", "Quality");
+  const withCategory = setSpecValue("issue", quality, "issue_category", "Reinforcement Works");
+  assert.equal(withCategory.discipline, "Concrete & Reinforced Concrete");
+  const other = setSpecValue("issue", withCategory, "issue_category", "Painting & Finishing");
+  assert.equal(other.discipline, "Architectural & Interior Finishes");
+  const manual = setSpecValue("issue", { ...quality, discipline: "Electrical Works" }, "issue_category", "Concrete Works");
+  assert.equal(manual.discipline, "Concrete & Reinforced Concrete", "a category the workbook ties to a discipline decides it");
+  for (const [category, discipline] of Object.entries(specFormsIssueCategoryDisciplines())) {
+    assert.ok(Object.values(catalogue.issueCategories).flat().some((option) => option.value === category), `${category} is an issue category`);
+    assert.ok(discipline.length > 0);
+  }
+});
+
+function specFormsIssueCategoryDisciplines() {
+  return issueCategoryDisciplines;
+}

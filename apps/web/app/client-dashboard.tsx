@@ -28,7 +28,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { useLanguage } from "@/lib/i18n";
-import { nonPhotoCategoryList } from "@/lib/media/photo-library.mjs";
+import { nonPhotoCategoryList, photoSourceIds } from "@/lib/media/photo-library.mjs";
 import { isOpenItem } from "@/lib/actions/action-center.mjs";
 import { isWorklistRegister, summarizeOpenWork, workItemFromAction, workItemFromFinding, workItemFromRegister } from "@/lib/actions/open-work.mjs";
 import { getCachedProjectSnapshot, cacheProjectSnapshot } from "@/lib/offline/project-cache";
@@ -282,21 +282,30 @@ export function ClientDashboard({
     enabled: Boolean(client),
     staleTime: 30_000,
     queryFn: async () => {
-      const [findings, registers, inspectionCount, photoCount] = await Promise.all([
+      const [findings, registers, inspectionCount, photoCount, captureRows] = await Promise.all([
         pageAll((from, to) => client!.from("findings").select("id,finding_number,title,status,finding_type,priority,due_at,issue_management").eq("project_id", projectId).order("id").range(from, to)),
         pageAll((from, to) => client!.from("project_register_entries").select("id,entry_number,title,status,register_type,due_at,details").eq("project_id", projectId).order("id").range(from, to)),
         client!.from("inspections").select("id", { count: "exact", head: true }).eq("project_id", projectId),
         client!.from("files").select("id", { count: "exact", head: true }).eq("project_id", projectId).eq("status", "available").like("mime_type", "image/%").not("category", "in", `(${nonPhotoCategoryList.join(",")})`),
+        client!.from("visual_captures").select("file_id,spec").eq("project_id", projectId),
       ]);
       if (findings.error) throw findings.error;
       if (registers.error) throw registers.error;
       if (inspectionCount.error) throw inspectionCount.error;
       if (photoCount.error) throw photoCount.error;
+      // A preserved original belongs to its photo; the Workspace tile does not list it as a second picture, so neither does this count.
+      const originals = [...photoSourceIds((captureRows.data ?? []) as Array<{ file_id: string; spec?: { _original?: { file_id?: string } } }>)];
+      let originalPhotos = 0;
+      if (originals.length) {
+        const counted = await client!.from("files").select("id", { count: "exact", head: true }).eq("project_id", projectId).eq("status", "available").like("mime_type", "image/%").not("category", "in", `(${nonPhotoCategoryList.join(",")})`).in("id", originals);
+        if (counted.error) throw counted.error;
+        originalPhotos = counted.count ?? 0;
+      }
       return {
         findings: findings.data ?? [],
         registers: (registers.data ?? []).filter(isWorklistRegister),
         inspections: inspectionCount.count ?? 0,
-        photos: photoCount.count ?? 0,
+        photos: Math.max(0, (photoCount.count ?? 0) - originalPhotos),
       };
     },
   });
@@ -555,7 +564,7 @@ export function ClientDashboard({
               <span><i style={{ width: `${completion}%` }} /></span>
               <small>{completedItems.length} {text("completed", "afgerond")} · {actions.length - completedItems.length} open</small>
             </div>
-            <div className="overview-priority-list">
+            <div className={`overview-priority-list${projectCounts.data ? "" : " is-loading"}`}>
               {openWork.top.map((item) => (
                 <button className="ui-list-row" type="button" onClick={openActions} key={`${item.source}:${item.id}`}>
                   <span><strong className="ui-list-row__title">{item.title}</strong><small className="ui-list-row__meta">{[item.reference, statusText(item.status, text)].filter(Boolean).join(" · ")}</small></span>

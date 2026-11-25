@@ -1221,7 +1221,8 @@ test("processes the annotated screens of 1 August: NCR form, agreement and deadl
   // of the client's own non-conformance report.
   assert.match(workspace, /const openTask = \(next: ProjectTab, createRecord = true, preset\?: WorkspaceTilePreset\)/);
   assert.match(workspace, /const openFinding = \(scope: "issue" \| "ncr", createRecord = true\)/);
-  assert.match(workspace, /ncr-form-context/);
+  // v5.0 (25-11-2026): every form opens with the read-only auto bar (record ID, date/time, "... by", status).
+  assert.match(workspace, /<FormAutoBar items=\{autoBarItems\(\{\s+idLabel: text\("NCR number"/);
   // 20-11-2026: every Workspace form is its workbook sheet, row by row (lib/forms/spec-forms.ts sheetLayouts).
   assert.doesNotMatch(workspace, /Reference checklist \/ earlier report|Referentiechecklist \/ eerder rapport/);
   assert.match(workspace, /Description of non-conformance|Omschrijving van de afwijking/);
@@ -1328,7 +1329,7 @@ test("keeps the action centre and makes its deadlines and choices true on site",
   assert.match(workspace, /describe, mark or remove it|omschrijven, markeren of verwijderen/);
   // Three forms keep the list of photos and its sentence; the two record screens the
   // client drew show a strip of pictures, and say so in their own words.
-  assert.equal(workspace.match(/\{photoCaptureHint\}/g)?.length, 4);
+  assert.equal(workspace.match(/photoCaptureHint\}/g)?.length, 4);
   assert.match(workspace, /const photoStripHint = text\(/);
   assert.equal(workspace.match(/\{photoStripHint\}/g)?.length, 2);
 
@@ -1453,7 +1454,8 @@ test("gives the phone back button a screen to go back to", async () => {
 
   // Every screen the user perceives as a page is a history entry with its own address.
   assert.match(app, /const screen: AppScreen = useMemo/);
-  assert.match(app, /useScreenHistory\(screen, applyScreen\)/);
+  assert.match(app, /useScreenHistory\(screen, applyScreen, Boolean\(deliveryLink\)\)/);
+  assert.match(history, /typeof window === "undefined" \|\| waitingForLink/);
   assert.match(app, /const applyScreen = useCallback/);
   // Each entry also remembers the screen underneath it.
   assert.match(history, /window\.history\.pushState\(\{ codecoScreen: screen, codecoBelow: previous \} satisfies HistoryEntry, "", url\)/);
@@ -2221,8 +2223,8 @@ test("builds the HSE observation / issue screen the client sent, section by sect
   ]);
 
   // The head of the screen: everything the app already knows before a box is filled in.
-  assert.match(operations, /sectioned-record-context/);
-  for (const heading of [/Issue ID/, /Reporter|Melder/, /Site \/ location|Locatie/, /Weather|Weer/, /Department|Afdeling/]) {
+  assert.match(operations, /<FormAutoBar items=/);
+  for (const heading of [/Issue ID/, /Reported by|Gemeld door/, /Date\/time identified/, /HSE report ID/]) {
     assert.match(operations, heading);
   }
 
@@ -2302,7 +2304,7 @@ test("builds the HSE observation / issue screen the client sent, section by sect
   assert.match(operations, /className="record-back-button"/);
   assert.match(operations, /record-sync-chip\$\{online \? "" : " offline"\}/);
   assert.match(operations, /className="ui-button ui-button--secondary ui-button--md record-heading-draft"/);
-  assert.match(operations, /function nextRecordNumber\(existing: string\[\], prefix: string, year: string\)/);
+  assert.match(operations, /nextRecordId\(data\.hseEvents\.map/);
   assert.match(operations, /Provisional · fixed on submit|Voorlopig · vast bij indienen/);
 
   // Section 6 is the strip of pictures with the tile that adds one, not a list of rows.
@@ -2458,9 +2460,9 @@ test("keeps the record screens and the photo library usable on a phone and a tab
   // align-items: start of the two-column rule and every box is as wide as its own text.
   const stacked = styles.match(/\.sectioned-record-columns \{ align-items: stretch; display: flex; flex-direction: column; \}/g);
   assert.ok((stacked?.length ?? 0) >= 2, "both the narrow container and the narrow window stack into full-width sections");
-  // Client, 20-11-2026: "fields beside each other must be under each other" — every form is
-  // one column at every width, one field per row.
-  assert.match(styles, /\.form-grid-2:not\(\.named-photo-pair\):not\(\.delay-choice-columns\),[\s\S]*?\{ grid-template-columns: minmax\(0, 1fr\); \}/);
+  // Client mockups v6, 25-11-2026: short fields stand two to a row on a wide form (this replaces the
+  // one-column rule of 20-11-2026) and fall back to one per row once the form container is under 760 px.
+  assert.match(styles, /@container \(max-width: 760px\) \{ \.form-grid-2 \{ grid-template-columns: minmax\(0, 1fr\); \} \}/);
 
   // Two columns when the form is wide enough, not when the window is: the workspace has a
   // module switcher beside it, so a wide tablet can still leave a phone-width form.
@@ -3131,7 +3133,7 @@ test("gives the project delay report its own form, numbered PDR and evidenced by
 
   // The five sections of the client's own form, with the header the client asked to work
   // "zelfde als HSE" — filled by the app before a box is touched.
-  assert.match(workspace, /text\("Delay report header", "Kop van het vertragingsrapport"\)/);
+  assert.match(workspace, /delayReportRegister \? text\("PDR number", "PDR-nummer"\)/);
   for (const heading of [
     /title=\{text\("Delay details", "Details van de vertraging"\)\}/,
     /title=\{text\("Delay dates", "Datums van de vertraging"\)\}/,

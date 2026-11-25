@@ -1,6 +1,7 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { expect, type Page, test } from "@playwright/test";
 import { fillSpecFields } from "./spec-fill";
+import { finishSigning } from "./sign-popup";
 
 /**
  * Client, 19-11-2026: "the user must be able to export their own report of everything — all
@@ -61,6 +62,7 @@ test("the day overview exports every Workspace form of the day as PDF and Word",
   const storedOnSite = form.locator("[data-spec-field='stored_on_site'] input");
   if (await storedOnSite.isVisible().catch(() => false)) await storedOnSite.uncheck();
   await page.getByRole("button", { name: "Save register item" }).click();
+  await finishSigning(page);
   await expect(page.getByText(/saved/i).first()).toBeVisible();
 
   await page.locator(".sidebar").getByRole("button", { name: "Reports", exact: true }).click();

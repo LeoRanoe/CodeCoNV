@@ -1,3 +1,4 @@
+import { isOnSiteWorkforce } from "../forms/workforce.mjs";
 import { downloadBlob } from "@/lib/browser/download";
 /* eslint-disable jsx-a11y/alt-text -- @react-pdf/renderer Image has no HTML alt prop. */
 import {
@@ -12,6 +13,9 @@ import {
 import type { PeriodReportSnapshot } from "@/lib/supabase/operations";
 import { periodDetailKeys, periodDetailsLine, periodHours, periodProjectHead, periodSignatureRoles, periodToken } from "@/lib/reports/period-report-text";
 import { reportDelayCause, reportWeather, reportWind } from "@/lib/reports/report-vocabulary";
+import type { ReportPhoto, ReportPhotoMode } from "@/lib/reports/report-photos";
+import type { SignoffHistoryEntry } from "@/lib/forms/signoff";
+import { SignoffHistoryPdf } from "@/lib/reports/signoff-history-pdf";
 
 /** The day closeout's HSE answer in words: the stored value is a code such as near_miss. */
 const closeoutHseEvents: Record<string, string> = { none: "geen", near_miss: "bijna-ongeval", incident: "incident", observation: "observatie", unsafe_act: "onveilige handeling", unsafe_condition: "onveilige situatie" };
@@ -36,7 +40,37 @@ export const allPeriodReportTopics: PeriodReportTopic[] = ["photos", "works_ongo
 /** HSE event types that count as an incident rather than a routine observation. */
 export const hseIncidentTypes = ["incident", "near_miss", "stop_work"];
 
-export type PeriodReportOptions = { sections?: PeriodReportSection[]; topics?: PeriodReportTopic[]; reportTitle?: string; headerText?: string | null; footerText?: string | null };
+/** A record of the period with the sign-off steps it went through (Word 11.1, "signatures and sign-off log"). */
+export type PeriodSignoffLogEntry = { code: string; title: string; history: SignoffHistoryEntry[] };
+
+/**
+ * Word 11.1 options of the builder beyond the period and the forms: how photos are printed (none, small or large;
+ * `photos` holds the pictures made in the browser by report-photos.ts and `photosOmitted` how many were left out),
+ * whether signatures are printed, and the sign-off log of the records in the report.
+ */
+export type PeriodReportOptions = {
+  sections?: PeriodReportSection[]; topics?: PeriodReportTopic[]; reportTitle?: string; headerText?: string | null; footerText?: string | null;
+  photoMode?: ReportPhotoMode; photos?: Record<string, ReportPhoto>; photosOmitted?: number;
+  signatures?: boolean; signoffLog?: PeriodSignoffLogEntry[];
+};
+
+/**
+ * The snapshot for a report built with signatures switched off: no ink and no signed-by line on the records, and no
+ * ink on the day closeouts (their contractor attestation keeps its words).
+ */
+export function withoutSignatures(snapshot: PeriodReportSnapshot): PeriodReportSnapshot {
+  const without = (rows: Array<Record<string, unknown>> | undefined, keys: string[]) => (rows ?? []).map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => !keys.includes(key))));
+  const record = ["signature_image", "signed_by", "signed_at"];
+  return {
+    ...snapshot,
+    day_closeouts: without(snapshot.day_closeouts, ["contractor_signature_image", "signature_image"]),
+    inspections: without(snapshot.inspections, record),
+    findings: without(snapshot.findings, record),
+    hse_events: without(snapshot.hse_events, record),
+    register_entries: without(snapshot.register_entries, record),
+    registrations: without(snapshot.registrations, record),
+  };
+}
 
 const styles = StyleSheet.create({
   page: { backgroundColor: "#ffffff", color: "#20252b", fontFamily: "Helvetica", fontSize: 9, paddingBottom: 42, paddingHorizontal: 34, paddingTop: 88 },
@@ -68,6 +102,10 @@ const styles = StyleSheet.create({
   callout: { backgroundColor: "#fff9db", borderColor: "#e2bd25", borderWidth: 1, marginBottom: 8, padding: 8 },
   calloutTitle: { color: "#5b4a00", fontSize: 9, fontWeight: 700 },
   calloutText: { color: "#5e583d", fontSize: 7.5, lineHeight: 1.35, marginTop: 3 },
+  photoGrid: { display: "flex", flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 6 },
+  photoCard: { borderColor: "#dce4e7", borderWidth: 1, padding: 4 },
+  photoImage: { objectFit: "contain" },
+  photoCaption: { color: "#44525a", fontSize: 7, lineHeight: 1.3, marginTop: 3 },
   footer: { bottom: 18, color: "#7a8991", fontSize: 7, left: 34, position: "absolute", right: 34 },
 });
 
@@ -118,6 +156,24 @@ function RecordRows({ rows, empty = "Geen registraties in deze periode." }: { ro
   ))}</View>;
 }
 
+/** Pictures of the visual captures: small ones four across, large ones one per row. Captures without a picture stay a row. */
+function CapturePhotos({ captures, photos, mode }: { captures: Array<Record<string, unknown>>; photos: Record<string, ReportPhoto>; mode: ReportPhotoMode }) {
+  const shown = captures.filter((capture) => photos[value(capture, "id")]);
+  const rest = captures.filter((capture) => !photos[value(capture, "id")]);
+  const frame = mode === "large" ? { width: 500, height: 330 } : { width: 118, height: 90 };
+  return <View>
+    <View style={styles.photoGrid}>{shown.map((capture) => {
+      const photo = photos[value(capture, "id")];
+      const fit = Math.min(frame.width / photo.width, frame.height / photo.height);
+      return <View style={[styles.photoCard, { width: frame.width + 10 }]} wrap={false} key={value(capture, "id")}>
+        <Image src={photo.dataUrl} style={[styles.photoImage, { height: Math.round(photo.height * fit), width: Math.round(photo.width * fit) }]} />
+        <Text style={styles.photoCaption}>{[value(capture, "title"), value(capture, "captured_at") ? formatDate(value(capture, "captured_at")) : "", value(capture, "location_label")].filter(Boolean).join(" · ")}</Text>
+      </View>;
+    })}</View>
+    {rest.length ? <RecordRows rows={rest} /> : null}
+  </View>;
+}
+
 function ReportBrand({ label, logoSource }: { label: string; logoSource: string }) {
   return <View style={styles.brand} fixed>
     <View style={styles.brandLogoPlate}><Image src={logoSource} style={styles.brandLogo} /></View>
@@ -125,7 +181,8 @@ function ReportBrand({ label, logoSource }: { label: string; logoSource: string 
   </View>;
 }
 
-export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/codeco-logo-pdf.png" }: { snapshot: PeriodReportSnapshot; options?: PeriodReportOptions; logoSource?: string }) {
+export function PeriodReportDocument({ snapshot: source, options = {}, logoSource = "/codeco-logo-pdf.png" }: { snapshot: PeriodReportSnapshot; options?: PeriodReportOptions; logoSource?: string }) {
+  const snapshot = options.signatures === false ? withoutSignatures(source) : source;
   const projectName = value(snapshot.project, "name", "CODECO-project");
   const sections = new Set(options.sections?.length ? options.sections : allPeriodReportSections);
   const topics = new Set(options.topics?.length ? options.topics : allPeriodReportTopics);
@@ -190,8 +247,9 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
   const ncrFindings = findings.filter((entry) => value(entry, "finding_type") === "ncr");
   const hseIncidents = hseEvents.filter((entry) => hseIncidentTypes.includes(value(entry, "event_type")));
   const hseObservations = hseEvents.filter((entry) => !hseIncidentTypes.includes(value(entry, "event_type")));
-  const attendanceTotal = snapshot.attendance.reduce((total, entry) => total + Number(entry.headcount ?? 0), 0);
-  const workforce = Object.entries(snapshot.attendance.reduce<Record<string, number>>((groups, entry) => {
+  const onSiteAttendance = snapshot.attendance.filter((entry) => isOnSiteWorkforce(typeof entry.entry_type === "string" ? entry.entry_type : null, entry.spec));
+  const attendanceTotal = onSiteAttendance.reduce((total, entry) => total + Number(entry.headcount ?? 0), 0);
+  const workforce = Object.entries(onSiteAttendance.reduce<Record<string, number>>((groups, entry) => {
     const discipline = value(entry, "discipline", "Onbekend");
     groups[discipline] = (groups[discipline] ?? 0) + Number(entry.headcount ?? 0);
     return groups;
@@ -335,7 +393,10 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
       {sections.has("visual") && topics.has("photos") ? <Page size="A4" style={styles.page}>
         <ReportBrand label="VISUEEL PROJECTDOSSIER" logoSource={logoSource} />
         <Text style={styles.heading}>Foto&apos;s en 360°-camerabeelden</Text>
-        <RecordRows rows={snapshot.visual_captures} />
+        {options.photoMode && options.photoMode !== "none" && options.photos
+          ? <CapturePhotos captures={snapshot.visual_captures} photos={options.photos} mode={options.photoMode} />
+          : <RecordRows rows={snapshot.visual_captures} />}
+        {options.photoMode && options.photoMode !== "none" && options.photosOmitted ? <Text style={styles.empty}>{options.photosOmitted} foto&apos;s zijn niet afgedrukt (limiet of niet leesbaar); ze staan wel in het register.</Text> : null}
         <Text style={styles.footer} fixed>CODECO Supervisie | visueel bewijs</Text>
       </Page> : null}
 
@@ -361,6 +422,16 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
           <Text style={styles.footer} fixed>CODECO Supervisie | gebouwstatus</Text>
         </Page>;
       }) : null}
+
+      {options.signoffLog?.length ? <Page size="A4" style={styles.page}>
+        <ReportBrand label="ONDERTEKENINGSLOG" logoSource={logoSource} />
+        <Text style={styles.heading}>Ondertekeningslog</Text>
+        {options.signoffLog.map((entry) => <View key={entry.code} wrap={false}>
+          <Text style={styles.rowTitle}>{entry.code} · {entry.title}</Text>
+          <SignoffHistoryPdf history={options.signatures === false ? entry.history.map((item) => ({ ...item, signature: null })) : entry.history} title="Stappen" />
+        </View>)}
+        <Text style={styles.footer} fixed>CODECO Supervisie | ondertekeningslog</Text>
+      </Page> : null}
 
       <Page size="A4" style={styles.page}>
         <ReportBrand label="ONDERTEKENING" logoSource={logoSource} />

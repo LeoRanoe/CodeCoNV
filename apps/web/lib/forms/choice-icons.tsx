@@ -6,7 +6,8 @@ import {
   PencilRuler, PersonStanding, RectangleHorizontal, RectangleVertical, Replace, ScanSearch, Send, Share2, ShieldX, Square,
   Sun, Sunset, Target, Trash2, TreePalm, TrendingUp, TriangleAlert, Truck, UserCheck, UserMinus, Users, UserX, Wrench, X,
   Award, Ambulance, Building, Coins, Construction, Crop, Fence, Flame, Handshake, Megaphone, OctagonX, Package, PackageX,
-  Split, Thermometer, Sprout, Umbrella,
+  Split, Thermometer, Sprout, Umbrella, Cloud, CloudDrizzle, CloudLightning, CloudRain, FlaskConical, PackageMinus, PackagePlus,
+  RotateCcw, Ruler, Tag,
   type LucideIcon,
 } from "lucide-react";
 
@@ -52,6 +53,14 @@ const pictures: Record<string, LucideIcon> = {
   "Increase inspection, testing or monitoring": ScanSearch, "Notify responsible supervisor / contractor / consultant": BellRing,
   "Not applicable (justification required)": CircleMinus,
   "None": CircleMinus, "No Injury": CircleCheck, "Under Assessment": ScanSearch,
+  // Delivery discrepancy, weather and inspection findings (developer package v5)
+  "Quantity Shortage": PackageMinus, "Excess Quantity": PackagePlus, "Wrong Specification": FileWarning, "Damaged in Transit": PackageX,
+  "Missing Documentation": FileX, "Expired / Shelf-Life Concern": CalendarX, "Packaging / Labelling Issue": Tag,
+  "Submitted (shared)": Share2,
+  "Dry / sunny": Sun, "Cloudy": Cloud, "Light rain": CloudDrizzle, "Heavy rain": CloudRain, "Thunderstorm": CloudLightning,
+  "Re-inspection Required": RotateCcw, "Not Ready for Inspection": ClockAlert,
+  "Workmanship Defect": Hammer, "Dimensional Deviation": Ruler, "Material Non-Compliance": ShieldX, "Incomplete Work": CircleDashed,
+  "Documentation Missing": FileX, "Test Failure": FlaskConical, "Access / Safety Concern": TriangleAlert, "Other Finding": Ellipsis,
   "Other": Ellipsis,
 };
 

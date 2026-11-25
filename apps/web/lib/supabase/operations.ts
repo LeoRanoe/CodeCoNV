@@ -5,7 +5,7 @@ import { anchorChecklistLibrary, legacyAnchorPrompts } from "@/lib/checklists/an
 import { normalizeExternalShareToken } from "@/lib/external-share/token.mjs";
 import { schemaFeatureMissing } from "@/lib/supabase/schema-compatibility.mjs";
 import { pageAll } from "@/lib/supabase/page-all.mjs";
-import { isPhotoFile } from "@/lib/media/photo-library.mjs";
+import { isPhotoFile, photoSourceIds } from "@/lib/media/photo-library.mjs";
 import type { SpecConfiguration } from "@/lib/forms/spec-forms";
 
 export type ChecklistItem = {
@@ -336,6 +336,7 @@ export type AttendanceRecord = {
   discipline: string;
   headcount: number;
   entry_type?: "workforce" | "visitor" | null;
+  spec?: Record<string, unknown> | null;
   signed_by?: string | null;
   created_at: string;
 };
@@ -576,6 +577,8 @@ export type OperationSnapshot = {
   dailyWork?: DailyWorkRecord[];
   // Optional only for offline snapshots cached before the workforce became a workspace page.
   attendance?: AttendanceRecord[];
+  // Signed Rapid Verify compliance checks; Actions lists the ones that still need follow-up.
+  specComplianceChecks?: Array<Record<string, unknown>>;
   _offlineCached?: boolean;
   _offlineSavedAt?: string;
 };
@@ -700,7 +703,7 @@ export async function loadProjectOperations(
     pageAll((from, to) => client.from("file_links").select("id,file_id,record_type,record_id,relationship,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 50000),
     pageAll((from, to) => client.from("day_closeouts").select("id,building_id,day_report_id,day_summary,work_ongoing,work_performed,progress_percent,delay_cause,delay_hours,delay_reason,contractor_company,contractor_signed_by,contractor_signed_at,contractor_signature_image,signed_by,signed_at,signature_image,tomorrow_plan,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 5000),
     pageAll((from, to) => client.from("record_buildings").select("record_type,record_id,building_id").eq("project_id", projectId).order("id").range(from, to), 50000),
-    pageAll((from, to) => client.from("attendance_entries").select("id,building_id,day_report_id,party_id,discipline,headcount,entry_type,signed_by,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 20000),
+    pageAll((from, to) => client.from("attendance_entries").select("id,building_id,day_report_id,party_id,discipline,headcount,entry_type,signed_by,spec,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 20000),
   ]);
   // The specification's project settings and the restricted incident data (readable with
   // hse.manage only) are newer than the rest; a database or a role without them reads nothing.
@@ -712,7 +715,7 @@ export async function loadProjectOperations(
   const hseSensitive = new Map(((hseSensitiveResult.error ? [] : hseSensitiveResult.data ?? []) as Array<{ event_id: string; data: Record<string, unknown> }>).map((row) => [row.event_id, row.data]));
   // Visitors and the signature arrived with later migrations; a database behind them still
   // lists the counted crew, and one without access to the table simply shows no history.
-  const attendanceCoreResult = attendanceResult.error && schemaFeatureMissing(attendanceResult.error, ["entry_type", "signed_by"])
+  const attendanceCoreResult = attendanceResult.error && schemaFeatureMissing(attendanceResult.error, ["entry_type", "signed_by", "spec"])
     ? await pageAll((from, to) => client.from("attendance_entries").select("id,building_id,day_report_id,party_id,discipline,headcount,created_at").eq("project_id", projectId).order("created_at", { ascending: false }).order("id").range(from, to), 20000)
     : attendanceResult;
   const compatibleAttendanceResult = attendanceCoreResult.error ? { data: [], error: null } : attendanceCoreResult;
@@ -821,12 +824,13 @@ export async function loadProjectOperations(
   const fileRows = (compatibleFileResult.data ?? []) as FileRecord[];
   const storedVisualCaptureRows = (compatibleVisualCaptureResult.data ?? []) as VisualCapture[];
   const capturedFileIds = new Set(storedVisualCaptureRows.map((capture) => capture.file_id));
+  const sourceFileIds = photoSourceIds(storedVisualCaptureRows);
   // Files are the durable source of truth for project images. Older media-library uploads
   // predate visual_captures, so project them into Visual Evidence and materialise a capture
   // only if somebody adds a marker. This repairs history without a data migration.
   const historicalImageCaptures = fileRows
     // A drawing or a document saved as an image is no photo (the library and the overview use one rule).
-    .filter((file) => isPhotoFile(file) && !capturedFileIds.has(file.id))
+    .filter((file) => isPhotoFile(file) && !capturedFileIds.has(file.id) && !sourceFileIds.has(file.id))
     .map((file): VisualCapture => ({
       id: `file:${file.id}`,
       building_id: file.building_id ?? "",
@@ -904,7 +908,17 @@ export async function loadProjectOperations(
     fileLinks: (compatibleFileLinkResult.data ?? []) as FileLink[],
     dailyWork: dailyWorkRows.map((record) => ({ ...record, building_ids: buildingsForRecord(recordBuildings, "daily_work", record.id, record.building_id) })),
     attendance: (compatibleAttendanceResult.data ?? []) as AttendanceRecord[],
+    specComplianceChecks: await loadComplianceChecksForActions(client, projectId),
   };
+}
+
+/** The signed spec compliance checks that can still need follow-up (Word chapter 9, last row of the table). */
+async function loadComplianceChecksForActions(client: SupabaseClient, projectId: string) {
+  const result = await client.from("spec_compliance_checks")
+    .select("id,check_number,subject_kind,subject_file_id,subject_record_id,subject_label,requirement_label,clause,overall_result,signed_by,signed_at,follow_up_finding_id")
+    .eq("project_id", projectId).order("signed_at", { ascending: false }).limit(200);
+  // A role that may not read the checks simply has none in its list.
+  return result.error ? [] : ((result.data ?? []) as Array<Record<string, unknown>>);
 }
 
 export async function createMediaFolder(client: SupabaseClient, input: {
@@ -1923,6 +1937,19 @@ export async function createChecklist(client: SupabaseClient, input: { organizat
   fail(result.error);
   if (!result.data) throw new Error("De checklist kon niet worden aangemaakt.");
   return (result.data as ChecklistTemplate).id;
+}
+
+export async function uploadChecklist(client: SupabaseClient, input: { projectId: string; module: string; code: string; name: string; items: Record<string, unknown>[] }) {
+  const result = await client.rpc("upload_project_checklist", {
+    p_project_id: input.projectId,
+    p_module: input.module,
+    p_code: input.code,
+    p_name: input.name,
+    p_items: input.items,
+  });
+  fail(result.error);
+  if (!result.data) throw new Error("De checklist kon niet worden geüpload.");
+  return result.data as ChecklistTemplate;
 }
 
 export async function installChecklistLibraryTemplate(client: SupabaseClient, projectId: string, libraryCode: string) {

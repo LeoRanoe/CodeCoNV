@@ -20,6 +20,14 @@ export function isPhotoFile(file) {
   return Boolean(file) && String(file.mime_type ?? "").startsWith("image/") && !nonPhotoCategories.has(file.category) && (!file.status || file.status === "available");
 }
 
+/** A preserved original can be downloaded from its photo without listing it as a second capture. */
+export function photoSourceIds(captures) {
+  return new Set((captures ?? []).flatMap((capture) => {
+    const id = capture.spec?._original?.file_id;
+    return typeof id === "string" && id !== capture.file_id ? [id] : [];
+  }));
+}
+
 /** The photos and drawings the library is showing, before any folder is chosen. */
 export function visibleLibraryFiles(files, buildingId) {
   return (files ?? []).filter((file) => file.status === "available"

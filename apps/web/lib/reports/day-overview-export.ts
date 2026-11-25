@@ -1,3 +1,4 @@
+import { isOnSiteWorkforce } from "../forms/workforce.mjs";
 import { specFacts, specForms, type SpecFormKey, type SpecValues } from "../forms/spec-forms.ts";
 import { specLabel } from "../forms/spec-labels-nl.ts";
 /**
@@ -318,7 +319,7 @@ export function buildDayExport(day: DayExportInput, context: DayExportContext): 
   // ---- workforce ---------------------------------------------------------------------------
   const groups = new Map<string, number>();
   for (const entry of day.workforce.entries) {
-    if (entry.entry_type === "visitor") continue;
+    if (!isOnSiteWorkforce(str(entry.entry_type) || null, entry.spec)) continue;
     const label = [context.partyName(str(entry.party_id)) || text("Unknown organisation", "Onbekende organisatie"), str(entry.discipline), buildingNames(str(entry.building_id))].filter(Boolean).join(" · ");
     groups.set(label, (groups.get(label) ?? 0) + (Number(entry.headcount) || 0));
   }

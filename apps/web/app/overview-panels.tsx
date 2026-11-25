@@ -94,8 +94,8 @@ export function OverviewPanels({
       {children}
     </section>
   );
-  const fact = (label: string, value: ReactNode, tone?: "red" | "amber") => (
-    <div className={`overview-fact${tone ? ` overview-fact--${tone}` : ""}`}><dt>{label}</dt><dd>{value}</dd></div>
+  const fact = (label: string, value: ReactNode, tone?: "red" | "amber", key?: string) => (
+    <div key={key} className={`overview-fact${tone ? ` overview-fact--${tone}` : ""}`}><dt>{label}</dt><dd>{value}</dd></div>
   );
 
   return (
@@ -112,7 +112,7 @@ export function OverviewPanels({
           {fact(text("Open NCRs", "Open NCR's"), number(summary.quality.openNcr), summary.quality.openNcr ? "amber" : undefined)}
           {fact(text("Critical / high", "Kritiek / hoog"), number(summary.quality.severe), summary.quality.severe ? "red" : undefined)}
           {fact(text("Open issues", "Open issues"), number(summary.quality.openIssues))}
-          {summary.quality.byContractor.slice(0, 3).map((row: { name: string; count: number }) => fact(row.name, `${row.count} ${text("open", "open")}`))}
+          {summary.quality.byContractor.slice(0, 3).map((row: { name: string; count: number }) => fact(row.name, `${row.count} ${text("open", "open")}`, undefined, row.name))}
         </dl>
       ))}
       {panel("HSE", () => openModule("hse"), (

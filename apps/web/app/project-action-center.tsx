@@ -1,6 +1,8 @@
 "use client";
 
+import { AutoActionList } from "@/app/auto-action-list";
 import { SectionNav } from "@/app/section-nav";
+import { autoActionRows } from "@/lib/actions/auto-list.mjs";
 import {
   AlertTriangle,
   ArrowRight,
@@ -53,13 +55,13 @@ type ActionType = "all" | "action" | "wcr" | "rfi" | "rfa" | "wir" | "issue" | "
  * client asked for the action centre; the deadline tile of the workspace opens the same page
  * on its deadline view.
  */
-export type ActionCenterView = "mine" | "work" | "deadlines";
+export type ActionCenterView = "mine" | "work" | "deadlines" | "followup";
 type WorkFilter = "open" | "escalated" | "verification" | "closed" | "all";
 /** The menu's action views: contractor, corrective and preventive actions. */
 type FocusFilter = "all" | "contractor" | "corrective" | "preventive";
 type DeadlineFilter = "overdue" | "week" | "later" | "none" | "all";
 /** Which record a row opens, so tapping it never lands on a list the record is not in. */
-export type ActionCenterTarget = "findings" | "ncr" | "registers" | "drawings";
+export type ActionCenterTarget = "findings" | "ncr" | "registers" | "drawings" | "inspections" | "hse";
 
 type UnifiedItem = {
   id: string;
@@ -98,6 +100,7 @@ function typeIcon(type: UnifiedItem["type"]) {
 
 export function ProjectActionCenter({
   data,
+  buildings,
   actions,
   projectName,
   initialView = "work",
@@ -109,6 +112,7 @@ export function ProjectActionCenter({
   openProjectArea,
 }: {
   data: OperationSnapshot;
+  buildings: Array<{ id: string; name: string }>;
   actions: ProjectActionItem[];
   projectName: string;
   /** "deadlines" when the workspace deadline tile opened this page. */
@@ -202,6 +206,7 @@ export function ProjectActionCenter({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actions, data.findings, data.registerEntries, parties, resolveUserName, text]);
 
+  const followUpCount = useMemo(() => (autoActionRows({ ...data, buildings, parties } as unknown as Record<string, unknown>, { now: new Date().toISOString() }) as unknown[]).length, [data, buildings, parties]);
   const mine = useMemo(() => items.filter((item) => Boolean(currentUserId) && item.ownerUserId === currentUserId), [currentUserId, items]);
   // Somebody who has work of their own starts on it: that is the question the page exists
   // to answer. Somebody without assigned work would only see an empty page, so they start
@@ -313,9 +318,13 @@ export function ProjectActionCenter({
           { id: "mine", label: text("My work", "Mijn werk"), count: mine.filter(isOpen).length, icon: <UserRound size={18} />, selected: view === "mine", onSelect: () => setView("mine") },
           { id: "work", label: text("All project work", "Al het projectwerk"), icon: <ClipboardCheck size={18} />, selected: view === "work", onSelect: () => setView("work") },
           { id: "deadlines", label: text("Deadlines", "Deadlines"), count: items.filter(overdue).length, icon: <CalendarClock size={18} />, selected: view === "deadlines", onSelect: () => setView("deadlines") },
+          { id: "followup", label: text("Follow-up per form", "Opvolging per formulier"), count: followUpCount, icon: <FileCheck2 size={18} />, selected: view === "followup", onSelect: () => setView("followup") },
         ]}
       />
 
+      {view === "followup" ? (
+        <AutoActionList data={data} buildings={buildings} parties={parties} openRecord={(tab, recordId) => openProjectArea(tab as ActionCenterTarget, recordId)} />
+      ) : <>
       {view === "deadlines" ? (
         <div className="action-center-summary deadline-summary">
           {([
@@ -410,6 +419,7 @@ export function ProjectActionCenter({
           <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => openProjectArea("drawings")}><MapPin size={14} /> {text("Open coordinated drawing", "Open gecoördineerde tekening")} · {data.drawingPins.length} {text("points", "punten")} <ArrowRight size={14} /></button>
         </div>
       </div>
+      </>}
     </section>
   );
 }

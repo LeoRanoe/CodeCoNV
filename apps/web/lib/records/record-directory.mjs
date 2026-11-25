@@ -11,6 +11,7 @@
  */
 
 import { matchesSpecFacets, recordSpec, specFacets } from "../forms/spec-facets.ts";
+import { pickLinkSpec } from "../forms/link-prefill.mjs";
 
 /** Bare characters of a code, so "q-2026-0004", "Q20260004" and "q 2026 0004" are one. */
 export function normalizeRecordCode(value) {
@@ -57,6 +58,10 @@ function entry(kind, id, code, title, subtitle, metadata = {}) {
     delayHours: Number(metadata.delayHours ?? 0),
     // Discipline, type, status and priority of the specification fields (reporting filters).
     facets: metadata.spec ? specFacets(metadata.spec) : null,
+    // What a form that links to this record copies from it (lib/forms/link-prefill.mjs).
+    linkSpec: pickLinkSpec(metadata.spec),
+    // The records this one is based on (a Works Completed record points at its Works Ongoing record).
+    linkedRefs: typeof metadata.spec?.based_on_ref === "string" && metadata.spec.based_on_ref ? [metadata.spec.based_on_ref] : null,
     // F04 archive facets: the form's own type (register type, HSE observation or incident),
     // the responsible organisation and the named responsible person.
     subtype: String(metadata.subtype ?? ""),

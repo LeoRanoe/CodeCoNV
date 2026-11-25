@@ -1,0 +1,394 @@
+===== Photos
+FORM: PHOTOS |  |  | req= | vis= | dep=
+1 | Record ID | System-generated | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+2 | Project | Auto-filled / dropdown | req=Yes | vis=HIDDEN – auto, stored (record view / list / PDF only) | dep=Always
+2.1 | Title | Short text (max 120 characters) | req=Yes (auto-ge | vis=SHOWN – pre-filled, editable | dep=Always
+3 | Photo purpose | Click buttons | req=Yes | vis=SHOWN – user input | dep=Always
+4 | Photo category | Dependent dropdown | req=Yes | vis=SHOWN – user input | dep=After Photo purpose
+5 | Work discipline | Dropdown | req=No | vis=SHOWN – pre-filled, editable | dep=If photo relates to construction work
+6 | Work location | Location block: drawing picker + pin → building / level (auto) + detai | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+7 | Photo date/time | Date/time default | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+8 | Photo upload | File upload / multiple files – two buttons: "📷 Take a picture" (camera | req=Yes | vis=SHOWN – user input | dep=Always
+9 | Caption / observation | Short text | req=No | vis=SHOWN – user input | dep=Always
+10 | Related record | Linked-record selector | req=No | vis=SHOWN – user input | dep=When applicable
+11 | Taken by | Auto-filled user | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+FORM-SPECIFIC IMPLEMENTATION NOTE |  |  | req= | vis= | dep=
+===== Works Ongoing
+FORM: WORKS ONGOING |  |  | req= | vis= | dep=
+1 | Record ID | System-generated | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+2 | Project | Auto-filled | req=Yes | vis=HIDDEN – auto, stored (record view / list / PDF only) | dep=Always
+2.1 | Title | Short text (max 120 characters) | req=Yes (auto-ge | vis=SHOWN – pre-filled, editable | dep=Always
+3 | Report date | Date default | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+4 | Shift | Click buttons | req=No | vis=SHOWN – pre-filled, editable | dep=Always
+4.1 | Weather | Click buttons | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+4.2 | Rainfall | Number (mm) | req=No | vis=SHOWN – user input | dep=When Weather = Light rain, Heavy rain or Thunderstorm
+4.3 | Working time lost due to weather | Number (hours) | req=No | vis=SHOWN – user input | dep=When Weather = Light rain, Heavy rain or Thunderstorm
+5 | Work discipline | Dropdown | req=Yes | vis=SHOWN – user input | dep=Always
+6 | Activity | Dependent dropdown | req=Yes | vis=SHOWN – user input | dep=After Work discipline is selected
+7 | Building / area | Auto-filled from drawing (dropdown only when no drawing is used) | req=Yes | vis=SHOWN – auto-filled, read-only | dep=Always
+8 | Exact location / grid / level | Short text or location selector | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+8.1 | Drawing location (PDF + pin) | Drawing picker + pin / area marker | req=No | vis=SHOWN – user input | dep=Always (optional)
+9 | What exactly is being worked on? | Click buttons (multi-select, dependent on Activity) incl. "Other" | req=Yes | vis=SHOWN – user input | dep=After Work discipline and Activity are selected
+10 | Quantity completed | Number | req=Yes where me | vis=SHOWN – user input | dep=Always; mark N/A only where the activity cannot reasonably be quantifi
+11 | Unit | Dropdown | req=Yes where qu | vis=SHOWN – pre-filled, editable | dep=When Quantity completed is entered
+12 | Progress status | Click buttons | req=Yes | vis=SHOWN – user input | dep=Always
+13 | Progress percentage | Number / slider | req=No | vis=SHOWN – user input | dep=When useful for the activity
+14 | Crew / contractor | Linked register dropdown | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+15 | Start / finish time | Time fields | req=No | vis=SHOWN – user input | dep=If relevant to activity
+16 | Activity-specific technical details | Conditional fields | req=No; required | vis=SHOWN – user input | dep=Show only the fields relevant to the selected activity
+17 | Inspection / test reference | Linked record / short text | req=No | vis=SHOWN – user input | dep=When inspection applies
+18 | Photos | Multiple image upload – two buttons: "📷 Take a picture" (camera) + "📎  | req=No | vis=SHOWN – user input | dep=Always
+19 | Blocker / issue | Conditional dropdown + short text | req=No | vis=SHOWN – user input | dep=Always (optional); required when Progress status = On Hold
+20 | Remarks | Short text | req=No | vis=SHOWN – user input | dep=Always
+21 | Reported by | Auto-filled user | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+FORM-SPECIFIC IMPLEMENTATION NOTE |  |  | req= | vis= | dep=
+22 | Sign-off / review workflow | Linked workflow panel / repeatable sign-off log | req=Conditional | vis=SIGN-OFF SECTION (end of form) | dep=When this form is submitted or requires review/acknowledgement
+23 | Workflow status | System-generated / read-only | req=System | vis=SIGN-OFF SECTION (end of form) | dep=When a workflow profile is active
+WORKFLOW PROFILE | WO-DAILY-SUPERVISION | Supervision records and submits daily progress → Record is final on su | req= | vis= | dep=
+FORM OWNERSHIP | SUPERVISION ONLY | All fields in this form are entered by authorized Supervision users or | req= | vis= | dep=
+===== Works Completed
+FORM: WORKS COMPLETED |  |  | req= | vis= | dep=
+1 | Record ID | System-generated | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+2 | Project | Auto-filled | req=Yes | vis=HIDDEN – auto, stored (record view / list / PDF only) | dep=Always
+2.1 | Title | Short text (max 120 characters) | req=Yes (auto-ge | vis=SHOWN – pre-filled, editable | dep=Always
+3 | Completion date | Date default | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+3.1 | Based on Works Ongoing record | Linked-record selector | req=Yes | vis=SHOWN – user input | dep=Always
+4 | Work discipline | Dropdown | req=Yes | vis=SHOWN – auto-filled, read-only | dep=Always
+5 | Activity | Dependent dropdown | req=Yes | vis=SHOWN – auto-filled, read-only | dep=After Work discipline
+6 | Building / area | Auto-filled from linked record / drawing | req=Yes | vis=SHOWN – auto-filled, read-only | dep=Always
+7 | Exact location / grid / level | Location selector / short text | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+7.1 | Drawing location (PDF + pin) | Drawing picker + pin / area marker | req=No | vis=SHOWN – pre-filled, editable | dep=Always (optional)
+8 | What was completed? | Activity-dependent Click buttons (multi-select) + conditional text | req=Yes | vis=SHOWN – user input | dep=After Activity
+8.1 | Activity-specific technical details | Conditional fields | req=No; depends  | vis=SHOWN – user input | dep=After Activity
+9 | Quantity completed | Number | req=Yes where me | vis=SHOWN – pre-filled, editable | dep=Always; allow N/A only where not measurable
+10 | Unit | Dropdown | req=Yes where qu | vis=SHOWN – auto-filled, read-only | dep=When Quantity completed is entered
+11 | Completion / inspection status | Click buttons | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+12 | Inspection reference | Linked record selector | req=No | vis=SHOWN – user input | dep=If inspected
+13 | Contractor / crew | Linked register dropdown | req=Yes | vis=SHOWN – auto-filled, read-only | dep=Always
+14 | Photo evidence | Multiple image upload – two buttons: "📷 Take a picture" (camera) + "📎  | req=Recommended | vis=SHOWN – user input | dep=Always
+15 | Outstanding work / defects | Conditional short text + linked record | req=No | vis=SHOWN – user input | dep=If not accepted or outstanding work exists
+16 | Remarks | Short text | req=No | vis=SHOWN – user input | dep=Always
+17 | Reported by | Auto-filled user | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+FORM-SPECIFIC IMPLEMENTATION NOTES |  |  | req= | vis= | dep=
+18 | Sign-off / review workflow | Linked workflow panel / repeatable sign-off log | req=Conditional | vis=SIGN-OFF SECTION (end of form) | dep=When this form is submitted or requires review/acknowledgement
+19 | Workflow status | System-generated / read-only | req=System | vis=SIGN-OFF SECTION (end of form) | dep=When a workflow profile is active
+WORKFLOW PROFILE | WC-COMPLETION-SUPERVISION | Supervision records the completed work → Record is final on submit (no | req= | vis= | dep=
+===== Workforce
+FORM: WORKFORCE |  |  | req= | vis= | dep=
+1 | Record ID | System-generated | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+2 | Project | Auto-filled | req=Yes | vis=HIDDEN – auto, stored (record view / list / PDF only) | dep=Always
+2.1 | Title | Short text (max 120 characters) | req=Yes (auto-ge | vis=SHOWN – auto-filled, read-only | dep=Always
+3 | Report date | Date default | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+4 | Contractor | Dropdown (per row) | req=Yes | vis=SHOWN – user input | dep=Always
+5 | Worker discipline | Dropdown (per row) + "+ Add other discipline" | req=Yes | vis=SHOWN – user input | dep=Always
+8 | Number | Whole number (per row) | req=Yes | vis=SHOWN – user input | dep=Always
+8.1 | Total workers on site | System-calculated (read-only) | req=System | vis=SHOWN – auto-filled, read-only | dep=Always
+14 | Remarks | Short text | req=No | vis=SHOWN – user input | dep=Always (optional)
+15 | Submitted by | Auto-filled user | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+FORM-SPECIFIC IMPLEMENTATION NOTE |  |  | req= | vis= | dep=
+16 | Sign-off / review workflow | Linked workflow panel / repeatable sign-off log | req=Conditional | vis=SIGN-OFF SECTION (end of form) | dep=When this form is submitted or requires review/acknowledgement
+17 | Workflow status | System-generated / read-only | req=System | vis=SIGN-OFF SECTION (end of form) | dep=When a workflow profile is active
+WORKFLOW PROFILE | WF-ATTENDANCE-SUPERVISION | Supervision records workforce / attendance → Record is final on submit | req= | vis= | dep=
+===== Project Delay Report
+FORM: PROJECT DELAY REPORT |  |  | req= | vis= | dep=
+1 | PDR number | System-generated | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+2 | Project | Auto-filled | req=Yes | vis=HIDDEN – auto, stored (record view / list / PDF only) | dep=Always
+2.1 | Title | Short text (max 120 characters) | req=Yes (auto-ge | vis=SHOWN – pre-filled, editable | dep=Always
+3 | Delay start date/time | Date/time | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+4 | Reported date/time | Auto-filled date/time | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+5 | Affected activity | Dropdown / linked work record | req=Yes | vis=SHOWN – user input | dep=Always
+6 | Location | Location block: drawing picker + pin → building / level (auto) + detai | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+7 | Delay cause type | Click buttons | req=Yes | vis=SHOWN – user input | dep=Always
+8 | Delay cause category | Dependent dropdown | req=Yes | vis=SHOWN – user input | dep=After Delay cause type
+9 | Detailed cause | Short text | req=Yes | vis=SHOWN – user input | dep=Always
+10 | Responsible party | Dropdown (Project Company Register) | req=No | vis=SHOWN – user input | dep=Always
+11 | Delay duration | Number | req=Yes | vis=SHOWN – user input | dep=Always
+12 | Duration unit | Click buttons | req=Yes | vis=SHOWN – user input | dep=Always
+13 | Critical path impact | Click buttons | req=Yes | vis=SHOWN – user input | dep=Always
+14 | Schedule / milestone impact | Short text + linked milestone | req=No | vis=SHOWN – user input | dep=If impact exists
+15 | Mitigation / recovery action | Short text | req=Yes | vis=SHOWN – user input | dep=Always
+16 | Action owner | User / contractor dropdown | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+17 | Target recovery date | Date | req=No | vis=SHOWN – user input | dep=If recovery action is required
+18 | Evidence | File upload – two buttons: "📷 Take a picture" (camera) + "📎 Add a file | req=No | vis=SHOWN – user input | dep=Always
+18.1 | Reported by | Auto-filled user | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+19 | Status | Read-only status (set by workflow actions) | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+FORM-SPECIFIC IMPLEMENTATION NOTE |  |  | req= | vis= | dep=
+20 | Sign-off / review workflow | Linked workflow panel / repeatable sign-off log | req=Conditional | vis=SIGN-OFF SECTION (end of form) | dep=When this form is submitted or requires review/acknowledgement
+21 | Workflow status | System-generated / read-only | req=System | vis=SIGN-OFF SECTION (end of form) | dep=When a workflow profile is active
+WORKFLOW PROFILE | PDR-REVIEW-SUPERVISION | Supervision records delay facts and submits → Responsible party may re | req= | vis= | dep=
+===== Issue
+FORM: ISSUE |  |  | req= | vis= | dep=
+1 | Issue ID | System-generated | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+2 | Project | Auto-filled | req=Yes | vis=HIDDEN – auto, stored (record view / list / PDF only) | dep=Always
+2.1 | Title | Short text | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+3 | Date/time identified | Date/time default | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+4 | Issue type | Click buttons | req=Yes | vis=SHOWN – user input | dep=Always
+5 | Category | Dependent dropdown | req=Yes | vis=SHOWN – user input | dep=After Issue type
+7 | Description | Long text | req=Yes | vis=SHOWN – user input | dep=Always
+8 | Location | Location block: drawing picker + pin → building / level (auto) + detai | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+9 | Discipline | Auto-filled (read-only); dropdown only when Category has no fixed disc | req=No | vis=SHOWN – auto-filled, read-only | dep=After Category; editable only when Category has no fixed discipline
+10 | Priority | Click buttons | req=Yes | vis=SHOWN – user input | dep=Always
+11 | Impact type | Click buttons (multi-select) | req=No | vis=SHOWN – user input | dep=Always
+12 | Immediate action taken | Short text | req=No | vis=SHOWN – user input | dep=If action taken
+13 | Responsible party | Dropdown (project company list) | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+13.1 | Responsible person | Short text | req=No | vis=SHOWN – user input | dep=After Responsible party
+14 | Corrective action required | Long text | req=Yes | vis=SHOWN – user input | dep=Always
+15 | Target completion date | Date | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+16 | Related record | Linked-record selector | req=No | vis=SHOWN – user input | dep=If applicable
+17 | Attachments | File upload – two buttons: "📷 Take a picture" (camera) + "📎 Add a file | req=No | vis=SHOWN – user input | dep=Always
+18 | Status | Read-only status (set by workflow actions) | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+19 | Resolution / closure note – MOVED to action dialog | Long text | req=Conditional | vis=NOT IN FORM – entered in Close / Approve action | dep=When status = Closed
+20 | Reported by | Auto-filled user | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+FORM-SPECIFIC IMPLEMENTATION NOTE |  |  | req= | vis= | dep=
+21 | Sign-off / review workflow | Linked workflow panel / repeatable sign-off log | req=Conditional | vis=SIGN-OFF SECTION (end of form) | dep=When this form is submitted or requires review/acknowledgement
+22 | Workflow status | System-generated / read-only | req=System | vis=SIGN-OFF SECTION (end of form) | dep=When a workflow profile is active
+WORKFLOW PROFILE | ISSUE-CLOSEOUT-SUPERVISION | Supervision records / raises issue and submits → Contractor acknowledg | req= | vis= | dep=
+===== HSE
+FORM: HSE |  |  | req= | vis= | dep=
+1 | HSE report ID | System-generated | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+2 | Project | Auto-filled | req=Yes | vis=HIDDEN – auto, stored (record view / list / PDF only) | dep=Always
+2.1 | Title | Short text | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+3 | Date/time observed | Date/time default | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+4 | Issue type | Click buttons | req=Yes | vis=SHOWN – user input | dep=Always
+5 | Category | Dependent dropdown | req=Yes | vis=SHOWN – user input | dep=After Issue type
+7 | Observation / hazard description | Long text | req=Yes | vis=SHOWN – user input | dep=Always
+8 | Location | Location block: drawing picker + pin → building / level (auto) + detai | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+9 | Person / contractor involved | Linked register dropdown | req=No | vis=SHOWN – user input | dep=If applicable
+10 | Potential consequence | Click buttons (multi-select) | req=Yes | vis=SHOWN – user input | dep=Always
+11 | Risk likelihood | Click buttons | req=Yes | vis=SHOWN – user input | dep=Always
+12 | Potential severity | Click buttons | req=Yes | vis=SHOWN – user input | dep=Always
+13 | Risk rating | System-calculated (read-only) | req=Yes | vis=SHOWN – auto-filled, read-only | dep=After likelihood and severity
+14 | Immediate action taken | Long text | req=No | vis=SHOWN – user input | dep=If action taken
+15 | Corrective / preventive action | Long text | req=Yes | vis=SHOWN – user input | dep=Always
+16 | Action owner | User / contractor dropdown | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+17 | Due date | Date | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+18 | Photo evidence | Multiple image upload – two buttons: "📷 Take a picture" (camera) + "📎  | req=Recommended | vis=SHOWN – user input | dep=Always
+19 | Related incident | Linked record | req=No | vis=SHOWN – user input | dep=If applicable
+20 | Status | Read-only status (set by workflow actions) | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+21 | Reported by | Auto-filled user | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+FORM-SPECIFIC IMPLEMENTATION NOTE |  |  | req= | vis= | dep=
+22 | Sign-off / review workflow | Linked workflow panel / repeatable sign-off log | req=Conditional | vis=SIGN-OFF SECTION (end of form) | dep=When this form is submitted or requires review/acknowledgement
+23 | Workflow status | System-generated / read-only | req=System | vis=SIGN-OFF SECTION (end of form) | dep=When a workflow profile is active
+WORKFLOW PROFILE | HSE-OBSERVATION-SUPERVISION | Supervision / HSE Officer records observation and submits → Contractor | req= | vis= | dep=
+===== Materials Delivery
+FORM: MATERIALS DELIVERY |  |  | req= | vis= | dep=
+1 | Delivery record ID | System-generated | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+2 | Project | Auto-filled | req=Yes | vis=HIDDEN – auto, stored (record view / list / PDF only) | dep=Always
+2.1 | Title | Short text (max 120 characters) | req=Yes (auto-ge | vis=SHOWN – pre-filled, editable | dep=Always
+3 | Delivery date/time | Date/time | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+4 | Supplier | Linked register dropdown | req=Yes | vis=SHOWN – auto-filled, read-only | dep=Always
+5 | Purchase order / requisition | Linked record / short text | req=Yes | vis=SHOWN – user input | dep=Always
+6 | Delivery note number | Short text | req=No | vis=SHOWN – user input | dep=If provided
+7 | Material group | Dropdown | req=Yes | vis=SHOWN – auto-filled, read-only | dep=Always
+8 | Material category | Dependent dropdown | req=Yes | vis=SHOWN – auto-filled, read-only | dep=After Material group
+9 | Material description / specification | Short text | req=Yes | vis=SHOWN – auto-filled, read-only | dep=Always
+9.1 | Batch / lot / heat number | Short text | req=Conditional | vis=SHOWN – user input | dep=When Material group requires traceability
+9.2 | Certificate / test certificate | File upload / linked document – two buttons: "📷 Take a picture" (camer | req=Conditional | vis=SHOWN – user input | dep=When Material group requires traceability
+9.3 | Concrete delivery ticket details | Field group | req=Conditional | vis=SHOWN – user input | dep=When Material category = Ready-mix concrete
+10 | Ordered quantity | Number | req=Yes | vis=SHOWN – auto-filled, read-only | dep=Always
+11 | Delivered quantity | Number | req=Yes | vis=SHOWN – user input | dep=Always
+12 | Unit | Dropdown | req=Yes | vis=SHOWN – auto-filled, read-only | dep=Always
+13 | Delivery status | Click buttons (suggested automatically) | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+14 | Condition on arrival | Click buttons | req=Yes | vis=SHOWN – user input | dep=Always
+15 | Inspection result | Click buttons | req=Yes | vis=SHOWN – user input | dep=Always
+16 | Storage location | Location dropdown | req=No | vis=SHOWN – pre-filled, editable | dep=If accepted and stored
+17 | Discrepancy type / remarks | Multi-select dropdown + short text | req=Conditional | vis=SHOWN – user input | dep=If exception exists
+18 | Photos / documents | File upload – two buttons: "📷 Take a picture" (camera) + "📎 Add a file | req=No | vis=SHOWN – user input | dep=Always
+19 | Received by | Auto-filled user | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+FORM-SPECIFIC IMPLEMENTATION NOTE |  |  | req= | vis= | dep=
+20 | Sign-off / review workflow | Linked workflow panel / repeatable sign-off log | req=Conditional | vis=SIGN-OFF SECTION (end of form) | dep=When this form is submitted or requires review/acknowledgement
+21 | Workflow status | System-generated / read-only | req=System | vis=SIGN-OFF SECTION (end of form) | dep=When a workflow profile is active
+WORKFLOW PROFILE | MAT-RECEIPT-SUPERVISION | Supervision records delivery, quantity, condition and inspection resul | req= | vis= | dep=
+===== Inspections
+FORM: INSPECTIONS |  |  | req= | vis= | dep=
+1 | Inspection ID | System-generated | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+2 | Project | Auto-filled | req=Yes | vis=HIDDEN – auto, stored (record view / list / PDF only) | dep=Always
+2.1 | Title | Short text (max 120 characters) | req=Yes (auto-ge | vis=SHOWN – pre-filled, editable | dep=Always
+3 | Inspection date/time | Date/time default | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+4 | Inspection type | Dropdown | req=Yes | vis=SHOWN – user input | dep=Always
+5 | Inspection category | Dependent dropdown | req=Yes | vis=SHOWN – user input | dep=After Inspection type
+6 | Discipline | Dropdown | req=Yes | vis=SHOWN – auto-filled, read-only | dep=Always
+7 | Work activity / material | Dropdown / linked record | req=Yes | vis=SHOWN – user input | dep=Always
+8 | Location | Location block: drawing picker + pin → building / level (auto) + detai | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+9 | Drawing / specification reference | Short text / linked document | req=No | vis=SHOWN – pre-filled, editable | dep=If applicable
+10 | Checklist | Dropdown (checklist library) → checklist items | req=Yes | vis=SHOWN – user input | dep=After Inspection type
+10.1 | Checklist version | Auto-filled (read-only) | req=System | vis=SHOWN – auto-filled, read-only | dep=After Checklist is selected
+11 | Inspection result | Click buttons | req=Yes | vis=SHOWN – pre-filled, editable | dep=After checklist completed
+12 | Findings / observations | Long text | req=Conditional | vis=SHOWN – user input | dep=If result is not Accepted (and not Cancelled)
+12.1 | Finding type | Multi-select dropdown | req=Conditional | vis=SHOWN – user input | dep=If result is not Accepted (and not Cancelled)
+13 | Corrective action required | Long text | req=Conditional | vis=SHOWN – user input | dep=If finding requires action
+14 | Responsible contractor / person | Linked register dropdown | req=No | vis=SHOWN – pre-filled, editable | dep=If action required
+15 | Re-inspection date | Date | req=Conditional | vis=SHOWN – user input | dep=Required if result = Re-inspection Required; optional if Rejected
+16 | NCR reference | Linked record | req=No | vis=SHOWN – user input | dep=If formal non-conformance
+17 | Photo evidence | Multiple image upload – two buttons: "📷 Take a picture" (camera) + "📎  | req=Recommended | vis=SHOWN – user input | dep=Always
+18 | Inspected by | Auto-filled user | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+FORM-SPECIFIC IMPLEMENTATION NOTE |  |  | req= | vis= | dep=
+20 | Sign-off / review workflow | Linked workflow panel / repeatable sign-off log | req=Conditional | vis=SIGN-OFF SECTION (end of form) | dep=When this form is submitted or requires review/acknowledgement
+21 | Workflow status | System-generated / read-only | req=System | vis=SIGN-OFF SECTION (end of form) | dep=When a workflow profile is active
+WORKFLOW PROFILE | INSPECTION-WITNESS-SUPERVISION | Supervision inspector records and signs result → Contractor witness ma | req= | vis= | dep=
+===== Technical Instructions
+FORM: TECHNICAL INSTRUCTIONS |  |  | req= | vis= | dep=
+1 | Instruction ID | System-generated | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+2 | Project | Auto-filled | req=Yes | vis=HIDDEN – auto, stored (record view / list / PDF only) | dep=Always
+2.1 | Title | Short text (max 120 characters) | req=Yes (auto-ge | vis=SHOWN – pre-filled, editable | dep=Always
+3 | Instruction date | Date default | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+4 | Instruction type | Dropdown | req=Yes | vis=SHOWN – user input | dep=Always
+5 | Discipline | Dropdown | req=Yes | vis=SHOWN – user input | dep=Always
+6 | Category / subject | Dependent dropdown | req=Yes | vis=SHOWN – user input | dep=After Discipline is selected
+7 | Location / element | Location block: drawing picker + pin → building / level (auto) + detai | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+8 | Drawing / document reference | Short text / linked document | req=No | vis=SHOWN – pre-filled, editable | dep=If applicable
+9 | Instruction description | Long text | req=Yes | vis=SHOWN – user input | dep=Always
+10 | Reason / background | Click buttons + short text | req=No | vis=SHOWN – user input | dep=Always
+11 | Issued to | Contractor / company dropdown | req=Yes | vis=SHOWN – user input | dep=Always
+12 | Action owner | Dropdown (contacts of the Issued-to company) | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+13 | Response required by | Date | req=No | vis=SHOWN – user input | dep=If response is required
+14 | Status | Read-only status (set by workflow actions) | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+15 | Attachments | File upload – two buttons: "📷 Take a picture" (camera) + "📎 Add a file | req=No | vis=SHOWN – user input | dep=Always
+16 | Related record | Linked record selector | req=No | vis=SHOWN – user input | dep=If applicable
+17 | Acknowledged by / date | Auto-filled from sign-off log (read-only) | req=Conditional | vis=HIDDEN – auto, stored (record view / list / PDF only) | dep=After the contractor's 'Acknowledge Receipt' event is recorded in the 
+18 | Closed / verified by | Auto-filled from sign-off log (read-only) | req=No | vis=HIDDEN – auto, stored (record view / list / PDF only) | dep=When completed
+18.1 | Issued by | Auto-filled user | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+FORM-SPECIFIC IMPLEMENTATION NOTE |  |  | req= | vis= | dep=
+19 | Sign-off / review workflow | Linked workflow panel / repeatable sign-off log | req=Conditional | vis=SIGN-OFF SECTION (end of form) | dep=When this form is submitted or requires review/acknowledgement
+20 | Workflow status | System-generated / read-only | req=System | vis=SIGN-OFF SECTION (end of form) | dep=When a workflow profile is active
+WORKFLOW PROFILE | TECH-INSTRUCTION-SUPERVISION | Supervision prepares and issues instruction → Contractor acknowledges  | req= | vis= | dep=
+===== Change Order
+FORM: CHANGE ORDER |  |  | req= | vis= | dep=
+1 | Change Order ID | System-generated | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+2 | Project | Auto-filled | req=Yes | vis=HIDDEN – auto, stored (record view / list / PDF only) | dep=Always
+2.1 | Change title | Short text | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+3 | Request date | Date default | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+4 | Change type | Dropdown | req=Yes | vis=SHOWN – user input | dep=Always
+5 | Change category | Dependent dropdown | req=Yes | vis=SHOWN – user input | dep=After Change type is selected
+7 | Change description | Long text | req=Yes | vis=SHOWN – user input | dep=Always
+8 | Reason for change | Dropdown | req=Yes | vis=SHOWN – user input | dep=Always
+9 | Originator / requester | User or company dropdown | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+10 | Location / work package | Location block: drawing picker + pin → building / level (auto) + detai | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+11 | Drawing / specification reference | Linked document / short text | req=No | vis=SHOWN – pre-filled, editable | dep=If applicable
+12 | Quantity / unit | Number + unit dropdown | req=No | vis=SHOWN – user input | dep=If applicable
+13 | Cost impact | Currency amount | req=Yes | vis=SHOWN – user input | dep=Always
+13.1 | Currency | Dropdown | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+14 | Time impact | Number + unit dropdown | req=Yes | vis=SHOWN – user input | dep=Always
+15 | Cost / schedule assessment | Long text / attachment | req=No | vis=SHOWN – user input | dep=If impact exists
+16 | Approval status | Read-only status (set by the Project Manager approval action) | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+17 | Approved amount / days – MOVED to action dialog | Numeric fields | req=Conditional | vis=NOT IN FORM – entered in Close / Approve action | dep=When approved
+18 | Instruction to proceed | Click buttons | req=Yes | vis=SHOWN – user input | dep=Always
+19 | Related records | Linked-record selector | req=No | vis=SHOWN – user input | dep=If applicable
+20 | Attachments | File upload – two buttons: "📷 Take a picture" (camera) + "📎 Add a file | req=No | vis=SHOWN – user input | dep=Always
+21 | Prepared by | Auto-filled user | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+FORM-SPECIFIC IMPLEMENTATION NOTE |  |  | req= | vis= | dep=
+22 | Sign-off / review workflow | Linked workflow panel / repeatable sign-off log | req=Conditional | vis=SIGN-OFF SECTION (end of form) | dep=When this form is submitted or requires review/acknowledgement
+23 | Workflow status | System-generated / read-only | req=System | vis=SIGN-OFF SECTION (end of form) | dep=When a workflow profile is active
+WORKFLOW PROFILE | CHANGE-APPROVAL-SUPERVISION | Supervision records change request incl. technical and commercial asse | req= | vis= | dep=
+===== NCR
+FORM: NCR |  |  | req= | vis= | dep=
+1 | NCR number | System-generated | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+2 | Project | Auto-filled | req=Yes | vis=HIDDEN – auto, stored (record view / list / PDF only) | dep=Always
+2.1 | Title | Short text | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+3 | Date raised | Date/time default | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+4 | NCR type | Dropdown | req=Yes | vis=SHOWN – user input | dep=Always
+5 | Category | Dependent dropdown | req=Yes | vis=SHOWN – user input | dep=After NCR type
+7 | Non-conformance description | Long text | req=Yes | vis=SHOWN – user input | dep=Always
+8 | Discipline / work package | Auto-filled (read-only); dropdown only when no source | req=Yes | vis=SHOWN – auto-filled, read-only | dep=Always
+9 | Location / element | Location block: drawing picker + pin → building / level (auto) + detai | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+10 | Requirement reference | Short text / linked document | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+11 | Detected during | Click buttons | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+12 | Related inspection | Linked record | req=No | vis=SHOWN – user input | dep=If applicable
+13 | Severity / classification | Click buttons | req=Yes | vis=SHOWN – user input | dep=Always
+14 | Immediate containment | Click buttons (multi-select) | req=Yes | vis=SHOWN – user input | dep=Always, when an NCR is registered
+15 | Disposition | Click buttons | req=Yes | vis=SHOWN – user input | dep=Always
+16 | Root cause category | Click buttons | req=No | vis=SHOWN – user input | dep=After investigation
+17 | Root cause analysis | Long text | req=No | vis=SHOWN – user input | dep=During investigation
+18 | Corrective action | Long text | req=Yes | vis=SHOWN – user input | dep=Always
+19 | Action owner | User / contractor dropdown | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+20 | Target completion date | Date | req=Yes | vis=SHOWN – user input | dep=Always
+21 | Verification result – MOVED to action dialog | Dropdown | req=Conditional | vis=NOT IN FORM – entered in Close / Approve action | dep=Before closure
+22 | Verified by / date – MOVED to action dialog | User + date | req=Conditional | vis=NOT IN FORM – entered in Close / Approve action | dep=Before closure
+23 | Attachments | File upload – two buttons: "📷 Take a picture" (camera) + "📎 Add a file | req=No | vis=SHOWN – user input | dep=Always
+24 | Status | Read-only status (set by workflow actions) | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+24.1 | Raised by | Auto-filled user | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+FORM-SPECIFIC IMPLEMENTATION NOTE |  |  | req= | vis= | dep=
+FORM-SPECIFIC IMPLEMENTATION NOTES |  |  | req= | vis= | dep=
+25 | Sign-off / review workflow | Linked workflow panel / repeatable sign-off log | req=Conditional | vis=SIGN-OFF SECTION (end of form) | dep=When this form is submitted or requires review/acknowledgement
+26 | Workflow status | System-generated / read-only | req=System | vis=SIGN-OFF SECTION (end of form) | dep=When a workflow profile is active
+WORKFLOW PROFILE | NCR-CORRECTIVE-SUPERVISION | Supervision raises and records NCR → Contractor acknowledges and submi | req= | vis= | dep=
+===== Lessons Learned
+FORM: LESSONS LEARNED |  |  | req= | vis= | dep=
+1 | Lesson ID | System-generated | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+2 | Project | Auto-filled | req=Yes | vis=HIDDEN – auto, stored (record view / list / PDF only) | dep=Always
+2.1 | Title | Short text | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+3 | Date recorded | Date default | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+4 | Project phase | Dropdown | req=Yes | vis=SHOWN – user input | dep=Always
+5 | Lesson category | Dependent dropdown | req=Yes | vis=SHOWN – user input | dep=After Project phase is selected
+7 | Situation / context | Long text | req=Yes | vis=SHOWN – user input | dep=Always
+8 | What happened? | Long text | req=Yes | vis=SHOWN – user input | dep=Always
+9 | Impact / consequence | Multi-select + short text | req=Yes | vis=SHOWN – user input | dep=Always
+10 | Root cause / contributing factors | Long text | req=No | vis=SHOWN – user input | dep=If known
+11 | Lesson learned | Long text | req=Yes | vis=SHOWN – user input | dep=Always
+12 | Recommendation / preventive action | Long text | req=Yes | vis=SHOWN – user input | dep=Always
+13 | Applicability | Click buttons | req=Yes | vis=SHOWN – user input | dep=Always
+14 | Discipline | Dropdown | req=No | vis=SHOWN – user input | dep=If applicable
+15 | Action owner | User / department dropdown | req=No | vis=SHOWN – user input | dep=If action required
+16 | Attachments | File upload – two buttons: "📷 Take a picture" (camera) + "📎 Add a file | req=No | vis=SHOWN – user input | dep=Always
+17 | Status | Read-only status (set by workflow action) | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+18 | Recorded by | Auto-filled user | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+FORM-SPECIFIC IMPLEMENTATION NOTE |  |  | req= | vis= | dep=
+19 | Sign-off / review workflow | Linked workflow panel / repeatable sign-off log | req=Conditional | vis=SIGN-OFF SECTION (end of form) | dep=When this form is submitted or requires review/acknowledgement
+20 | Workflow status | System-generated / read-only | req=System | vis=SIGN-OFF SECTION (end of form) | dep=When a workflow profile is active
+WORKFLOW PROFILE | LESSON-REVIEW-SUPERVISION | Supervision author records and submits lesson → Record is final on sub | req= | vis= | dep=
+===== Agreements Made
+FORM: AGREEMENTS MADE |  |  | req= | vis= | dep=
+1 | Agreement ID | System-generated | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+2 | Project | Auto-filled | req=Yes | vis=HIDDEN – auto, stored (record view / list / PDF only) | dep=Always
+2.1 | Agreement / decision title | Short text | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+3 | Meeting / agreement date | Date/time | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+4 | Meeting / source | Click buttons + short text | req=No | vis=SHOWN – user input | dep=Always
+5 | Agreement type | Dropdown | req=Yes | vis=SHOWN – user input | dep=Always
+6 | Agreement category | Dependent dropdown | req=Yes | vis=SHOWN – user input | dep=After Agreement type is selected
+8 | Agreement details | Long text | req=Yes | vis=SHOWN – user input | dep=Always
+9 | Agreed by | Multi-select user / company dropdown | req=Yes | vis=SHOWN – user input | dep=Always
+10 | Action required | Click buttons | req=Yes | vis=SHOWN – user input | dep=Always
+11 | Action owner | User / contractor dropdown | req=Conditional | vis=SHOWN – user input | dep=If Action required = Yes
+12 | Due date | Date | req=Conditional | vis=SHOWN – user input | dep=If Action required = Yes
+13 | Related discipline / location | Dropdown + location selector | req=No | vis=SHOWN – user input | dep=If applicable
+14 | Related record | Linked record selector | req=No | vis=SHOWN – user input | dep=If applicable
+15 | Status | Read-only status (set by workflow actions) | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+16 | Evidence / minutes | File upload – two buttons: "📷 Take a picture" (camera) + "📎 Add a file | req=No | vis=SHOWN – user input | dep=Always
+17 | Confirmation / closure note – MOVED to action dialog | Short text | req=No | vis=NOT IN FORM – entered in Close / Approve action | dep=When status changes
+18 | Recorded by | Auto-filled user | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+FORM-SPECIFIC IMPLEMENTATION NOTE |  |  | req= | vis= | dep=
+19 | Sign-off / review workflow | Linked workflow panel / repeatable sign-off log | req=Conditional | vis=SIGN-OFF SECTION (end of form) | dep=When this form is submitted or requires review/acknowledgement
+20 | Workflow status | System-generated / read-only | req=System | vis=SIGN-OFF SECTION (end of form) | dep=When a workflow profile is active
+WORKFLOW PROFILE | AGREEMENT-ACK-SUPERVISION | Supervision records meeting / agreement and actions → Relevant parties | req= | vis= | dep=
+===== HSE Incident Registration
+FORM: HSE INCIDENT REGISTRATION |  |  | req= | vis= | dep=
+1 | Incident ID | System-generated | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+2 | Project | Auto-filled | req=Yes | vis=HIDDEN – auto, stored (record view / list / PDF only) | dep=Always
+2.1 | Incident title | Short text | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+3 | Incident date/time | Date/time | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+4 | Reported date/time | Auto-filled date/time | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+5 | Incident type | Click buttons | req=Yes | vis=SHOWN – user input | dep=Always
+6 | Incident category | Dependent dropdown | req=Yes | vis=SHOWN – user input | dep=After Incident type
+8 | Detailed event description | Long text | req=Yes | vis=SHOWN – user input | dep=Always
+9 | Exact location | Location block: drawing picker + pin → building / level (auto) + detai | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+10 | People involved / affected | Linked user / contractor register | req=Conditional | vis=SHOWN – user input | dep=If people involved
+11 | Injury classification | Click buttons | req=Conditional | vis=SHOWN – user input | dep=If injury/illness
+12 | Nature of injury / illness | Click buttons + short text | req=Conditional | vis=SHOWN – user input | dep=If injury/illness
+13 | Body part affected | Click buttons | req=Conditional | vis=SHOWN – user input | dep=If injury/illness
+14 | Environmental impact | Click buttons | req=Conditional | vis=SHOWN – user input | dep=If environmental event
+15 | Property / equipment damage | Click buttons + short text | req=Conditional | vis=SHOWN – user input | dep=If damage occurred
+16 | Immediate response | Long text | req=Yes | vis=SHOWN – user input | dep=Always
+17 | Authorities / client notified | Click buttons + date/time | req=No | vis=SHOWN – user input | dep=If notification required
+18 | Witnesses | Linked user / contact register | req=No | vis=SHOWN – user input | dep=If witnesses
+19 | Potential / actual severity | Click buttons | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+20 | Investigation required | Click buttons | req=Yes | vis=SHOWN – pre-filled, editable | dep=Always
+21 | Investigation findings / root cause | Long text | req=Conditional | vis=SHOWN – user input | dep=If investigation required
+22 | Corrective / preventive actions | Action list | req=Yes | vis=SHOWN – user input | dep=Always
+23 | Photo / document evidence | Multiple file upload – two buttons: "📷 Take a picture" (camera) + "📎 A | req=No | vis=SHOWN – user input | dep=Always
+24 | Related HSE observation | Linked record | req=No | vis=SHOWN – user input | dep=If applicable
+25 | Status | Read-only status (set by workflow actions) | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+26 | Reported by | Auto-filled user | req=Yes | vis=AUTO BAR (top of form) – visible, read-only | dep=Always
+FORM-SPECIFIC IMPLEMENTATION NOTE |  |  | req= | vis= | dep=
+27 | Sign-off / review workflow | Linked workflow panel / repeatable sign-off log | req=Conditional | vis=SIGN-OFF SECTION (end of form) | dep=When this form is submitted or requires review/acknowledgement
+28 | Workflow status | System-generated / read-only | req=System | vis=SIGN-OFF SECTION (end of form) | dep=When a workflow profile is active
+WORKFLOW PROFILE | HSE-INCIDENT-SUPERVISION | Supervision / HSE Officer records incident and investigation → Respons | req= | vis= | dep=

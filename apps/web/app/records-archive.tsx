@@ -4,6 +4,8 @@ import { Search } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useMemo, useState, type ReactNode } from "react";
+import { FormLogs } from "@/app/form-logs";
+import { formTabOrder } from "@/lib/forms/record-defaults.mjs";
 import { SectionNav } from "@/app/section-nav";
 import { useLanguage } from "@/lib/i18n";
 import { buildRecordDirectory, filterRecordDirectory, recordKindTabs } from "@/lib/records/record-directory.mjs";
@@ -87,7 +89,16 @@ export function RecordsArchive({ client, projectId, data, buildings, photoLibrar
   openRecord: (tab: string, recordId: string) => void;
 }) {
   const { locale, text } = useLanguage();
-  const [section, setSection] = useState("forms");
+  // "Open log" on a Workspace tab leaves the form to open in Form Logs.
+  const [requestedLog] = useState(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      const form = window.sessionStorage.getItem("codeco.open-form-log") ?? "";
+      if (form) window.sessionStorage.removeItem("codeco.open-form-log");
+      return form;
+    } catch { return ""; }
+  });
+  const [section, setSection] = useState(requestedLog ? "formlogs" : "forms");
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState("");
   const [status, setStatus] = useState("");
@@ -182,6 +193,7 @@ export function RecordsArchive({ client, projectId, data, buildings, photoLibrar
   let body: ReactNode;
   if (section === "photos") body = photoLibrary;
   else if (section === "attachments") body = attachments;
+  else if (section === "formlogs") body = <FormLogs data={data} buildings={buildings} parties={partiesQuery.data ?? []} openRecord={openRecord} initialForm={(formTabOrder.includes(requestedLog) ? requestedLog : "issue") as (typeof formTabOrder)[number]} />;
   else if (section === "history") {
     body = (
       <section className="ui-panel">
@@ -268,6 +280,7 @@ export function RecordsArchive({ client, projectId, data, buildings, photoLibrar
         { id: "forms", label: text("Submitted forms", "Ingediende formulieren"), count: directory.length },
         { id: "photos", label: text("Photo library", "Fotobibliotheek") },
         { id: "attachments", label: text("Attachments", "Bijlagen") },
+        { id: "formlogs", label: text("Form Logs", "Logboeken") },
         { id: "history", label: text("Record history", "Recordhistorie") },
       ].map((item) => ({ ...item, selected: section === item.id, onSelect: () => setSection(item.id) }))} />
       <div className="portal-section">{body}</div>

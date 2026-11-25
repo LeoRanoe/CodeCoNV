@@ -829,6 +829,7 @@ export type PreviousWorkdayAttendance = {
     shiftStart: string;
     shiftEnd: string;
     crew?: string;
+    spec?: Record<string, string>;
   }>;
 };
 
@@ -841,7 +842,7 @@ export async function loadPreviousWorkdayAttendance(
   client: SupabaseClient,
   projectId: string,
   beforeDate: string,
-  buildingId: string,
+  buildingId?: string,
 ): Promise<PreviousWorkdayAttendance | null> {
   const reportResult = await client
     .from("day_reports")
@@ -852,31 +853,33 @@ export async function loadPreviousWorkdayAttendance(
     .limit(14);
   fail(reportResult.error);
   for (const report of reportResult.data ?? []) {
-    const read = (columns: string) => client
-      .from("attendance_entries")
-      .select(columns)
-      .eq("day_report_id", report.id as string)
-      .eq("building_id", buildingId)
-      .eq("entry_type", "workforce")
-      .gt("headcount", 0);
-    const withCrew = await read("party_id,discipline,shift_start,shift_end,headcount,crew");
+    const read = (columns: string, includeType = true) => {
+      const query = client
+        .from("attendance_entries")
+        .select(columns)
+        .eq("day_report_id", report.id as string)
+        .gt("headcount", 0);
+      if (buildingId) query.eq("building_id", buildingId);
+      if (includeType) query.eq("entry_type", "workforce");
+      return query;
+    };
+    const withSpec = await read("party_id,discipline,shift_start,shift_end,headcount,crew,spec");
+    const withCrew = schemaColumnMissing(withSpec.error, "spec")
+      ? await read("party_id,discipline,shift_start,shift_end,headcount,crew")
+      : withSpec;
     // Before the crew migration has run, yesterday can still be copied without its gangs.
     const attendanceResult = ["crew", "entry_type"].some((column) => schemaColumnMissing(withCrew.error, column))
-      ? await client
-          .from("attendance_entries")
-          .select("party_id,discipline,shift_start,shift_end,headcount")
-          .eq("day_report_id", report.id as string)
-          .eq("building_id", buildingId)
-          .gt("headcount", 0)
+      ? await read("party_id,discipline,shift_start,shift_end,headcount", false)
       : withCrew;
     fail(attendanceResult.error);
-    const rows = ((attendanceResult.data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+    const rows = ((attendanceResult.data ?? []) as unknown as Array<Record<string, unknown>>).map((row) => ({
       partyId: String(row.party_id),
       discipline: String(row.discipline),
       headcount: Number(row.headcount),
       shiftStart: String(row.shift_start).slice(0, 5),
       shiftEnd: String(row.shift_end).slice(0, 5),
       crew: row.crew ? String(row.crew) : undefined,
+      spec: row.spec && typeof row.spec === "object" ? row.spec as Record<string, string> : undefined,
     }));
     if (rows.length) return { reportDate: String(report.report_date), rows };
   }

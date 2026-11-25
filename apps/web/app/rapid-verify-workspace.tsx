@@ -26,6 +26,7 @@ import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { useLanguage } from "@/lib/i18n";
 import { loadProjectFileBlob } from "@/lib/storage/gateway";
 import type { FileRecord } from "@/lib/supabase/operations";
+import { SpecComplianceCheck } from "@/app/spec-compliance-check";
 
 type IndexedPage = {
   page: number;
@@ -313,5 +314,33 @@ export function RapidVerifyWorkspace({
         </div>
       </section>
     </>
+  );
+}
+
+/**
+ * Rapid Verify as the client's Word 10 describes it: the source search of the project documents, and the
+ * spec compliance check of a submittal against the bestek.
+ */
+export function RapidVerifyHome({ projectName, projectFiles = [], client, projectId, buildingId, currentUserName }: {
+  projectName: string;
+  projectFiles?: FileRecord[];
+  client: SupabaseClient;
+  projectId: string;
+  buildingId: string;
+  currentUserName: string;
+}) {
+  const { text } = useLanguage();
+  const canVerify = useProjectPermissions().can("findings.verify");
+  const [view, setView] = useState<"sources" | "compliance">("sources");
+  return (
+    <div className="rapid-verify-home">
+      <div className="rapid-verify-switch" role="tablist" aria-label={text("Rapid Verify", "Rapid Verify")}>
+        <button className={`ui-button ui-button--${view === "sources" ? "secondary" : "quiet"} ui-button--md`} type="button" role="tab" aria-selected={view === "sources"} onClick={() => setView("sources")}>{text("Search project documents", "Projectdocumenten doorzoeken")}</button>
+        <button className={`ui-button ui-button--${view === "compliance" ? "secondary" : "quiet"} ui-button--md`} type="button" role="tab" aria-selected={view === "compliance"} onClick={() => setView("compliance")}>{text("Spec compliance check", "Bestekcontrole")}</button>
+      </div>
+      {view === "sources"
+        ? <RapidVerifyWorkspace projectName={projectName} projectFiles={projectFiles} client={client} />
+        : <SpecComplianceCheck client={client} projectId={projectId} projectFiles={projectFiles} buildingId={buildingId} currentUserName={currentUserName} canVerify={canVerify} />}
+    </div>
   );
 }

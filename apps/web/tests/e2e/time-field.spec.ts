@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 /**
  * QA L1. The native time input shows "05:16 PM" in a browser set to a 12-hour clock, beside a
- * report that reads 17:16. The workforce shift is picked on a 24-hour clock and the pick is
+ * report that reads 17:16. A visitor's arrival is picked on a 24-hour clock and the pick is
  * kept: the lists carry no AM or PM and 17:05 is what the row holds after choosing it.
  */
 const email = process.env.CODECO_E2E_EMAIL;
@@ -34,9 +34,11 @@ test("a shift time is picked on a 24-hour clock whatever the browser language", 
   await expect(page.getByRole("region", { name: "Project command center" })).toBeVisible();
   await page.locator(".sidebar").getByRole("button", { name: "Workspace", exact: true }).click();
   await page.locator("[data-workspace-destination='workforce']").click();
-  await page.getByRole("button", { name: "Add person" }).first().click();
+  // v5.0 removed the shift of a worker line; a visitor's arrival and departure are still picked on the 24-hour clock.
+  await page.getByPlaceholder("Who visited the site?").fill("Clock check visitor");
+  await page.getByRole("button", { name: "Add visitor" }).click();
 
-  const row = page.locator(".workforce-row").first();
+  const row = page.locator(".workforce-row", { hasText: "Clock check visitor" });
   await expect(row.locator(".workforce-shift")).toBeVisible();
   expect(await row.locator("input[type='time']").count(), "no native time input is left").toBe(0);
   const hours = row.locator(".workforce-shift select").nth(2);

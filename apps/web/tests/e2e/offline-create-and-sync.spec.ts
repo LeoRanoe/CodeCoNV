@@ -68,7 +68,11 @@ async function createAction(page: Page, title: string) {
   await dialog.getByPlaceholder("What must demonstrably be completed?").fill(title);
   await dialog.getByLabel(/Context and acceptance criterion/).fill("Written by the browser release gate; safe to ignore.");
   const employee = dialog.locator("select[name='ownerUserId']");
-  if (!(await employee.inputValue())) await employee.selectOption({ index: 1 });
+  // Whoever else was added to the project earlier in a run, the action is the signed-in supervisor's own.
+  if (!(await employee.inputValue())) {
+    const own = await employee.locator("option").evaluateAll((options) => (options as HTMLOptionElement[]).find((option) => /Supervisor Alpha/.test(option.textContent ?? ""))?.value);
+    if (own) await employee.selectOption(own); else await employee.selectOption({ index: 1 });
+  }
   await dialog.getByRole("button", { name: "Save and assign" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 }

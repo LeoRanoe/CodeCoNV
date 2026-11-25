@@ -7,6 +7,14 @@
     {
       "path": "/api/cron/daily",
       "schedule": "15 10 * * *"
+    },
+    {
+      "path": "/api/cron/reports",
+      "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/cron/reports",
+      "schedule": "0 21 * * *"
     }
   ]
 }

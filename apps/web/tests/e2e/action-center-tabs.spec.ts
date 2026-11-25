@@ -39,32 +39,39 @@ async function openActions(page: Page) {
 
 const widths = [320, 360, 375, 390, 414, 600, 768, 1024];
 
-test("the Action center tabs are three equal, tall, horizontal tabs on every width", async ({ page }, testInfo) => {
+test("the Action center views are tall, horizontal and inside the window on every width", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-office", "The widths are set by the test itself.");
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1280, height: 800 });
   await signIn(page);
   await openActions(page);
-  const tabs = page.locator(".action-center-views [role='tab']");
-  await expect(tabs).toHaveCount(3);
+  // v5: four views (my work, all work, deadlines and the automatic follow-up list per form). With more
+  // than three, the navigation is a bar on a wide window and one menu button on a narrow one.
+  await expect(page.locator(".action-center-views [role='tab']")).toHaveCount(4);
 
   for (const width of widths) {
     await page.setViewportSize({ width, height: 900 });
     await page.waitForTimeout(150);
-    const boxes = await tabs.evaluateAll((elements) => elements.map((element) => {
-      const box = element.getBoundingClientRect();
-      const label = element.querySelector(".section-nav__label")!.getBoundingClientRect();
-      return { width: box.width, height: box.height, labelWidth: label.width, labelHeight: label.height };
-    }));
-    const where = `at ${width} px: ${JSON.stringify(boxes)}`;
-    for (const box of boxes) {
-      expect(box.height, `tab height ${where}`).toBeGreaterThanOrEqual(44);
-      // A word written downwards is taller than it is wide.
-      expect(box.labelWidth, `label is a horizontal word ${where}`).toBeGreaterThan(box.labelHeight);
-      expect(Math.abs(box.width - boxes[0].width), `equal tabs ${where}`).toBeLessThanOrEqual(2);
+    const trigger = page.locator(".action-center-views .section-nav__trigger");
+    if (await trigger.isVisible()) {
+      const box = (await trigger.boundingBox())!;
+      expect(box.height, `menu button height at ${width} px`).toBeGreaterThanOrEqual(44);
+      expect(box.x + box.width, `menu button inside the window at ${width} px`).toBeLessThanOrEqual(width);
+    } else {
+      const boxes = await page.locator(".action-center-views [role='tab']").evaluateAll((elements) => elements.map((element) => {
+        const box = element.getBoundingClientRect();
+        const label = element.querySelector(".section-nav__label")!.getBoundingClientRect();
+        return { width: box.width, height: box.height, labelWidth: label.width, labelHeight: label.height };
+      }));
+      const where = `at ${width} px: ${JSON.stringify(boxes)}`;
+      expect(boxes.length, `all four views are shown ${where}`).toBe(4);
+      for (const box of boxes) {
+        expect(box.height, `tab height ${where}`).toBeGreaterThanOrEqual(44);
+        // A word written downwards is taller than it is wide.
+        expect(box.labelWidth, `label is a horizontal word ${where}`).toBeGreaterThan(box.labelHeight);
+      }
     }
-    expect(boxes.reduce((total, box) => total + box.width, 0), `the three tabs share one row ${where}`).toBeLessThanOrEqual(width);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `no sideways scroll ${where}`).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `no sideways scroll at ${width} px`).toBe(true);
   }
 });
 
@@ -108,7 +115,7 @@ test("the Action center tabs are not coloured like a late record and show no 'n/
   await signIn(page);
   await openActions(page);
   const labels = page.locator(".action-center-views .section-nav__label");
-  await expect(labels).toHaveCount(3);
+  await expect(labels).toHaveCount(4);
   const colours = await labels.evaluateAll((elements) => elements.map((element) => {
     const style = getComputedStyle(element);
     return { colour: style.color, background: style.backgroundColor };

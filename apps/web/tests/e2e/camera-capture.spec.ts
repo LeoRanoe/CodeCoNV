@@ -1,5 +1,10 @@
+import { choosePhotoPurpose } from "./photo-purpose";
 import { expect, type Page, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { createClient } from "@supabase/supabase-js";
+import sharp from "sharp";
 
 /**
  * Launch audit 31-10-2026, camera and saved images.
@@ -69,7 +74,7 @@ test("the issue form takes a camera JPEG whatever label the browser gives it", a
   if (await back.isVisible().catch(() => false)) await back.click();
   await page.locator('[data-workspace-destination="issues"]').click();
   await expect(page.getByRole("heading", { name: "Create issue" })).toBeVisible();
-  const input = page.getByLabel("Add photo").first();
+  const input = page.getByLabel("Take a picture").first();
   const bytes = readFileSync(photoPath!);
   await input.setInputFiles({ name: "labelled.jpg", mimeType: "image/jpeg", buffer: bytes });
   await input.setInputFiles({ name: "android.jpg", mimeType: "image/jpg", buffer: bytes });
@@ -83,8 +88,58 @@ test("a HEIC photo from the camera button is named instead of dropped", async ({
   const chooser = page.waitForEvent("filechooser");
   await page.locator(".quick-add-side:visible, .mobile-nav-button.quick:visible").first().click();
   await (await chooser).setFiles(heic);
-  await expect(page.getByText(/IMG_0001\.HEIC: HEIC photo this browser cannot open\. Not added\./)).toBeVisible();
+  await expect(page.getByText(/IMG_0001\.HEIC: this HEIC, HEIF or AVIF photo could not be decoded/)).toBeVisible();
   await expect(page.locator(".media-capture-review")).toHaveCount(0);
+});
+
+test("the photo library saves approved formats and keeps the exact originals", async ({ page }, testInfo) => {
+  test.skip(!fakeBlob || testInfo.project.name !== "desktop-office", "Runs on Chromium with local storage fixtures.");
+  const project = await signIn(page);
+  await page.goto(`/supervisie?project=${project}&nav=project&tab=files`);
+  await expect(page.getByRole("heading", { name: "Project photos" })).toBeVisible();
+
+  const heicBytes = readFileSync(new URL("./fixtures/site-photo.heic", import.meta.url));
+  const heifBytes = Buffer.from(heicBytes);
+  heifBytes.write("mif1", 8, "ascii");
+  const avifBytes = await sharp({ create: { width: 16, height: 16, channels: 3, background: "#803a18" } }).avif().toBuffer();
+  const gifBytes = Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64");
+  const batch = [
+    ["heic", heicBytes], ["heif", heifBytes], ["avif", avifBytes], ["gif", gifBytes],
+  ] as const;
+  const stamp = Date.now().toString(36);
+  const input = page.locator("input[type='file'][accept^='image/jpeg'][multiple]").first();
+  await expect(input).toHaveAttribute("accept", /image\/gif.*image\/heic.*image\/heif.*image\/avif/);
+  for (const [extension, buffer] of batch) {
+    const name = `approved-${stamp}.${extension}`;
+    await input.setInputFiles({ name, mimeType: `image/${extension}`, buffer });
+    const review = page.locator(".media-capture-review");
+    await choosePhotoPurpose(review, "Site Conditions");
+    await review.getByRole("button", { name: "Save with date" }).click();
+    await expect(review).toHaveCount(0, { timeout: 60_000 });
+    await expect.poll(() => deviceQueue(page), { timeout: 60_000 }).toEqual([]);
+  }
+
+  const api = createClient(process.env.CODECO_E2E_SUPABASE_URL!, process.env.CODECO_E2E_PUBLISHABLE_KEY!, { auth: { persistSession: false } });
+  const session = await api.auth.signInWithPassword({ email: email!, password: password! });
+  expect(session.error).toBeNull();
+  for (const [extension, buffer] of batch) {
+    const hash = createHash("sha256").update(buffer).digest("hex");
+    const { data: files, error } = await api.from("files").select("id,mime_type,sha256,size_bytes,original_name")
+      .eq("project_id", project).eq("original_name", `approved-${stamp}.${extension}`);
+    expect(error).toBeNull();
+    expect(files?.some((file) => file.sha256 === hash && file.mime_type === `image/${extension}` && file.size_bytes === buffer.length)).toBe(true);
+  }
+  const { data: derivatives, error } = await api.from("files").select("id,mime_type")
+    .eq("project_id", project).eq("original_name", `approved-${stamp}.jpg`);
+  expect(error).toBeNull();
+  expect(derivatives?.filter((file) => file.mime_type === "image/jpeg")).toHaveLength(4);
+  await page.getByRole("button", { name: `Open the details of approved-${stamp}.jpg` }).first().click();
+  const downloadEvent = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download original", exact: true }).click();
+  const download = await downloadEvent;
+  const original = batch.find(([extension]) => download.suggestedFilename().endsWith(`.${extension}`));
+  expect(original).toBeDefined();
+  expect(await readFile((await download.path())!)).toEqual(original![1]);
 });
 
 test("a photo stack is saved centrally and leaves nothing waiting on the device", async ({ page }) => {
@@ -98,7 +153,7 @@ test("a photo stack is saved centrally and leaves nothing waiting on the device"
     { name: "stack-b.jpg", mimeType: "image/jpeg", buffer: bytes },
   ]);
   await page.getByLabel(/Keep together as one photo stack/).check();
-  await page.locator(".media-capture-review").getByLabel(/Photo purpose/).selectOption("Progress Documentation");
+  await choosePhotoPurpose(page.locator(".media-capture-review"), "Progress Documentation");
   await page.getByRole("button", { name: "Save photo stack" }).click();
   await expect(page.locator(".media-capture-review")).toHaveCount(0, { timeout: 60_000 });
   await expect.poll(() => deviceQueue(page), { timeout: 30_000 }).toEqual([]);
@@ -126,7 +181,7 @@ test("photos taken one after another are reviewed together and saved as separate
   await expect(page.getByText("Photo 2 of 2")).toBeVisible();
   await page.getByRole("dialog").getByLabel("Caption / observation").fill("Wapening zichtbaar aan de onderzijde");
   await page.getByRole("button", { name: "Close" }).click();
-  await page.locator(".media-capture-review").getByLabel(/Photo purpose/).selectOption("Technical / Quality Evidence");
+  await choosePhotoPurpose(page.locator(".media-capture-review"), "Technical / Quality Evidence");
   await page.getByRole("button", { name: "Save 2 photos" }).click();
   await expect(page.locator(".media-capture-review")).toHaveCount(0, { timeout: 60_000 });
   await expect.poll(() => deviceQueue(page), { timeout: 30_000 }).toEqual([]);

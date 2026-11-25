@@ -9,7 +9,7 @@ import { createRequire } from "node:module";
  *  - Management > Project information: client, site address, dates, currency and status persist
  *    after a reload; a role without project.configure cannot change them (database refuses, the
  *    screen shows them read-only);
- *  - Management > Workflows & lists > Project disciplines: the workbook's 17 stay, the project adds
+ *  - Management > Workflows & lists > Project disciplines: the workbook's 18 stay, the project adds
  *    its own, and the addition belongs to this project only;
  *  - Project Documents: the register uses that list on create and edit, keeps an older free-text
  *    discipline, and the filter and the Excel export return the saved discipline.
@@ -190,7 +190,7 @@ test("a role without project.configure cannot change the project information", a
   await expect(page.getByRole("tab", { name: "Workflows & lists" })).toHaveCount(0);
 });
 
-test("Management keeps the project's disciplines: the workbook's 17 stay, the project adds its own, for this project only", async ({ page }, testInfo) => {
+test("Management keeps the project's disciplines: the workbook's 18 stay, the project adds its own, for this project only", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-office", "desktop route");
   await signIn(page, supervisor);
   await openManagement(page, /^Workflows & lists$/);
@@ -198,8 +198,8 @@ test("Management keeps the project's disciplines: the workbook's 17 stay, the pr
   await panel.locator("label.form-field", { hasText: "List" }).first().locator("select").selectOption({ label: "Project disciplines" });
   const values = panel.locator(".spec-config-values li");
   await expect(values.first()).toBeVisible();
-  // The 17 workbook disciplines cannot be switched off: the Works forms depend on them.
-  await expect(panel.locator(".spec-config-values input[type='checkbox'][disabled]")).toHaveCount(17);
+  // The 18 workbook disciplines (v5 added Timber Structures & Carpentry) cannot be switched off: the Works forms depend on them.
+  await expect(panel.locator(".spec-config-values input[type='checkbox'][disabled]")).toHaveCount(18);
   await expect(panel.locator(".spec-config-values").getByText("workbook standard").first()).toBeVisible();
   await panel.getByLabel("New value").fill(ownDiscipline);
   await panel.getByRole("button", { name: "Add", exact: true }).click();

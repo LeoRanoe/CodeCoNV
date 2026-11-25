@@ -8,7 +8,7 @@ import { useLanguage } from "@/lib/i18n";
 import { loadSharedLessons } from "@/lib/supabase/operations";
 
 /**
- * Lessons Learned sheet: a lesson "Approved for Sharing" is available across projects. This is
+ * Lessons Learned sheet: a submitted lesson is shared at once and available across projects (v5.0: no review step). This is
  * the organisation's list of them, read-only, newest first; this project's own lessons are in
  * the list above.
  */
@@ -25,7 +25,7 @@ export function SharedLessons({ client, organizationId, projectId }: { client: S
     <section className="record-section shared-lessons" aria-labelledby="shared-lessons-title">
       <h3 id="shared-lessons-title">{text("Lessons shared by other projects", "Lessen gedeeld door andere projecten")}</h3>
       {query.isLoading ? <p className="form-helper">{text("Loading…", "Laden…")}</p> : null}
-      {!query.isLoading && !lessons.length ? <p className="form-helper">{text("No lessons from other projects are approved for sharing yet.", "Nog geen lessen van andere projecten goedgekeurd voor delen.")}</p> : null}
+      {!query.isLoading && !lessons.length ? <p className="form-helper">{text("No lessons from other projects are shared yet.", "Nog geen lessen van andere projecten gedeeld.")}</p> : null}
       {lessons.length ? (
         <ul className="shared-lesson-list">
           {lessons.map((lesson) => {

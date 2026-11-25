@@ -1,6 +1,7 @@
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, stat } from "node:fs/promises";
 import { openSection } from "./section-nav";
 import { expect, type Page, test } from "@playwright/test";
+import { choosePhotoPurpose } from "./photo-purpose";
 
 /**
  * QA sweep M12. The period report ("Dagrapport / Week / Maand" → PDF) printed stored values:
@@ -75,4 +76,73 @@ test("the period report PDF is Dutch, has a project head and a signature block",
   expect(text).not.toMatch(/[A-Za-z]+_[A-Za-z]+/);
   expect(text).not.toMatch(/\b(cloudy|sunny|heavy_rain|moderate|critical|medium|in progress|to be corrected|building name|due date|progress percent|hse category|responsible person|immediate measure|action required)\b/i);
   expect(text).not.toMatch(/\b\d{2}:\d{2}:\d{2}\b/);
+});
+
+test("Word 11.1 options: photos, signatures, sign-off log and records still open from before the period", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-office", "The document is the same on every viewport.");
+  test.setTimeout(150_000);
+  await signIn(page);
+  await page.locator(".sidebar").getByRole("button", { name: "Reports", exact: true }).click();
+  await openSection(page, /^Create report$/);
+  const card = page.locator(".period-report-card");
+  const options = card.locator("[data-report-options]");
+  await expect(options.getByLabel("Photos")).toHaveValue("thumbnails");
+  await expect(options.getByLabel("Signatures")).toBeChecked();
+  await expect(options.getByLabel("Sign-off log")).not.toBeChecked();
+  await options.getByLabel("Photos").selectOption("large");
+  await options.getByLabel("Sign-off log").check();
+
+  // A period long before any record: only what is still open from before can appear, and it is marked.
+  const dates = card.locator("input[type='date']");
+  await dates.first().fill("2020-01-01");
+  await dates.nth(1).fill("2020-01-31");
+  const download = async () => {
+    const [file] = await Promise.all([page.waitForEvent("download"), card.getByRole("button", { name: /PDF/ }).click()]);
+    const path = testInfo.outputPath("documents", `options-${Date.now()}.pdf`);
+    await mkdir(testInfo.outputPath("documents"), { recursive: true });
+    await file.saveAs(path);
+    return pdfText(path);
+  };
+  const empty = await download();
+  expect(empty).not.toContain("Eerder geopend");
+
+  await options.getByLabel("Include records still open from before the period").check();
+  const withOpen = await download();
+  expect(withOpen).toContain("Eerder geopend");
+  expect(withOpen).toContain("Open sinds vóór deze periode");
+});
+
+test("a stored photo is printed in the report as a thumbnail or large, and not at all when the option is none", async ({ page }, testInfo) => {
+  const photo = process.env.CODECO_E2E_PHOTO_1;
+  test.skip(testInfo.project.name !== "desktop-office" || !photo || process.env.CODECO_E2E_FAKE_BLOB !== "1", "Needs the fake Blob stack and a fixture photo.");
+  test.setTimeout(240_000);
+  await signIn(page);
+  const project = new URL(page.url()).searchParams.get("project");
+  await page.goto(`/supervisie?project=${project}&nav=project&tab=files`);
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: /^Upload photos/ }).click();
+  await (await chooser).setFiles(photo!);
+  const review = page.locator(".media-capture-review");
+  await choosePhotoPurpose(review, "Progress Documentation");
+  await review.locator(".ui-button--primary").first().click();
+  await expect(page.locator(".offline-queue")).toHaveCount(0, { timeout: 90_000 });
+
+  await page.locator(".sidebar").getByRole("button", { name: "Reports", exact: true }).click();
+  await openSection(page, /^Create report$/);
+  const card = page.locator(".period-report-card");
+  await card.locator("input[type='date']").first().fill("2026-01-01");
+  await mkdir(testInfo.outputPath("documents"), { recursive: true });
+  const sizeWith = async (mode: string) => {
+    await card.locator("[data-report-options]").getByLabel("Photos").selectOption(mode);
+    const [file] = await Promise.all([page.waitForEvent("download"), card.getByRole("button", { name: /PDF/ }).click()]);
+    const path = testInfo.outputPath("documents", `photos-${mode}.pdf`);
+    await file.saveAs(path);
+    return { bytes: (await stat(path)).size, text: await pdfText(path) };
+  };
+  const none = await sizeWith("none");
+  const small = await sizeWith("thumbnails");
+  const large = await sizeWith("large");
+  expect(small.bytes, "a thumbnail adds image bytes").toBeGreaterThan(none.bytes + 2_000);
+  expect(large.bytes, "a large photo is bigger than a thumbnail").toBeGreaterThan(small.bytes);
+  expect(none.text).toContain("Foto");
 });

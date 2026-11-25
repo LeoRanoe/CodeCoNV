@@ -1,4 +1,5 @@
 import { inQuietHours, quietHoursFor } from "@/lib/notifications/quiet-hours.mjs";
+import { notificationPath } from "@/lib/notifications/record-link.mjs";
 import { logEvent } from "@/lib/observability/log";
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -34,9 +35,9 @@ function configureWebPush() {
   return config;
 }
 
-function destination(projectId: string) {
+function destination(projectId: string, notificationId: string) {
   const base = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/$/, "") ?? "";
-  return `${base}/supervisie?project=${encodeURIComponent(projectId)}`;
+  return `${base}${notificationPath(projectId, notificationId)}`;
 }
 
 export async function sendPushVerification(subscription: { endpoint: string; p256dh: string; auth: string }) {
@@ -114,7 +115,7 @@ export async function sendPendingPushNotifications(admin: SupabaseClient, projec
           title: notification.title,
           body: notification.body,
           tag: `codeco-${notification.id}`,
-          url: destination(notification.project_id),
+          url: destination(notification.project_id, notification.id),
         }), { TTL: 60 * 60 * 12, urgency: "high" });
         delivered += 1;
         await admin.from("push_subscriptions").update({ failure_count: 0, last_used_at: new Date().toISOString() }).eq("id", subscription.id);

@@ -10,8 +10,9 @@ import { photoFiles, photoTitle, photoUploadDescription, PhotoEvidenceList, same
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { useLanguage } from "@/lib/i18n";
 import { photoPurposes } from "@/lib/forms/spec-catalogue";
+import { photoPurposeCategories } from "@/lib/forms/spec-forms";
 import { specLabel } from "@/lib/forms/spec-labels-nl";
-import { normalizeImageFile, photoRefusalMessage, prepareCameraPhotos } from "@/lib/images/normalize-image";
+import { photoAccept, normalizeImageFile, photoRefusalMessage, prepareCameraPhotos, untouchedSourceOf } from "@/lib/images/normalize-image";
 import { clearFormDraft, formDraftKey, loadFormDraft, saveFormDraft } from "@/lib/offline/form-drafts";
 import { normalizeRecordCode } from "@/lib/records/record-directory.mjs";
 import {
@@ -26,6 +27,7 @@ import {
   orderMediaFolders,
   readableFileLabel,
   visibleLibraryFiles,
+  photoSourceIds,
 } from "@/lib/media/photo-library.mjs";
 import {
   prepareEvidencePhoto,
@@ -193,9 +195,11 @@ export function MediaLibraryWorkspace({
   // One rule for the whole screen: what a folder counts is exactly what the gallery shows
   // inside it. The counts used to come from the whole project while the gallery showed one
   // building, so photos looked lost that were simply filed under another building.
-  const buildingFiles = useMemo<FileRecord[]>(() => (assetsMode
-    ? data.files.filter((file) => file.status !== "deleted" && (!file.building_id || !libraryBuildingId || file.building_id === libraryBuildingId))
-    : (visibleLibraryFiles(data.files, libraryBuildingId) as FileRecord[]).filter(isPhotoFile)), [assetsMode, data.files, libraryBuildingId]);
+  const buildingFiles = useMemo<FileRecord[]>(() => {
+    if (assetsMode) return data.files.filter((file) => file.status !== "deleted" && (!file.building_id || !libraryBuildingId || file.building_id === libraryBuildingId));
+    const sourceIds = photoSourceIds(data.visualCaptures);
+    return (visibleLibraryFiles(data.files, libraryBuildingId) as FileRecord[]).filter((file) => isPhotoFile(file) && !sourceIds.has(file.id));
+  }, [assetsMode, data.files, data.visualCaptures, libraryBuildingId]);
   const folderFiles = useMemo<FileRecord[]>(() => assetsMode ? filesInFolder(buildingFiles, folderId) : buildingFiles, [assetsMode, buildingFiles, folderId]);
   const files = useMemo(() => folderFiles.filter((file) => {
     const normalizedQuery = normalizeRecordCode(assetQuery);
@@ -391,9 +395,10 @@ export function MediaLibraryWorkspace({
         const details = detailsFor?.(file);
         const capturedAt = details?.capturedAt ?? new Date(details?.sourcePhoto?.lastModified || file.lastModified || savedAt).toISOString();
         const source = relabelled.get(file) ?? file;
+        const sourcePhoto = details?.sourcePhoto ?? untouchedSourceOf(source);
         const prepared = uploadKind === "photo" ? prepareEvidencePhoto(source) : { blob: file as Blob, fileName: file.name, mimeType: file.type || "application/octet-stream", compressed: false };
         // F05: the fingerprint of the file exactly as received, before any reduction.
-        const original = uploadKind === "photo" ? await fingerprintOriginal(details?.sourcePhoto ?? file) : null;
+        const original = uploadKind === "photo" ? await fingerprintOriginal(sourcePhoto ?? file) : null;
         await queueOfflineUpload({
           projectId,
           buildingId: libraryBuildingId,
@@ -409,14 +414,14 @@ export function MediaLibraryWorkspace({
           locationLabel: libraryBuildingName,
           locationNodeId: detailsFor?.(file)?.locationNodeId ?? null,
           capturedAt,
-          originalSize: file.size,
+          originalSize: sourcePhoto?.size ?? file.size,
           queuedSize: prepared.blob.size,
           compressed: prepared.compressed,
           evidenceGroupId: uploadKind === "photo" ? evidenceGroupId || null : null,
           // F05: purpose, category and discipline travel with the photo through the device queue.
           spec: uploadKind === "photo" ? details?.spec ?? null : null,
           original,
-          sourcePhoto: details?.sourcePhoto,
+          sourcePhoto,
         });
       }
       await reloadQueue();
@@ -459,7 +464,7 @@ export function MediaLibraryWorkspace({
       onInitialFilesConsumed?.();
       // Added to what is already waiting: a second photo never replaces the first. The camera
       // button also wrote it to the device, so a photo already read from there is not doubled.
-      setPendingCapture((current) => [...current, ...captured.filter((file) => !current.some((photo) => samePhotoFile(photo.original, file))).map((file) => toPhotoEvidence(file))]);
+      setPendingCapture((current) => [...current, ...captured.filter((file) => !current.some((photo) => samePhotoFile(photo.untouched ?? photo.original, untouchedSourceOf(file) ?? file))).map((file) => toPhotoEvidence(file))]);
     }, 0);
     return () => window.clearTimeout(captureTimer);
   }, [initialFiles, onInitialFilesConsumed]);
@@ -485,6 +490,7 @@ export function MediaLibraryWorkspace({
     if (!pendingCapture.length) return;
     if (!assetsMode && (!libraryBuildingId || pendingCapture.some(({ details }) =>
       !photoPurposes.includes(details.purpose ?? "") || (details.purpose === "Other" && !details.purposeOther?.trim())
+        || !(photoPurposeCategories[details.purpose ?? ""] ?? []).some((option) => option.value === details.photoCategory)
     ))) {
       setFieldError(text(
         "Select a work location and a purpose for every photo. If you choose Other, explain it in the photo details.",
@@ -807,13 +813,13 @@ export function MediaLibraryWorkspace({
           <button className={kind === "document" ? "active" : ""} type="button" onClick={() => setKind("document")}><FileText size={16} /> {text("Document", "Document")}</button>
         </div> : null}
         {assetsMode ? <div className="quick-issue-presets media-folder-presets" aria-label={text("Choose an asset folder", "Kies een middelenmap")}>{standardFolderNames.map((name) => { const folder = folders.find((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase()); return <button className={Boolean(folder && folderId === folder.id) ? "active" : ""} type="button" disabled={busy} onClick={() => folder ? setFolderId(folder.id) : void addFolder(name)} key={name}><Folder size={13} /> {name}</button>; })}</div> : null}
-        <input ref={cameraInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { void stagePhotos(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
+        <input ref={cameraInputRef} hidden type="file" accept={photoAccept} capture="environment" onChange={(event) => { void stagePhotos(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
         <input
           ref={photoImportRef}
           hidden
           type="file"
           multiple
-          accept="image/jpeg,image/png,image/webp"
+          accept={photoAccept}
           onChange={(event) => {
             void stagePhotos(Array.from(event.target.files ?? []));
             event.target.value = "";
@@ -856,11 +862,25 @@ export function MediaLibraryWorkspace({
                   onChange={(event) => {
                     const purpose = event.target.value;
                     setPendingCapture((photos) => photos.map((photo) => photo.details.purpose === purpose ? photo : {
-                      ...photo, details: { ...photo.details, purpose, purposeOther: undefined },
+                      ...photo, details: { ...photo.details, purpose, purposeOther: undefined, photoCategory: undefined },
                     }));
                   }}>
                   <option value="">{text("Choose for all photos…", "Kies voor alle foto's…")}</option>
                   {photoPurposes.map((purpose) => <option key={purpose} value={purpose}>{specLabel(purpose, language)}</option>)}
+                </select>
+              </label>
+            ) : null}
+            {/* Developer package v5: the category follows the purpose and is chosen for all photos at once. */}
+            {!assetsMode && pendingCapture[0]?.details.purpose && pendingCapture.every(({ details }) => details.purpose === pendingCapture[0]!.details.purpose) ? (
+              <label className="form-field">
+                <span>{text("Photo category", "Fotocategorie")} *</span>
+                <select value={pendingCapture.every(({ details }) => details.photoCategory === pendingCapture[0]!.details.photoCategory) ? pendingCapture[0]!.details.photoCategory ?? "" : ""}
+                  onChange={(event) => {
+                    const photoCategory = event.target.value;
+                    setPendingCapture((photos) => photos.map((photo) => ({ ...photo, details: { ...photo.details, photoCategory } })));
+                  }}>
+                  <option value="">{text("Choose for all photos…", "Kies voor alle foto's…")}</option>
+                  {(photoPurposeCategories[pendingCapture[0].details.purpose] ?? []).map((option) => <option key={option.value} value={option.value}>{specLabel(option.value, language)}</option>)}
                 </select>
               </label>
             ) : null}

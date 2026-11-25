@@ -1,5 +1,6 @@
 "use client";
 
+import { isOnSiteWorkforce } from "@/lib/forms/workforce.mjs";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   AlertTriangle,
@@ -7,6 +8,7 @@ import {
   ArrowRight,
   Bell,
   Building2,
+  HardHat,
   Camera,
   Check,
   CheckCircle2,
@@ -38,18 +40,22 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { autoActionRows } from "@/lib/actions/auto-list.mjs";
+import { loadProjectOperations } from "@/lib/supabase/operations";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import NextImage from "next/image";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { TimeField } from "@/app/time-field";
 import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { actionStatusLabels as canonicalActionStatusLabels, labelMap, priorityText } from "@/lib/status-labels";
 import { screenFromSearch, useScreenHistory, type AppScreen } from "@/lib/navigation/app-history";
+import { notificationRecordScreen } from "@/lib/notifications/record-link.mjs";
 import { DictateButton, appendDictation } from "@/app/dictate-button";
 import { photoTitle, photoUploadDescription, samePhotoFile, toPhotoEvidence, type PhotoEvidence, photoSpecFromDetails } from "@/app/photo-evidence";
 import { ClientDashboard } from "@/app/client-dashboard";
 import { PortalApp } from "@/app/portal-app";
+import { ViewAsPortal } from "@/app/view-as-portal";
 import { PortalSharePanel } from "@/app/portal-share-panel";
 import { ActionCategoryField, RecordVerifications } from "@/app/verification-queue";
 import { OverviewPanels } from "@/app/overview-panels";
@@ -62,10 +68,10 @@ import { OperationalWorkspace, type DailyFormRenderers } from "@/app/operational
 import type { ActionCenterView } from "@/app/project-action-center";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
 import { ensureDailyBackup } from "@/lib/backups/client";
-import { constructionDisciplines } from "@/lib/forms/disciplines";
+import { constructionDisciplines, workerDisciplines } from "@/lib/forms/disciplines";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 import { ProjectPermissionsProvider, useProjectPermissionsQuery } from "@/lib/permissions/project-permissions";
-import { photoRefusalMessage, prepareCameraPhotos } from "@/lib/images/normalize-image";
+import { photoAccept, photoRefusalMessage, prepareCameraPhotos } from "@/lib/images/normalize-image";
 import { WorkforceForm } from "@/app/workforce-register";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import { currentPushState, enablePushNotifications, type PushState } from "@/lib/notifications/push-client";
@@ -171,10 +177,10 @@ function CompanyLogo({ subtitle }: { subtitle?: string }) {
   );
 }
 
-type NavKey = "vandaag" | "project" | "acties" | "projectdocs" | "records" | "punchlist" | "verify" | "rapporten" | "meer";
+type NavKey = "vandaag" | "project" | "acties" | "projectdocs" | "records" | "punchlist" | "verify" | "rapporten" | "contractorportal" | "clientportal" | "meer";
 
 type ProjectTabKey = "home" | "inspections" | "findings" | "ncr" | "hse" | "daily" | "workforce" | "documents" | "registers" | "visual" | "drawings" | "tools" | "files" | "assets";
-const navKeys: NavKey[] = ["vandaag", "project", "acties", "projectdocs", "records", "punchlist", "verify", "rapporten", "meer"];
+const navKeys: NavKey[] = ["vandaag", "project", "acties", "projectdocs", "records", "punchlist", "verify", "rapporten", "contractorportal", "clientportal", "meer"];
 const projectTabKeys: ProjectTabKey[] = ["home", "inspections", "findings", "ncr", "hse", "daily", "workforce", "documents", "registers", "visual", "drawings", "tools", "files", "assets"];
 type ModalKey = "action_create" | "action_detail" | "report" | "project_start" | "user_admin" | "notifications" | "manage_buildings" | "switch_project" | "offline" | null;
 /** The dialogs a back press or an address may reopen: those that need no record in hand. */
@@ -239,6 +245,9 @@ const navigation: { id: NavKey; label: string; icon: LucideIcon; badge?: string 
   { id: "projectdocs", label: "Project Documents", icon: FolderOpen },
   { id: "records", label: "Records & Photos", icon: Images },
   { id: "rapporten", label: "Rapporten", icon: FileText },
+  /* Supervision sees every portal of its projects, read-only ("View as"; Word v2.0, section 3). */
+  { id: "contractorportal", label: "Contractor Portal", icon: HardHat },
+  { id: "clientportal", label: "Client Portal", icon: Building2 },
   { id: "meer", label: "Beheer", icon: Settings },
 ];
 
@@ -435,8 +444,7 @@ export function CodecoSupervisionApp() {
   /** Which view the action centre opens on; the deadline tile asks for the deadlines. */
   const [actionCenterView, setActionCenterView] = useState<ActionCenterView>("work");
   /**
-   * The record the action centre sent the user to. It is a detail inside a screen, not a
-   * screen of its own, so it stays out of the history and out of the address.
+   * The record a workspace link sent the user to.
    */
   const [focusRecordId, setFocusRecordId] = useState("");
   const [entries, setEntries] = useState<TimelineEntry[]>([]);
@@ -557,7 +565,7 @@ export function CodecoSupervisionApp() {
       && session
       && activeOrganizationId
       && canManageMembers
-      && (modal === "user_admin" || modal === "action_create" || activeNav === "meer"),
+      && (modal === "user_admin" || modal === "action_create" || activeNav === "meer" || activeNav === "rapporten"),
     ),
   });
   const companyEmployees = useMemo(() => {
@@ -619,6 +627,8 @@ export function CodecoSupervisionApp() {
   const configuredDisciplines = projectConfigurationQuery.data?.disciplines?.length
     ? projectConfigurationQuery.data.disciplines
     : [...constructionDisciplines];
+  // Workforce (v5.0): the 72 predefined worker disciplines, then the ones this project added itself.
+  const workforceDisciplines = [...workerDisciplines, ...configuredDisciplines.filter((item) => !(constructionDisciplines as readonly string[]).includes(item) && !(workerDisciplines as readonly string[]).includes(item))];
   const configuredShiftStart = projectConfigurationQuery.data?.default_shift_start?.slice(0, 5) ?? "07:00";
   const configuredShiftEnd = projectConfigurationQuery.data?.default_shift_end?.slice(0, 5) ?? "16:00";
   const projectLocationsQuery = useQuery({
@@ -663,6 +673,19 @@ export function CodecoSupervisionApp() {
       : syncState === "saved"
         ? text("Saved centrally", "Centraal opgeslagen")
         : text("Live workspace · synchronized", "Live werkruimte · gesynchroniseerd");
+  // Word 9: "Counts per form are shown as badges in the left menu." The Actions item carries the number of
+  // submitted records that still need follow-up. It shares the cache of the workspace, so nothing loads twice.
+  const badgeReportId = dayQuery.data?.report?.id ? String(dayQuery.data.report.id) : null;
+  const followUpBadgeQuery = useQuery({
+    queryKey: ["project-operations", selectedProject?.id, badgeReportId],
+    // Only after the day has loaded: the key then holds the final report id (one fetch, not two) and the
+    // overview paints its own data first instead of competing with this one.
+    enabled: Boolean(supabase && session && selectedProject && activeOrganizationId && dayQuery.isFetched && permissions.canAny("actions.read", "actions.create")),
+    staleTime: 30_000,
+    queryFn: () => loadProjectOperations(supabase!, selectedProject!.id, activeOrganizationId!, badgeReportId),
+    select: (snapshot) => (autoActionRows(snapshot as unknown as Record<string, unknown>, { now: new Date().toISOString() }) as unknown[]).length,
+  });
+  const followUpBadge = followUpBadgeQuery.data ?? 0;
   // A module whose records the user may not read would only ever be an empty page.
   const navAllowed = (id: NavKey) => id === "acties" ? permissions.canAny("actions.read", "actions.create")
     : id === "projectdocs" ? permissions.canAny("documents.read", "files.read")
@@ -670,9 +693,11 @@ export function CodecoSupervisionApp() {
     : id === "verify" ? permissions.can("files.read")
       : id === "punchlist" ? permissions.can("findings.read")
         : id === "rapporten" ? permissions.canAny("reports.read", "reports.readapproved")
+          : id === "contractorportal" || id === "clientportal" ? permissions.can("records.read")
           : true;
   const localizedNavigation = navigation.filter((item) => navAllowed(item.id)).map((item) => ({
     ...item,
+    badge: item.id === "acties" && followUpBadge > 0 ? String(followUpBadge) : undefined,
     label: ({
       vandaag: text("Overview", "Overzicht"),
       project: text("Workspace", "Werkruimte"),
@@ -682,6 +707,8 @@ export function CodecoSupervisionApp() {
       punchlist: "Issues",
       verify: "Rapid Verify",
       rapporten: text("Reports", "Rapporten"),
+      contractorportal: text("Contractor Portal", "Aannemersportaal"),
+      clientportal: text("Client Portal", "Opdrachtgeversportaal"),
       // One name for the screen, whoever opens it; what is on it follows the role.
       meer: text("Management", "Beheer"),
     } satisfies Record<NavKey, string>)[item.id],
@@ -743,6 +770,7 @@ export function CodecoSupervisionApp() {
           setPasswordRecovery(false);
           setSelectedProject(null);
           setSelectedBuilding(null);
+          setFocusRecordId("");
           setWorkspaceStage("projects");
         }
       });
@@ -886,7 +914,7 @@ export function CodecoSupervisionApp() {
   }, [queryClient, reportDate, selectedProject, session, supabase]);
 
   const projectAttendanceTotal = useMemo(
-    () => (dayQuery.data?.attendance ?? []).reduce((total, row) => total + Number(row.headcount ?? 0), 0),
+    () => (dayQuery.data?.attendance ?? []).filter((row) => isOnSiteWorkforce(typeof row.entry_type === "string" ? row.entry_type : null, row.spec)).reduce((total, row) => total + Number(row.headcount ?? 0), 0),
     [dayQuery.data],
   );
   const reportNumber = String(dayQuery.data?.report?.report_number ?? `DR-${reportDate.replaceAll("-", "")}`);
@@ -1002,6 +1030,17 @@ export function CodecoSupervisionApp() {
     setModal(null);
   };
 
+  const navigateRef = useRef<((next: NavKey) => void) | null>(null);
+  // The Workspace asks for another main menu item (for example "Open log" → Records & Photos).
+  useEffect(() => {
+    const listener = (event: Event) => {
+      const target = (event as CustomEvent<string>).detail;
+      if (navKeys.includes(target as NavKey)) navigateRef.current?.(target as NavKey);
+    };
+    window.addEventListener("codeco:open-nav", listener);
+    return () => window.removeEventListener("codeco:open-nav", listener);
+  }, []);
+
   const navigate = (next: NavKey) => {
     if (next === "project") setInitialProjectTab("home");
     // Project Docs and Punchlist are the workspace with one module already open.
@@ -1019,6 +1058,7 @@ export function CodecoSupervisionApp() {
     setActiveNav(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+  useEffect(() => { navigateRef.current = navigate; });
 
   /**
    * Every route into a workspace module runs through here. Setting the tab and the
@@ -1045,7 +1085,6 @@ export function CodecoSupervisionApp() {
     setDayHydrated(false);
     setSelectedAction(null);
     setContextBuildingId(null);
-    setFocusRecordId("");
     setProjectTabPreset(undefined);
     setExternalSubmissionIntent(false);
     setActionCenterView("work");
@@ -1054,6 +1093,7 @@ export function CodecoSupervisionApp() {
 
   const chooseProject = (project: ProjectContext) => {
     if (project.id !== selectedProject?.id) resetProjectScopedState();
+    setFocusRecordId("");
     setModal(null);
     setMobileMenuOpen(false);
     setSelectedProject(project);
@@ -1121,7 +1161,8 @@ export function CodecoSupervisionApp() {
     tab: initialProjectTab,
     modal: modal ?? null,
     menu: mobileMenuOpen,
-  }), [activeNav, initialProjectTab, mobileMenuOpen, modal, selectedProject, workspaceStage]);
+    record: focusRecordId,
+  }), [activeNav, focusRecordId, initialProjectTab, mobileMenuOpen, modal, selectedProject, workspaceStage]);
 
   /** Puts the app back on a screen the back button handed to us. */
   const applyScreen = useCallback((restored: AppScreen) => {
@@ -1140,6 +1181,8 @@ export function CodecoSupervisionApp() {
     }
     setActiveNav(navKeys.includes(restored.nav as NavKey) ? restored.nav as NavKey : "vandaag");
     setInitialProjectTab(projectTabKeys.includes(restored.tab as ProjectTabKey) ? restored.tab as ProjectTabKey : "home");
+    setFocusRecordId(restored.record ?? "");
+    setSelectedAction(null);
     // A dialog that only makes sense with a record in hand is not restored from an
     // entry; the screen behind it is what the user asked to go back to.
     // Only a dialog that still exists comes back: an older address can name one that became a
@@ -1153,8 +1196,6 @@ export function CodecoSupervisionApp() {
     window.scrollTo({ top: 0, behavior: "auto" });
   }, [workspaceQuery.data?.projects]);
 
-  useScreenHistory(screen, applyScreen);
-
   // A reload, a shared link or a phone that reopens the installed app lands on the
   // screen the address bar describes instead of at the beginning.
   const restoredFromUrlRef = useRef(false);
@@ -1162,6 +1203,13 @@ export function CodecoSupervisionApp() {
   // the project-less start screen; reading it later found an empty query and every reload
   // dropped the user back on project selection.
   const [initialSearch] = useState(() => (typeof window === "undefined" ? "" : window.location.search));
+  const [deliveryLink, setDeliveryLink] = useState(() => {
+    const query = new URLSearchParams(initialSearch);
+    const id = query.get("notification");
+    const project = query.get("project");
+    return id && project ? { id, project } : null;
+  });
+  useScreenHistory(screen, applyScreen, Boolean(deliveryLink));
   // The projects arrive from the server, so the screen in the address bar can only be
   // restored once they are there. That is exactly what an effect is for.
   useEffect(() => {
@@ -1181,6 +1229,46 @@ export function CodecoSupervisionApp() {
     }
     applyScreen(fromUrl);
   }, [applyScreen, initialSearch, text, workspaceQuery.data?.projects]);
+
+  const openNotificationRecord = (notification: Pick<ProjectNotification, "source_id" | "source_type">) => {
+    if (!selectedProject || !notification.source_id) return;
+    applyScreen(notificationRecordScreen(selectedProject.id, notification.source_type, notification.source_id, Boolean(portalModeFor(permissions))));
+  };
+
+  const notificationPortalMode = Boolean(portalModeFor(permissions));
+  const notificationProjectId = selectedProject?.id;
+  const notificationUserId = session?.user.id;
+  useEffect(() => {
+    if (!deliveryLink || !supabase || !notificationUserId || !workspaceQuery.data) return;
+    if (!workspaceQuery.data.projects.some((project) => project.id === deliveryLink.project)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- an unavailable project has no link to resolve
+      setDeliveryLink(null);
+      return;
+    }
+    if (notificationProjectId !== deliveryLink.project) return;
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase.from("notifications").select("source_type,source_id")
+        .eq("project_id", deliveryLink.project).eq("recipient_user_id", notificationUserId)
+        .eq("id", deliveryLink.id).maybeSingle();
+      if (cancelled) return;
+      if (data?.source_id) applyScreen(notificationRecordScreen(deliveryLink.project, data.source_type, data.source_id, notificationPortalMode));
+      else setToast(text("This notification is unavailable to this account.", "Deze melding is niet beschikbaar voor dit account."));
+      setDeliveryLink(null);
+    })();
+    return () => { cancelled = true; };
+  }, [applyScreen, deliveryLink, notificationPortalMode, notificationProjectId, notificationUserId, supabase, text, workspaceQuery.data]);
+
+  const focusedAction = useQuery({
+    queryKey: ["notification-action", notificationProjectId, focusRecordId, notificationUserId],
+    enabled: Boolean(supabase && notificationUserId && notificationProjectId && focusRecordId && activeNav === "acties"),
+    queryFn: async () => {
+      const result = await supabase!.from("actions").select("*").eq("project_id", notificationProjectId!).eq("id", focusRecordId).maybeSingle();
+      if (result.error) throw result.error;
+      return result.data as ProjectAction | null;
+    },
+  });
+  const actionDetail = modal === "action_detail" ? selectedAction : activeNav === "acties" && focusRecordId ? focusedAction.data : null;
 
   const openProjectStartForAllBuildings = () => {
     setContextBuildingId(ALL_BUILDINGS);
@@ -1285,7 +1373,7 @@ export function CodecoSupervisionApp() {
           if (result.error) throw result.error;
           setPasswordRecovery(false);
           setAccountNotice(text("Password changed.", "Wachtwoord gewijzigd."));
-          window.history.replaceState(null, "", window.location.pathname);
+          if (!deliveryLink) window.history.replaceState(null, "", window.location.pathname);
           setSession((current) => current ? { ...current, user: result.data.user } : current);
         }}
         signOut={() => void performSignOut({ discardUnsent: false })}
@@ -1569,7 +1657,7 @@ export function CodecoSupervisionApp() {
           ? attendanceRowsForBuilding(dayQuery.data, nextBuildingId, text("Unknown party", "Onbekende partij"), configuredShiftStart, configuredShiftEnd)
           : []}
         parties={dayQuery.data?.parties ?? []}
-        disciplines={configuredDisciplines}
+        disciplines={workforceDisciplines}
         defaultShiftStart={configuredShiftStart}
         defaultShiftEnd={configuredShiftEnd}
         buildings={selectedProject.buildings}
@@ -1593,6 +1681,7 @@ export function CodecoSupervisionApp() {
               shiftStart: row.shiftStart,
               shiftEnd: row.shiftEnd,
               crew: row.crew,
+              spec: row.spec,
             })),
           };
         }}
@@ -1660,6 +1749,32 @@ export function CodecoSupervisionApp() {
     },
   };
 
+  // Supervision opens the portal of any contractor or client of the project, read-only ("View as").
+  if (!portalModeFor(permissions) && selectedProject && (activeNav === "contractorportal" || activeNav === "clientportal")) {
+    return (
+      <ProjectPermissionsProvider value={permissions}>
+        <ViewAsPortal
+          key={`${activeNav}:${selectedProject.id}`}
+          client={supabase!}
+          mode={activeNav === "clientportal" ? "client" : "contractor"}
+          projectId={selectedProject.id}
+          projectName={selectedProject.name}
+          projects={workspaceQuery.data!.projects.map((project) => ({ id: project.id, name: project.name, code: project.code }))}
+          buildings={selectedProject.buildings.map((building) => ({ id: building.id, name: building.name }))}
+          userName={currentUserName}
+          brand={<CompanyLogo />}
+          onSwitchProject={(projectId) => {
+            const project = workspaceQuery.data?.projects.find((item) => item.id === projectId);
+            if (project) chooseProject(project);
+          }}
+          focusShareId=""
+          clearFocus={() => setFocusRecordId("")}
+          onClose={() => navigate("vandaag")}
+        />
+      </ProjectPermissionsProvider>
+    );
+  }
+
   // A contractor or client account works in its own portal, never in the supervisor workspace
   // (requirements 6 and 21). The database already limits every row to the user's organisation.
   const portalMode = portalModeFor(permissions) as "contractor" | "client" | null;
@@ -1668,6 +1783,8 @@ export function CodecoSupervisionApp() {
       <ProjectPermissionsProvider value={permissions}>
         <PortalApp
           client={supabase}
+          focusShareId={focusRecordId}
+          clearFocus={() => setFocusRecordId("")}
           mode={portalMode}
           projectId={selectedProject.id}
           projectName={selectedProject.name}
@@ -1709,6 +1826,7 @@ export function CodecoSupervisionApp() {
       externalSubmissionIntent
       actionCenterView={actionCenterView}
       focusRecordId={focusRecordId}
+      clearFocusedRecord={() => setFocusRecordId("")}
       initialCameraFiles={pendingQuickPhotos}
       onInitialCameraFilesConsumed={() => setPendingQuickPhotos([])}
       dailyForms={dailyForms}
@@ -1764,7 +1882,7 @@ export function CodecoSupervisionApp() {
         aria-hidden="true"
         tabIndex={-1}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept={photoAccept}
         capture="environment"
         onChange={(event) => {
           void receiveQuickCameraPhoto(event.currentTarget.files);
@@ -1791,16 +1909,20 @@ export function CodecoSupervisionApp() {
           {localizedNavigation.map((item) => {
             const Icon = item.icon;
             return (
-              <button
-                className={`nav-button ${activeNav === item.id ? "active" : ""}`}
-                type="button"
-                onClick={() => navigate(item.id)}
-                key={item.id}
-              >
-                <Icon size={18} strokeWidth={1.8} />
-                {item.label}
-                {item.badge ? <span className="nav-badge">{item.badge}</span> : null}
-              </button>
+              <Fragment key={item.id}>
+                <button
+                  className={`nav-button ${activeNav === item.id ? "active" : ""}`}
+                  type="button"
+                  onClick={() => navigate(item.id)}
+                  aria-describedby={item.badge ? `nav-badge-${item.id}` : undefined}
+                >
+                  <Icon size={18} strokeWidth={1.8} />
+                  {item.label}
+                  {item.badge ? <span className="nav-badge" aria-hidden="true">{item.badge}</span> : null}
+                </button>
+                {/* Outside the button so the button keeps its name; it is the button's description. */}
+                {item.badge ? <span className="sr-only" id={`nav-badge-${item.id}`}>{text(`${item.badge} open follow-ups`, `${item.badge} openstaande acties`)}</span> : null}
+              </Fragment>
             );
           })}
         </nav>
@@ -1958,6 +2080,7 @@ export function CodecoSupervisionApp() {
               externalSubmissionIntent={externalSubmissionIntent}
               actionCenterView={actionCenterView}
               focusRecordId={focusRecordId}
+              clearFocusedRecord={() => setFocusRecordId("")}
               initialCameraFiles={pendingQuickPhotos}
               onInitialCameraFilesConsumed={() => setPendingQuickPhotos([])}
               dailyForms={dailyForms}
@@ -2020,7 +2143,7 @@ export function CodecoSupervisionApp() {
           );
         })}
         <button
-          className={`mobile-nav-button ${["projectdocs", "records", "punchlist", "verify", "rapporten", "meer"].includes(activeNav) ? "active" : ""}`}
+          className={`mobile-nav-button ${["projectdocs", "records", "punchlist", "verify", "rapporten", "contractorportal", "clientportal", "meer"].includes(activeNav) ? "active" : ""}`}
           type="button"
           aria-expanded={mobileMenuOpen}
           aria-controls="mobile-module-menu"
@@ -2075,7 +2198,7 @@ export function CodecoSupervisionApp() {
                 </span>
                 <ChevronRight size={17} />
               </button>
-              {localizedNavigation.filter((item) => ["projectdocs", "records", "punchlist", "verify", "rapporten", "meer"].includes(item.id)).map((item) => {
+              {localizedNavigation.filter((item) => ["projectdocs", "records", "punchlist", "verify", "rapporten", "contractorportal", "clientportal", "meer"].includes(item.id)).map((item) => {
                 const Icon = item.icon;
                 return (
                   <button className={activeNav === item.id ? "active" : ""} type="button" onClick={() => navigate(item.id)} key={item.id}>
@@ -2174,30 +2297,32 @@ export function CodecoSupervisionApp() {
           close={() => setModal(null)}
         />
       ) : null}
-      {modal === "action_detail" && selectedAction ? (
+      {actionDetail ? (
         <ActionDetailModal
-          action={selectedAction}
-          partyName={dayQuery.data?.parties.find((party) => party.id === selectedAction.owner_party_id)?.name ?? "Niet toegewezen"}
+          action={actionDetail}
+          partyName={dayQuery.data?.parties.find((party) => party.id === actionDetail.owner_party_id)?.name ?? "Niet toegewezen"}
           locationNodes={projectLocationsQuery.data ?? []}
-          updates={(dayQuery.data?.actionUpdates ?? []).filter((update) => update.action_id === selectedAction.id)}
+          updates={(dayQuery.data?.actionUpdates ?? []).filter((update) => update.action_id === actionDetail.id)}
           portalPanel={selectedProject ? (
             <>
-              <ActionCategoryField client={supabase} actionId={selectedAction.id} value={selectedAction.action_category} changed={() => void queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] })} />
-              <RecordVerifications client={supabase} projectId={selectedProject.id} recordType="action" recordId={selectedAction.id} />
-              <PortalSharePanel client={supabase} projectId={selectedProject.id} recordType="action" recordId={selectedAction.id} recordTitle={selectedAction.title} parties={dayQuery.data?.parties ?? []} />
+              <ActionCategoryField client={supabase} actionId={actionDetail.id} value={actionDetail.action_category} changed={() => void queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject.id, reportDate] })} />
+              <RecordVerifications client={supabase} projectId={selectedProject.id} recordType="action" recordId={actionDetail.id} />
+              <PortalSharePanel client={supabase} projectId={selectedProject.id} recordType="action" recordId={actionDetail.id} recordTitle={actionDetail.title} parties={dayQuery.data?.parties ?? []} />
             </>
           ) : null}
           close={() => {
             setSelectedAction(null);
+            setFocusRecordId("");
             setModal(null);
           }}
           transition={async (nextStatus, note) => {
             const saved = await runSynced(
-              () => transitionProjectAction(supabase, { actionId: selectedAction.id, nextStatus, note }),
+              () => transitionProjectAction(supabase, { actionId: actionDetail.id, nextStatus, note }),
               `Actie is centraal bijgewerkt naar ${actionStatusLabels[nextStatus].toLowerCase()}.`,
             );
             if (!saved) return false;
-            setSelectedAction(saved);
+            if (modal === "action_detail") setSelectedAction(saved);
+            else queryClient.setQueryData(["notification-action", notificationProjectId, focusRecordId, notificationUserId], saved);
             await queryClient.invalidateQueries({ queryKey: ["project-day", selectedProject?.id, reportDate] });
             return true;
           }}
@@ -2334,12 +2459,7 @@ export function CodecoSupervisionApp() {
           notifications={notificationQuery.data ?? []}
           loading={notificationQuery.isLoading}
           close={() => setModal(null)}
-          openSource={(sourceType) => {
-            if (sourceType === "action") { setModal(null); navigate("acties"); }
-            else if (sourceType === "finding") { setModal(null); openWorkspaceModule("findings"); }
-            else if (sourceType === "inspection") { setModal(null); openWorkspaceModule("inspections"); }
-            else if (sourceType === "report") { setModal(null); navigate("rapporten"); }
-          }}
+          openSource={openNotificationRecord}
           markRead={async (notificationId) => {
             const saved = await runSynced(
               () => markNotificationRead(supabase, notificationId),
@@ -3025,7 +3145,7 @@ function ProjectStartForm({
   );
 }
 
-function NotificationsModal({ client, notifications, loading, close, markRead, openSource }: { client: SupabaseClient; notifications: ProjectNotification[]; loading: boolean; close: () => void; markRead: (notificationId: string) => Promise<void>; openSource: (sourceType: string | null) => void }) {
+function NotificationsModal({ client, notifications, loading, close, markRead, openSource }: { client: SupabaseClient; notifications: ProjectNotification[]; loading: boolean; close: () => void; markRead: (notificationId: string) => Promise<void>; openSource: (notification: ProjectNotification) => void }) {
   const { locale, text } = useLanguage();
   const [pushState, setPushState] = useState<PushState>("inactive");
   const [pushBusy, setPushBusy] = useState(false);
@@ -3077,7 +3197,7 @@ function NotificationsModal({ client, notifications, loading, close, markRead, o
             <button className={`notification-row ${notification.read_at ? "read" : ""}`} type="button" key={notification.id} onClick={() => {
               // A notification is the way to the record it is about: it is marked read and opened.
               if (!notification.read_at) void markRead(notification.id);
-              openSource(notification.source_type);
+              openSource(notification);
             }}>
               <span className="notification-row-icon">{notification.notification_type.includes("overdue") || notification.notification_type.includes("critical") ? <AlertTriangle size={17} /> : <Bell size={17} />}</span>
               <span><strong>{notificationTitle(notification.title, text)}</strong><span>{notification.body}</span><small>{notification.due_at ? `${text("Deadline", "Deadline")} ${new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(notification.due_at))}` : text("Immediate follow-up", "Directe opvolging")} · {notification.push_status === "sent" ? text("Push sent", "Push verzonden") : notification.push_status === "failed" ? text("Push retry pending", "Nieuwe pushpoging gepland") : notification.push_status === "skipped" ? text("Activate push on a device", "Activeer push op een apparaat") : text("Push queued", "Push in wachtrij")}</small></span>

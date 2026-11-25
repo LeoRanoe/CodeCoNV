@@ -439,13 +439,13 @@ function ShareReview({ client, share, snapshot, partyName, canReview, changed }:
 }
 
 /** Every portal item of the project, for CODECO: what waits on whom, overdue, by organisation. */
-export function PortalRegister({ client, projectId, parties }: { client: SupabaseClient; projectId: string; parties: Party[] }) {
+export function PortalRegister({ client, projectId, parties, initialShareId }: { initialShareId?: string; client: SupabaseClient; projectId: string; parties: Party[] }) {
   const { language, locale, text } = useLanguage();
   const queryClient = useQueryClient();
   const [audience, setAudience] = useState("");
   const [party, setParty] = useState("");
   const [state, setState] = useState("open");
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(initialShareId || null);
   const query = useQuery({ queryKey: ["portal-register", projectId], queryFn: () => loadPortalSnapshot(client, projectId), refetchInterval: 120_000 });
   const shares = (query.data?.shares ?? []).filter((share) => (!audience || share.audience === audience) && (!party || share.party_id === party)
     && (state === "all" || (state === "open" && !isClosedShare(share)) || (state === "overdue" && isOverdueShare(share))

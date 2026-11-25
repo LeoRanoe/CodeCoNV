@@ -1,3 +1,4 @@
+import { notificationPath } from "@/lib/notifications/record-link.mjs";
 import { logEvent } from "@/lib/observability/log";
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -117,11 +118,12 @@ export async function sendPendingNotificationEmails(admin: SupabaseClient): Prom
       email_last_error: null,
     });
     const due = formatDueAt(notification.due_at);
-    const text = [notification.title, "", notification.body, due ? `Deadline: ${due}` : "", destination ? `Open CODECO Supervisie: ${destination}/supervisie` : ""]
+    const link = destination ? `${destination}${notificationPath(notification.project_id, notification.id)}` : "";
+    const text = [notification.title, "", notification.body, due ? `Deadline: ${due}` : "", link ? `Open CODECO Supervisie: ${link}` : ""]
       .filter(Boolean)
       .join("\n");
-    const action = destination
-      ? `<p style="margin:24px 0"><a href="${escapeHtml(destination)}/supervisie" style="background:#b42318;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">Open CODECO Supervisie</a></p>`
+    const action = link
+      ? `<p style="margin:24px 0"><a href="${escapeHtml(link)}" style="background:#b42318;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">Open CODECO Supervisie</a></p>`
       : "";
     try {
       const response = await fetch("https://api.resend.com/emails", {

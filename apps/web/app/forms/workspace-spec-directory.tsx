@@ -62,7 +62,7 @@ export function WorkspaceSpecDirectory({ client, projectId, snapshot, buildings,
   }, [companyEmployees, peopleQuery.data, projectId]);
   const records = useMemo(() => buildRecordDirectory({ ...snapshot, buildings })
     .filter((entry) => ["finding", "ncr", "hse", "inspection", "register"].includes(entry.kind) && entry.code)
-    .map((entry) => ({ id: entry.id, kind: entry.kind, registerType: entry.kind === "register" ? entry.subtitle : undefined, code: entry.code, title: entry.title })), [buildings, snapshot]);
+    .map((entry) => ({ id: entry.id, kind: entry.kind, registerType: entry.kind === "register" ? entry.subtitle : undefined, code: entry.code, title: entry.title, linkSpec: entry.linkSpec, linkedRefs: entry.linkedRefs })), [buildings, snapshot]);
   const locations = useMemo(() => {
     const names = new Map(buildings.map((building) => [building.id, building.name]));
     return [

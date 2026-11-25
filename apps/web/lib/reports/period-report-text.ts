@@ -22,6 +22,7 @@ const immediateActions: Record<string, string> = {
 };
 
 const labels: Record<string, string> = {
+  carried_over: "Eerder geopend",
   building_name: "Gebouw",
   location_path: "Locatie",
   requested_to: "Gericht aan",
@@ -123,7 +124,7 @@ export function periodDetailsLine(record: Record<string, unknown>, preferredKeys
 }
 
 export const periodDetailKeys = [
-  "building_name", "location_path", "requested_to", "due_date", "revision", "related_reference",
+  "carried_over", "building_name", "location_path", "requested_to", "due_date", "revision", "related_reference",
   "reference_documents", "attachments", "discipline", "priority", "schedule_impact", "cost_impact",
   "period_start", "period_end", "description",
   // The boxes of the client's own HSE and issue screens.

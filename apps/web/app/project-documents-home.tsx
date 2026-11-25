@@ -37,6 +37,7 @@ import { DocumentRegister } from "@/app/document-register";
 type DocumentView = "register" | "all" | "drawings" | "renders" | "boq" | "specifications" | "contracts";
 
 export function ProjectDocumentsHome({
+  focusRecordId,
   data,
   client,
   organizationId,
@@ -53,6 +54,7 @@ export function ProjectDocumentsHome({
   openRegisters,
   createDocument,
 }: {
+  focusRecordId?: string;
   data: OperationSnapshot;
   client: SupabaseClient;
   organizationId: string;
@@ -283,7 +285,7 @@ export function ProjectDocumentsHome({
       />
 
       {view === "register" ? (
-        <DocumentRegister client={client} projectId={projectId} projectName={projectName} buildings={buildings} parties={parties} data={data} defaultBuildingId={buildingId} />
+        <DocumentRegister initialDocumentId={focusRecordId} client={client} projectId={projectId} projectName={projectName} buildings={buildings} parties={parties} data={data} defaultBuildingId={buildingId} />
       ) : (
       <div className="project-document-browser">
         {openError ? <div className="operation-alert error" role="alert">{openError}</div> : null}

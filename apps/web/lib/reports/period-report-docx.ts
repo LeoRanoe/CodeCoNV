@@ -1,4 +1,5 @@
-import { Document, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } from "docx";
+import { isOnSiteWorkforce } from "../forms/workforce.mjs";
+import { Document, ImageRun, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } from "docx";
 import { periodDetailKeys, periodDetailsLine, periodHours, periodProjectHead, periodSignatureRoles, periodToken } from "@/lib/reports/period-report-text";
 import { reportDelayCause, reportWeather, reportWind } from "@/lib/reports/report-vocabulary";
 import {
@@ -10,7 +11,8 @@ import {
   sectionHeading,
   signatureBlock,
 } from "@/lib/reports/docx-shared";
-import { allPeriodReportSections, allPeriodReportTopics, hseIncidentTypes, immediateActionText, type PeriodReportOptions } from "@/lib/reports/period-report-pdf";
+import { allPeriodReportSections, allPeriodReportTopics, hseIncidentTypes, immediateActionText, withoutSignatures, type PeriodReportOptions } from "@/lib/reports/period-report-pdf";
+import { dataUrlBytes } from "@/lib/reports/report-photos";
 import type { PeriodReportSnapshot } from "@/lib/supabase/operations";
 
 function value(record: Record<string, unknown>, key: string, fallback = "") {
@@ -80,7 +82,42 @@ function statTable(stats: Array<[number | string, string]>): Table {
   return new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE } });
 }
 
-export function buildPeriodReportDocxDocument(snapshot: PeriodReportSnapshot, options: PeriodReportOptions, logoBytes: ArrayBuffer): Document {
+/** Pictures of the visual captures (Word 11.1): small ones three across in a table, large ones one per paragraph. */
+function capturePhotos(captures: Array<Record<string, unknown>>, options: PeriodReportOptions): Array<Paragraph | Table> {
+  const photos = options.photos ?? {};
+  const large = options.photoMode === "large";
+  const edge = large ? 450 : 150;
+  const shown = captures.filter((capture) => photos[value(capture, "id")]);
+  const rest = captures.filter((capture) => !photos[value(capture, "id")]);
+  const picture = (capture: Record<string, unknown>) => {
+    const photo = photos[value(capture, "id")];
+    const fit = Math.min(edge / photo.width, (large ? 300 : 112) / photo.height);
+    const caption = [value(capture, "title"), value(capture, "captured_at") ? formatDate(value(capture, "captured_at")) : "", value(capture, "location_label")].filter(Boolean).join(" · ");
+    return [
+      new Paragraph({ children: [new ImageRun({ type: "jpg", data: dataUrlBytes(photo.dataUrl), transformation: { width: Math.round(photo.width * fit), height: Math.round(photo.height * fit) } })], spacing: { before: 60 } }),
+      new Paragraph({ children: [new TextRun({ text: caption, color: "44525A", size: 14 })], spacing: { after: 100 } }),
+    ];
+  };
+  const blocks: Array<Paragraph | Table> = [];
+  if (large) shown.forEach((capture) => blocks.push(...picture(capture)));
+  else if (shown.length) {
+    const perRow = 3;
+    const rows: TableRow[] = [];
+    for (let index = 0; index < shown.length; index += perRow) {
+      const chunk = shown.slice(index, index + perRow);
+      const cells = chunk.map((capture) => new TableCell({ width: { size: 100 / perRow, type: WidthType.PERCENTAGE }, margins: { top: 60, bottom: 60, left: 80, right: 80 }, children: picture(capture) }));
+      while (cells.length < perRow) cells.push(new TableCell({ width: { size: 100 / perRow, type: WidthType.PERCENTAGE }, children: [new Paragraph({ children: [] })] }));
+      rows.push(new TableRow({ children: cells }));
+    }
+    blocks.push(new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE } }));
+  }
+  if (rest.length || !shown.length) blocks.push(...recordRows(rest));
+  if (options.photosOmitted) blocks.push(new Paragraph({ children: [new TextRun({ text: `${options.photosOmitted} foto's zijn niet afgedrukt (limiet of niet leesbaar); ze staan wel in het register.`, italics: true, color: "74848D", size: 16 })] }));
+  return blocks;
+}
+
+export function buildPeriodReportDocxDocument(source: PeriodReportSnapshot, options: PeriodReportOptions, logoBytes: ArrayBuffer): Document {
+  const snapshot = options.signatures === false ? withoutSignatures(source) : source;
   const projectName = value(snapshot.project, "name", "CODECO-project");
   const sections = new Set(options.sections?.length ? options.sections : allPeriodReportSections);
   const topics = new Set(options.topics?.length ? options.topics : allPeriodReportTopics);
@@ -118,8 +155,9 @@ export function buildPeriodReportDocxDocument(snapshot: PeriodReportSnapshot, op
   }));
   const hseIncidents = hseEvents.filter((entry) => hseIncidentTypes.includes(value(entry, "event_type")));
   const hseObservations = hseEvents.filter((entry) => !hseIncidentTypes.includes(value(entry, "event_type")));
-  const attendanceTotal = snapshot.attendance.reduce((total, entry) => total + Number(entry.headcount ?? 0), 0);
-  const workforce = Object.entries(snapshot.attendance.reduce<Record<string, number>>((groups, entry) => {
+  const onSiteAttendance = snapshot.attendance.filter((entry) => isOnSiteWorkforce(typeof entry.entry_type === "string" ? entry.entry_type : null, entry.spec));
+  const attendanceTotal = onSiteAttendance.reduce((total, entry) => total + Number(entry.headcount ?? 0), 0);
+  const workforce = Object.entries(onSiteAttendance.reduce<Record<string, number>>((groups, entry) => {
     const discipline = value(entry, "discipline", "Onbekend");
     groups[discipline] = (groups[discipline] ?? 0) + Number(entry.headcount ?? 0);
     return groups;
@@ -231,7 +269,7 @@ export function buildPeriodReportDocxDocument(snapshot: PeriodReportSnapshot, op
   if (sections.has("requests")) children.push(heading("RFA, RFI en inspectieverzoeken"), ...recordRows([...register("rfa"), ...register("rfi"), ...register("inspection_request")]));
   if (sections.has("documents")) children.push(heading("Document control matrix"), ...recordRows(controlledDocuments, "Geen beheerde klantdocumenten in deze periode."));
   if (sections.has("boq")) children.push(heading("BOQ, voortgang en declaraties"), ...recordRows([...register("boq"), ...register("declaration"), ...register("cost")]));
-  if (sections.has("visual") && topics.has("photos")) children.push(heading("Foto's en 360°-camerabeelden"), ...recordRows(snapshot.visual_captures));
+  if (sections.has("visual") && topics.has("photos")) children.push(heading("Foto's en 360°-camerabeelden"), ...(options.photoMode && options.photoMode !== "none" && options.photos ? capturePhotos(snapshot.visual_captures, options) : recordRows(snapshot.visual_captures)));
 
   if (sections.has("buildings")) {
     buildings.forEach((building) => {
@@ -254,6 +292,17 @@ export function buildPeriodReportDocxDocument(snapshot: PeriodReportSnapshot, op
         ...recordRows(buildingRegisters),
       );
     });
+  }
+
+  if (options.signoffLog?.length) {
+    children.push(heading("Ondertekeningslog"));
+    for (const entry of options.signoffLog) {
+      children.push(new Paragraph({ children: [new TextRun({ text: `${entry.code} · ${entry.title}`, bold: true, size: 16 })], spacing: { before: 100 } }));
+      for (const step of entry.history) {
+        children.push(new Paragraph({ children: [new TextRun({ text: step.line, size: 15 }), ...(step.comments ? [new TextRun({ text: `
+${step.comments}`, color: "5A646C", size: 15 })] : [])], spacing: { after: 40 } }));
+      }
+    }
   }
 
   children.push(

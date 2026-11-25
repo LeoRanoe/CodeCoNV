@@ -1,12 +1,13 @@
 "use client";
 
-import { untouchedSourceOf } from "@/lib/images/normalize-image";
+import { photoAccept, photoRefusalMessage, prepareCameraPhotos, untouchedSourceOf } from "@/lib/images/normalize-image";
 import { Camera, Check, ChevronLeft, ChevronRight, MapPin, RotateCcw, Trash2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad, type MarkupOption, type PhotoMarkupContext } from "@/app/photo-markup";
 import { useLanguage } from "@/lib/i18n";
 import { photoPurposes, workDisciplines } from "@/lib/forms/spec-catalogue";
+import { photoPurposeCategories as purposeCategories } from "@/lib/forms/spec-forms";
 import { specLabel } from "@/lib/forms/spec-labels-nl";
 import { compassPointFromDegrees, photoTitleFromDescription } from "@/lib/images/field-image.mjs";
 import { readPhotoDirection } from "@/lib/images/exif-direction.mjs";
@@ -43,7 +44,9 @@ export type PhotoEvidenceDetails = {
   /** Workbook Photos sheet: the photo purpose, asked when the photo is taken. */
   purpose?: string;
   purposeOther?: string;
-  /** Photo category: the work discipline, for progress and technical photos. */
+  /** Workbook v5.0 Photos row 4: the category, filtered by the purpose. */
+  photoCategory?: string;
+  /** Workbook v5.0 Photos row 5: the work discipline, when the photo shows construction work. */
   discipline?: string;
 };
 
@@ -52,7 +55,8 @@ export function photoSpecFromDetails(details: PhotoEvidenceDetails): Record<stri
   const spec: Record<string, string> = {};
   if (details.purpose) spec.photo_purpose = details.purpose;
   if (details.purpose && /^other\b/i.test(details.purpose) && details.purposeOther?.trim()) spec.photo_purpose_other = details.purposeOther.trim();
-  // D05 decision: one optional 17-discipline field for any purpose (workbook Photos F6, F7, H6).
+  // v5.0 splits what D05 had joined: row 4 is the category of the purpose, row 5 the optional work discipline.
+  if (details.photoCategory && details.purpose) spec.photo_category = details.photoCategory;
   if (details.discipline && details.purpose) spec.discipline = details.discipline;
   if (details.locationDetail?.trim()) spec.location_detail = details.locationDetail.trim();
   return spec;
@@ -317,9 +321,6 @@ export function PhotoEvidenceList({
   );
 }
 
-/** What a field form accepts as a photo. */
-export const photoMimeTypes = ["image/jpeg", "image/png", "image/webp"];
-
 /**
  * A photo the form asks for by name and by position: "Picture of Issue", "Picture of
  * Result", "Actual Photo on Original Finish Date", "Photo as Evidence". On the client's
@@ -354,18 +355,15 @@ export function NamedPhotoSlot({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
 
-  const pick = (files: FileList | null) => {
+  const pickGeneration = useRef(0);
+  const pick = async (files: FileList | null) => {
     const file = files?.[0];
     if (!file) return;
-    if (!photoMimeTypes.includes(file.type) || file.size > maxSizeMb * 1024 * 1024) {
-      setError(text(
-        `Use a JPEG, PNG or WebP file up to ${maxSizeMb} MB.`,
-        `Gebruik een JPEG-, PNG- of WebP-bestand tot ${maxSizeMb} MB.`,
-      ));
-      return;
-    }
-    setError("");
-    onChange(toPhotoEvidence(file, defaults));
+    const generation = ++pickGeneration.current;
+    const { photos, refused } = await prepareCameraPhotos([file], maxSizeMb * 1024 * 1024);
+    if (generation !== pickGeneration.current) return;
+    setError(photoRefusalMessage(refused, text, maxSizeMb));
+    if (photos[0]) onChange(toPhotoEvidence(photos[0], defaults));
   };
 
   return (
@@ -402,7 +400,7 @@ export function NamedPhotoSlot({
           </span>
           <input
             type="file"
-            accept="image/jpeg,image/png,image/webp"
+            accept={photoAccept}
             capture="environment"
             onChange={(event) => { pick(event.currentTarget.files); event.currentTarget.value = ""; }}
           />
@@ -526,14 +524,23 @@ export function PhotoDetailSheet({
           <div className={workbookPhoto ? "" : "form-grid-2"}>
             <label className="form-field">
               <span>{text("Photo purpose", "Doel van de foto")}</span>
-              <select required={workbookPhoto} value={photo.details.purpose ?? ""} onChange={(event) => patch({ purpose: event.target.value, purposeOther: undefined })}>
+              <select required={workbookPhoto} value={photo.details.purpose ?? ""} onChange={(event) => patch({ purpose: event.target.value, purposeOther: undefined, photoCategory: undefined })}>
                 <option value="">{text("Choose…", "Kies…")}</option>
                 {photoPurposes.map((purpose) => <option key={purpose} value={purpose}>{specLabel(purpose, language)}</option>)}
               </select>
             </label>
             {photo.details.purpose ? (
               <label className="form-field">
-                <span>{text("Photo category / work discipline", "Fotocategorie / werkdiscipline")}</span>
+                <span>{text("Photo category", "Fotocategorie")}</span>
+                <select required={workbookPhoto} value={photo.details.photoCategory ?? ""} onChange={(event) => patch({ photoCategory: event.target.value })}>
+                  <option value="">{text("Choose…", "Kies…")}</option>
+                  {(purposeCategories[photo.details.purpose] ?? []).map((option) => <option key={option.value} value={option.value}>{specLabel(option.value, language)}</option>)}
+                </select>
+              </label>
+            ) : null}
+            {photo.details.purpose ? (
+              <label className="form-field">
+                <span>{text("Work discipline · when the photo shows construction work", "Werkdiscipline · als de foto bouwwerk toont")}</span>
                 <select value={photo.details.discipline ?? ""} onChange={(event) => patch({ discipline: event.target.value })}>
                   <option value="">{text("Choose…", "Kies…")}</option>
                   {workDisciplines.map((discipline) => <option key={discipline} value={discipline}>{specLabel(discipline, language)}</option>)}

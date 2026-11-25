@@ -35,6 +35,8 @@ export type SignoffEvent = {
   previous_status: string | null;
   new_status: string;
   created_at: string;
+  /** What the Close / Verify / Approve dialog carried (closure note, verification result, approved amount and days). */
+  details?: Record<string, string> | null;
 };
 
 type Words = { en: string; nl: string };
@@ -52,44 +54,40 @@ export type SignoffProfile = {
 const supervision = w("Supervision", "Supervisie");
 const contractor = w("Contractor", "Aannemer");
 
-/** Stage 1–4 of every profile, as in the sheet's table; stage 4 is the return / resubmit loop. */
+/**
+ * Stage 1–4 of every profile, as in the sheet's table (v5.0, 25-11-2026): there is no Supervision
+ * review or accept step. A submission by Supervision is final; only the Change Order has an approval,
+ * by the Project Manager. Stage 4 is the return / resubmit loop where the profile has one.
+ */
 export const signoffProfiles: Record<string, SignoffProfile> = {
   "WO-DAILY": {
-    code: "WO-DAILY", label: w("Daily progress review", "Beoordeling dagvoortgang"),
+    code: "WO-DAILY", label: w("Daily progress", "Dagvoortgang"),
     stages: [
-      { number: 1, label: w("Contractor/foreman submits", "Aannemer/uitvoerder dient in"), actions: ["submit"], role: contractor },
-      { number: 2, label: w("Supervision reviews", "Supervisie beoordeelt"), actions: ["review"], role: supervision },
-      { number: 3, label: w("Accept or return", "Accepteren of terugsturen"), actions: ["accept", "return"], role: supervision },
-      { number: 4, label: w("Contractor corrects and resubmits", "Aannemer corrigeert en dient opnieuw in"), actions: ["resubmit"], role: contractor },
+      { number: 1, label: w("Supervision records and submits daily progress", "Supervisie legt dagvoortgang vast en dient in"), actions: ["submit"], role: supervision },
     ],
-    rule: w("Required for submitted daily progress records.", "Vereist voor ingediende dagvoortgang."),
+    rule: w("Final on submit; a correction is a new version by Supervision.", "Definitief bij indienen; een correctie is een nieuwe versie door Supervisie."),
   },
   "WC-COMPLETION": {
-    code: "WC-COMPLETION", label: w("Completion inspection", "Opleveringskeuring"),
+    code: "WC-COMPLETION", label: w("Completed work", "Gereed werk"),
     stages: [
-      { number: 1, label: w("Contractor submits completion", "Aannemer meldt gereed"), actions: ["submit"], role: contractor },
-      { number: 2, label: w("Supervision inspects", "Supervisie keurt"), actions: ["review", "witness"], role: supervision },
-      { number: 3, label: w("Accept, reject or return", "Accepteren, afkeuren of terugsturen"), actions: ["accept", "reject", "return"], role: supervision },
-      { number: 4, label: w("Rectification and re-inspection", "Herstel en herkeuring"), actions: ["resubmit"], role: contractor },
+      { number: 1, label: w("Supervision records the completed work", "Supervisie legt het gereedgekomen werk vast"), actions: ["submit"], role: supervision },
     ],
     rule: w("Physical completion is not quality acceptance.", "Fysiek gereed is geen kwaliteitsacceptatie."),
   },
   "WF-ATTENDANCE": {
-    code: "WF-ATTENDANCE", label: w("Attendance verification", "Verificatie aanwezigheid"),
+    code: "WF-ATTENDANCE", label: w("Workforce count", "Bezetting"),
     stages: [
-      { number: 1, label: w("Contractor/foreman submits", "Aannemer/uitvoerder dient in"), actions: ["submit"], role: contractor },
-      { number: 2, label: w("Supervision verifies", "Supervisie verifieert"), actions: ["verify", "return"], role: supervision },
-      { number: 4, label: w("Correction and resubmission", "Correctie en opnieuw indienen"), actions: ["resubmit"], role: contractor },
+      { number: 1, label: w("Supervision records the daily workforce count", "Supervisie legt de dagelijkse bezetting vast"), actions: ["submit"], role: supervision },
     ],
-    rule: w("Daily verification of the workforce.", "Dagelijkse verificatie van de bezetting."),
+    rule: w("Final on submit; the contractor does not complete this form.", "Definitief bij indienen; de aannemer vult dit formulier niet in."),
   },
   "PDR-REVIEW": {
-    code: "PDR-REVIEW", label: w("Delay report review", "Beoordeling vertragingsrapport"),
+    code: "PDR-REVIEW", label: w("Delay report", "Vertragingsrapport"),
     stages: [
-      { number: 1, label: w("Reporting party submits", "Melder dient in"), actions: ["submit"], role: w("Reporting party", "Melder") },
-      { number: 2, label: w("Supervision reviews", "Supervisie beoordeelt"), actions: ["review", "respond"], role: supervision },
-      { number: 3, label: w("Validate, return or reject", "Valideren, terugsturen of afwijzen"), actions: ["accept", "return", "reject"], role: supervision },
-      { number: 4, label: w("Clarification and resubmission", "Verduidelijking en opnieuw indienen"), actions: ["resubmit"], role: w("Reporting party", "Melder") },
+      { number: 1, label: w("Supervision records delay facts and submits", "Supervisie legt de feiten van de vertraging vast en dient in"), actions: ["submit"], role: supervision },
+      { number: 2, label: w("Responsible party may respond", "Verantwoordelijke partij kan reageren"), actions: ["acknowledge", "respond"], role: w("Responsible party", "Verantwoordelijke partij") },
+      { number: 3, label: w("Supervision updates and closes", "Supervisie werkt bij en sluit"), actions: ["verify", "close", "return"], role: supervision },
+      { number: 4, label: w("Update after a return", "Bijwerken na terugsturen"), actions: ["resubmit"], role: supervision },
     ],
     rule: w("Delay facts are recorded separately from any entitlement or claim.", "Feiten van de vertraging staan los van een aanspraak of claim."),
   },
@@ -116,20 +114,15 @@ export const signoffProfiles: Record<string, SignoffProfile> = {
   "MAT-RECEIPT": {
     code: "MAT-RECEIPT", label: w("Material receipt", "Materiaalontvangst"),
     stages: [
-      { number: 1, label: w("Delivery details recorded", "Levering vastgelegd"), actions: ["submit", "acknowledge"], role: w("Receiving representative / supplier", "Ontvanger / leverancier") },
-      { number: 2, label: w("Receiving party confirms quantities and condition", "Ontvanger bevestigt hoeveelheden en staat"), actions: ["acknowledge", "review"], role: w("Receiving representative", "Ontvanger") },
-      { number: 3, label: w("QA/supervision inspects", "QA/supervisie keurt"), actions: ["accept", "reject", "return"], role: w("QA / supervision", "QA / supervisie") },
-      { number: 4, label: w("Discrepancy action and re-inspection", "Afwijking en herkeuring"), actions: ["resubmit"], role: w("Receiving representative", "Ontvanger") },
+      { number: 1, label: w("Supervision records delivery, quantity, condition and inspection result", "Supervisie legt levering, hoeveelheid, staat en keuring vast"), actions: ["submit"], role: supervision },
     ],
-    rule: w("Supplier signature is optional; keep the delivery note as evidence.", "Handtekening leverancier is optioneel; bewaar de pakbon als bewijs."),
+    rule: w("Final on submit; the delivery note is attached as evidence.", "Definitief bij indienen; de pakbon wordt als bewijs bijgevoegd."),
   },
   "INSPECTION-WITNESS": {
     code: "INSPECTION-WITNESS", label: w("Inspection witness", "Inspectie met getuige"),
     stages: [
       { number: 1, label: w("Inspector records and signs result", "Inspecteur legt resultaat vast"), actions: ["submit"], role: w("Inspector", "Inspecteur") },
-      { number: 2, label: w("Contractor witness acknowledges", "Getuige aannemer bevestigt"), actions: ["witness", "acknowledge"], role: contractor },
-      { number: 3, label: w("Reviewer accepts", "Beoordelaar accepteert"), actions: ["accept", "return"], role: supervision },
-      { number: 4, label: w("Corrective work and re-inspection", "Herstel en herinspectie"), actions: ["resubmit"], role: w("Inspector", "Inspecteur") },
+      { number: 2, label: w("Contractor witness acknowledges (optional)", "Getuige aannemer bevestigt (optioneel)"), actions: ["witness", "acknowledge"], role: contractor },
     ],
     rule: w("A witness acknowledgement never changes the inspection result.", "Een getuigenbevestiging verandert het inspectieresultaat niet."),
   },
@@ -146,19 +139,18 @@ export const signoffProfiles: Record<string, SignoffProfile> = {
   "CHANGE-APPROVAL": {
     code: "CHANGE-APPROVAL", label: w("Change approval", "Goedkeuring wijziging"),
     stages: [
-      { number: 1, label: w("Originator submits", "Aanvrager dient in"), actions: ["submit"], role: w("Originator", "Aanvrager") },
-      { number: 2, label: w("Technical review", "Technische beoordeling"), actions: ["review", "return"], role: w("Technical reviewer", "Technisch beoordelaar") },
-      { number: 3, label: w("Commercial review / client approval", "Commerciële beoordeling / goedkeuring opdrachtgever"), actions: ["review", "approve", "reject", "return"], role: w("Authorised approver", "Bevoegd goedkeurder") },
-      { number: 4, label: w("Revise and resubmit", "Herzien en opnieuw indienen"), actions: ["resubmit", "withdraw"], role: w("Originator", "Aanvrager") },
+      { number: 1, label: w("Supervision records the change request", "Supervisie legt de wijzigingsaanvraag vast"), actions: ["submit"], role: w("Originator", "Aanvrager") },
+      { number: 3, label: w("Project Manager approves, rejects or returns", "Projectmanager keurt goed, af of stuurt terug"), actions: ["approve", "reject", "return"], role: w("Project Manager", "Projectmanager") },
+      { number: 4, label: w("Revise and resubmit to the Project Manager", "Herzien en opnieuw indienen bij de projectmanager"), actions: ["resubmit", "withdraw"], role: w("Originator", "Aanvrager") },
     ],
-    rule: w("Approval and the instruction to proceed are separate.", "Goedkeuring en opdracht tot uitvoering zijn gescheiden."),
+    rule: w("No client signature and no separate reviewer; the Project Manager does not approve a change they submitted. The instruction to proceed is recorded separately.", "Geen handtekening opdrachtgever en geen aparte beoordelaar; de projectmanager keurt geen wijziging goed die zij zelf indiende. De opdracht tot uitvoering wordt apart vastgelegd."),
   },
   "NCR-CORRECTIVE": {
     code: "NCR-CORRECTIVE", label: w("NCR corrective action", "Corrigerende maatregel NCR"),
     stages: [
       { number: 1, label: w("Supervision raises NCR", "Supervisie stelt NCR op"), actions: ["submit"], role: supervision },
       { number: 2, label: w("Contractor acknowledges and responds", "Aannemer bevestigt en reageert"), actions: ["acknowledge", "respond"], role: contractor },
-      { number: 3, label: w("Supervision reviews response", "Supervisie beoordeelt reactie"), actions: ["review", "return", "verify", "close"], role: supervision },
+      { number: 3, label: w("Supervision verifies the corrective action and closes", "Supervisie verifieert de maatregel en sluit"), actions: ["return", "verify", "close"], role: supervision },
       { number: 4, label: w("Contractor revises", "Aannemer herziet"), actions: ["resubmit"], role: contractor },
     ],
     rule: w("Acknowledgement is receipt only, not an admission of liability.", "Bevestiging is alleen ontvangst, geen erkenning van aansprakelijkheid."),
@@ -166,34 +158,94 @@ export const signoffProfiles: Record<string, SignoffProfile> = {
   "AGREEMENT-ACK": {
     code: "AGREEMENT-ACK", label: w("Agreement acknowledgement", "Bevestiging afspraak"),
     stages: [
-      { number: 1, label: w("Agreement recorded", "Afspraak vastgelegd"), actions: ["submit"], role: w("Chair / recorder", "Voorzitter / notulist") },
-      { number: 2, label: w("Parties acknowledge", "Partijen bevestigen"), actions: ["acknowledge"], role: w("Party", "Partij") },
-      { number: 3, label: w("Action owner accepts", "Actiehouder accepteert"), actions: ["accept"], role: w("Action owner", "Actiehouder") },
-      { number: 4, label: w("Re-acknowledgement", "Opnieuw bevestigen"), actions: ["return", "resubmit", "close"], role: w("Chair / recorder", "Voorzitter / notulist") },
+      { number: 1, label: w("Supervision records the agreement and actions", "Supervisie legt afspraak en acties vast"), actions: ["submit"], role: supervision },
+      { number: 2, label: w("Parties acknowledge separately", "Partijen bevestigen apart"), actions: ["acknowledge"], role: w("Party", "Partij") },
+      { number: 3, label: w("Supervision tracks the actions and closes", "Supervisie volgt de acties en sluit"), actions: ["close"], role: supervision },
     ],
-    rule: w("One record may carry many signatories.", "Eén registratie kan veel ondertekenaars hebben."),
+    rule: w("One record may carry many acknowledging parties.", "Eén registratie kan veel bevestigende partijen hebben."),
   },
   "LESSON-REVIEW": {
-    code: "LESSON-REVIEW", label: w("Lesson review", "Beoordeling les"),
+    code: "LESSON-REVIEW", label: w("Lesson learned", "Les"),
     stages: [
-      { number: 1, label: w("Author records lesson", "Auteur legt les vast"), actions: ["submit"], role: w("Author", "Auteur") },
-      { number: 2, label: w("Reviewer reviews", "Beoordelaar beoordeelt"), actions: ["review"], role: w("Reviewer", "Beoordelaar") },
-      { number: 3, label: w("Approve or return", "Goedkeuren of terugsturen"), actions: ["approve", "return"], role: w("Reviewer", "Beoordelaar") },
-      { number: 4, label: w("Revise and resubmit", "Herzien en opnieuw indienen"), actions: ["resubmit"], role: w("Author", "Auteur") },
+      { number: 1, label: w("Supervision author records and submits the lesson", "Supervisie-auteur legt de les vast en dient in"), actions: ["submit"], role: w("Author", "Auteur") },
     ],
-    rule: w("Contractor sign-off only when the project asks for it.", "Ondertekening aannemer alleen als het project dat vraagt."),
+    rule: w("Final on submit; a correction is a new version by the author.", "Definitief bij indienen; een correctie is een nieuwe versie door de auteur."),
   },
   "HSE-INCIDENT": {
-    code: "HSE-INCIDENT", label: w("Incident review", "Beoordeling incident"),
+    code: "HSE-INCIDENT", label: w("Incident", "Incident"),
     stages: [
-      { number: 1, label: w("Incident reported", "Incident gemeld"), actions: ["submit"], role: w("Reporter", "Melder") },
-      { number: 2, label: w("Supervisor/HSE reviews", "Supervisor/HSE beoordeelt"), actions: ["review", "return"], role: w("HSE reviewer", "HSE-beoordelaar") },
+      { number: 1, label: w("Supervision / HSE Officer records incident and investigation", "Supervisie / HSE-officer legt incident en onderzoek vast"), actions: ["submit"], role: w("Reporter", "Melder") },
       { number: 3, label: w("Responsible party submits actions", "Verantwoordelijke dient maatregelen in"), actions: ["respond", "acknowledge"], role: contractor },
-      { number: 4, label: w("Verify and close", "Verifiëren en sluiten"), actions: ["resubmit", "verify", "close", "return"], role: w("HSE reviewer", "HSE-beoordelaar") },
+      { number: 4, label: w("HSE Officer verifies the actions and closes", "HSE-officer verifieert de maatregelen en sluit"), actions: ["resubmit", "verify", "close", "return"], role: w("HSE Officer", "HSE-officer") },
     ],
     rule: w("Sensitive incident details stay restricted by role.", "Gevoelige incidentgegevens blijven beperkt per rol."),
   },
 };
+
+/**
+ * The Close / Verify / Approve dialog (v5.0, Word 3.1): the closure note of an Issue and of an Agreement,
+ * the verification result of an NCR and the approved amount and days of a Change Order are entered with the
+ * action, not in the form, and stored in the sign-off log. The database checks them (record_signoff_action);
+ * tests/close-verify-approve.test.mjs keeps this list identical to app_private.signoff_outcome_fields.
+ */
+export type SignoffOutcomeField = {
+  key: "closure_note" | "verification_result" | "approved_amount" | "approved_days";
+  label: Words;
+  kind: "textarea" | "text" | "select" | "number";
+  required: boolean;
+  options?: string[];
+  max?: number;
+  hint?: Words;
+};
+
+const closureNoteField = (required: boolean, kind: "textarea" | "text", label: Words, max: number): SignoffOutcomeField => ({ key: "closure_note", label, kind, required, max });
+
+export const signoffOutcomeFields: Record<string, Partial<Record<SignoffAction, SignoffOutcomeField[]>>> = {
+  "ISSUE-CLOSEOUT": {
+    verify: [closureNoteField(true, "textarea", w("Resolution / closure note", "Oplossing / afsluitnotitie"), 4000)],
+    close: [closureNoteField(true, "textarea", w("Resolution / closure note", "Oplossing / afsluitnotitie"), 4000)],
+  },
+  "NCR-CORRECTIVE": {
+    verify: [{ key: "verification_result", label: w("Verification result", "Resultaat verificatie"), kind: "select", required: true, options: ["Effective"], hint: w("An NCR is closed only when the corrective action is Effective. Otherwise return it.", "Een NCR wordt alleen gesloten als de corrigerende maatregel effectief is. Anders stuur je hem terug.") }],
+    close: [{ key: "verification_result", label: w("Verification result", "Resultaat verificatie"), kind: "select", required: true, options: ["Effective"], hint: w("An NCR is closed only when the corrective action is Effective. Otherwise return it.", "Een NCR wordt alleen gesloten als de corrigerende maatregel effectief is. Anders stuur je hem terug.") }],
+    return: [{ key: "verification_result", label: w("Verification result", "Resultaat verificatie"), kind: "select", required: false, options: ["Not Effective", "Rework Required", "Pending"], hint: w("Not Effective or Rework Required reopens the corrective action.", "Niet effectief of Herstel vereist heropent de corrigerende maatregel.") }],
+  },
+  "AGREEMENT-ACK": {
+    close: [closureNoteField(false, "text", w("Confirmation / closure note", "Bevestiging / afsluitnotitie"), 250)],
+  },
+  "CHANGE-APPROVAL": {
+    approve: [
+      { key: "approved_amount", label: w("Approved amount", "Goedgekeurd bedrag"), kind: "number", required: true },
+      { key: "approved_days", label: w("Approved days", "Goedgekeurde dagen"), kind: "number", required: true },
+    ],
+  },
+};
+
+/** The details an action takes in the dialog; none for most actions. */
+export function outcomeFields(profile: string, action: SignoffAction | ""): SignoffOutcomeField[] {
+  return action ? signoffOutcomeFields[profile]?.[action] ?? [] : [];
+}
+
+/** Whether the entered details satisfy the dialog (the database checks the same again). */
+export function outcomeReady(fields: SignoffOutcomeField[], values: Record<string, string>) {
+  return fields.every((field) => {
+    const value = (values[field.key] ?? "").trim();
+    if (!value) return !field.required;
+    if (field.kind === "number") return /^-?\d{1,12}([.,]\d{1,4})?$/.test(value);
+    if (field.kind === "select") return field.options?.includes(value) ?? false;
+    return value.length <= (field.max ?? 4000) && (!field.required || value.length >= 3);
+  });
+}
+
+/** The details as the database takes them: trimmed, empty ones left out, a decimal comma written as a point. */
+export function outcomeDetails(fields: SignoffOutcomeField[], values: Record<string, string>) {
+  const details: Record<string, string> = {};
+  for (const field of fields) {
+    const value = (values[field.key] ?? "").trim();
+    if (value) details[field.key] = field.kind === "number" ? value.replace(",", ".") : value;
+  }
+  return details;
+}
 
 export const signoffActionLabels: Record<SignoffAction, Words> = {
   submit: w("Submit", "Indienen"),
@@ -258,7 +310,7 @@ export function availableActions(profile: SignoffProfile, events: SignoffEvent[]
   return [...offered].map(([action, stage]) => ({ action, stage }));
 }
 
-const signoffColumns = "id,record_kind,record_id,workflow_profile,round_number,stage_number,action,actor_user_id,actor_name,actor_organization,actor_role,stage_role,attestation_method,signature_image,evidence_file_id,comments,return_reason,next_actor,due_at,previous_status,new_status,created_at";
+const signoffColumns = "id,record_kind,record_id,workflow_profile,round_number,stage_number,action,actor_user_id,actor_name,actor_organization,actor_role,stage_role,attestation_method,signature_image,evidence_file_id,comments,return_reason,next_actor,due_at,previous_status,new_status,created_at,details";
 
 export async function loadSignoffEvents(client: SupabaseClient, recordKind: SignoffRecordKind, recordId: string) {
   const result = await client
@@ -293,6 +345,8 @@ export async function recordSignoffAction(client: SupabaseClient, input: {
   nextActor?: string;
   nextActorUserId?: string | null;
   dueAt?: string | null;
+  /** The Close / Verify / Approve dialog's fields (see outcomeFields). */
+  details?: Record<string, string>;
 }) {
   const result = await client.rpc("record_signoff_action", {
     p_project_id: input.projectId,
@@ -312,6 +366,7 @@ export async function recordSignoffAction(client: SupabaseClient, input: {
     p_next_actor: input.nextActor || null,
     p_next_actor_user_id: input.nextActorUserId || null,
     p_due_at: input.dueAt || null,
+    p_details: input.details && Object.keys(input.details).length ? input.details : null,
   });
   if (result.error) throw new Error(result.error.message);
   return result.data as SignoffEvent;
@@ -342,6 +397,21 @@ export async function loadSignoffHistory(client: SupabaseClient, projectId: stri
   return history;
 }
 
+export const outcomeLabels: Record<string, Words> = {
+  closure_note: w("Closure note", "Afsluitnotitie"),
+  verification_result: w("Verification result", "Resultaat verificatie"),
+  verified_by: w("Verified by", "Geverifieerd door"),
+  verified_on: w("Verified on", "Geverifieerd op"),
+  approved_amount: w("Approved amount", "Goedgekeurd bedrag"),
+  approved_days: w("Approved days", "Goedgekeurde dagen"),
+};
+
+/** What the Close / Verify / Approve dialog carried, as one sentence for printed history lines. */
+export function outcomeSummary(details: SignoffEvent["details"], language: "en" | "nl" = "en") {
+  if (!details) return "";
+  return Object.keys(outcomeLabels).filter((key) => details[key]).map((key) => `${outcomeLabels[key][language]}: ${details[key]}`).join("; ");
+}
+
 /** One line per event for printed reports: action, who (organisation, role), round, time, status change, comments. */
 export function signoffHistoryLines(events: SignoffEvent[], language: "en" | "nl" = "en") {
   const when = (value: string) => new Intl.DateTimeFormat(language === "nl" ? "nl-NL" : "en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date(value));
@@ -352,7 +422,7 @@ export function signoffHistoryLines(events: SignoffEvent[], language: "en" | "nl
     round: event.round_number,
     at: when(event.created_at),
     status: `${event.previous_status ?? "—"} → ${event.new_status}`,
-    comments: event.comments ?? "",
+    comments: [outcomeSummary(event.details, language), event.comments ?? ""].filter(Boolean).join(". "),
     attestation: event.attestation_method === "account"
       ? ""
       : event.attestation_method === "signed_document"
