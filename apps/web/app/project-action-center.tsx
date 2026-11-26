@@ -389,6 +389,7 @@ export function ProjectActionCenter({
                 {contractorOptions.map((option) => <option value={option.id} key={option.id}>{option.name} ({option.count})</option>)}
               </select>
             </label> : null}
+            {filtersActive ? <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={resetFilters} data-action-reset>{text("Reset filters", "Filters herstellen")}</button> : null}
             <label className="action-center-search"><Search size={15} /><span className="sr-only">{text("Search action center", "Doorzoek actiecentrum")}</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text("Search reference, title or person", "Zoek referentie, titel of persoon")} /></label>
           </div>
 

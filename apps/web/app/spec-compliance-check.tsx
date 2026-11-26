@@ -4,7 +4,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { AlertTriangle, CheckCircle2, Loader2, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
+import { ComplianceDocumentPane } from "@/app/compliance-document-pane";
+import { indexFile } from "@/app/rapid-verify-workspace";
 import { useLanguage } from "@/lib/i18n";
+import { loadProjectFileBlob } from "@/lib/storage/gateway";
+import { proposeComplianceRows } from "@/lib/verification/compliance-assistant.mjs";
 import { complianceRowResults, complianceVerdict, flagSupersededChecks } from "@/lib/verification/spec-compliance.mjs";
 import { createFinding, type FileRecord } from "@/lib/supabase/operations";
 
@@ -68,6 +72,11 @@ export function SpecComplianceCheck({ client, projectId, projectFiles, buildingI
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState<StoredCheck | null>(null);
+  /** The page of the submittal the viewer shows (the page reference of the row being checked). */
+  const [viewPage, setViewPage] = useState(1);
+  /** The assistant proposed rows: the stored check says so, and says that a person confirmed them. */
+  const [assisted, setAssisted] = useState(false);
+  const [assistantMessage, setAssistantMessage] = useState("");
 
   const fetchChecks = useCallback(async () => {
     return client.from("spec_compliance_checks")
@@ -101,6 +110,34 @@ export function SpecComplianceCheck({ client, projectId, projectFiles, buildingI
   };
   const flagged = useMemo(() => (flagSupersededChecks as (checks: StoredCheck[], isSuperseded: (fileId: string) => boolean) => Array<{ check: StoredCheck; superseded: boolean }>)(checks, (fileId: string | null) => stateLabel(fileId) === "superseded"), [checks, projectFiles]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /** The assistant reads both documents here in the browser and proposes the rows; the supervisor confirms them. */
+  const suggestRows = async () => {
+    if (!subject || !requirement) return;
+    setBusy(true);
+    setError("");
+    setAssistantMessage("");
+    try {
+      const read = async (file: FileRecord) => {
+        const blob = await loadProjectFileBlob(client, file.id);
+        const controller = new AbortController();
+        return (await indexFile(new File([blob], file.original_name, { type: blob.type || file.mime_type }), controller.signal, () => undefined)).pages;
+      };
+      const proposed = proposeComplianceRows(await read(requirement), await read(subject));
+      if (!proposed.length) {
+        setAssistantMessage(text("The assistant found no requirement with a figure and a unit in the specification. Fill the rows by hand.", "De assistent vond in het bestek geen eis met een getal en eenheid. Vul de rijen zelf in."));
+      } else {
+        setRows(proposed as ComplianceRow[]);
+        setAssisted(true);
+        setViewPage(Number(proposed.find((row) => row.page)?.page) || 1);
+        setAssistantMessage(text(`${proposed.length} rows proposed. Check each against the documents; you sign the result.`, `${proposed.length} rijen voorgesteld. Controleer elke rij aan de hand van de documenten; jij ondertekent het resultaat.`));
+      }
+    } catch {
+      setAssistantMessage(text("The assistant could not read one of the documents (PDF or text only, up to 25 MB).", "De assistent kon een van de documenten niet lezen (alleen pdf of tekst, tot 25 MB)."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const setRow = (index: number, patch: Partial<ComplianceRow>) => setRows((current) => current.map((row, position) => (position === index ? { ...row, ...patch } : row)));
 
   const save = async () => {
@@ -119,7 +156,7 @@ export function SpecComplianceCheck({ client, projectId, projectFiles, buildingI
       p_material_group: materialGroup.trim() || null,
       p_rows: rows.map((row) => ({ ...row, parameter: row.parameter.trim() })),
       p_comments: comments.trim() || null,
-      p_proposed_by_assistant: false,
+      p_proposed_by_assistant: assisted,
       p_signed_by: signature.name,
       p_signature_image: signature.image,
       p_idempotency_key: `spec-check:${crypto.randomUUID()}`,
@@ -130,6 +167,8 @@ export function SpecComplianceCheck({ client, projectId, projectFiles, buildingI
     setRows([emptyRow()]);
     setComments("");
     setSignature(null);
+    setAssisted(false);
+    setAssistantMessage("");
     await load();
   };
 
@@ -186,6 +225,19 @@ export function SpecComplianceCheck({ client, projectId, projectFiles, buildingI
             </label>
           </div>
 
+          {subject && requirement ? (
+            <div className="compliance-viewer" data-compliance-viewer>
+              <ComplianceDocumentPane client={client} file={requirement} label={text("Bestek / specification", "Bestek / specificatie")} />
+              <ComplianceDocumentPane client={client} file={subject} label={text("Submittal", "Inzending")} page={viewPage} />
+            </div>
+          ) : null}
+          <div className="compliance-assistant">
+            <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={busy || !subject || !requirement} onClick={() => void suggestRows()} data-compliance-assistant>
+              {text("Propose rows from the documents", "Rijen voorstellen uit de documenten")}
+            </button>
+            {assistantMessage ? <p className="form-hint" role="status">{assistantMessage}</p> : <p className="form-hint">{text("The assistant reads figures with a unit (for example min. 500 MPa) and proposes a row for each. It only proposes; you decide.", "De assistent leest getallen met eenheid (bijvoorbeeld min. 500 MPa) en stelt per eis een rij voor. Hij stelt alleen voor; jij beslist.")}</p>}
+          </div>
+
           <div className="spec-compliance-table" role="table" aria-label={text("Comparison table", "Vergelijkingstabel")}>
             <div className="spec-compliance-head" role="row">
               <span>{text("Parameter", "Parameter")}</span><span>{text("Required (bestek)", "Vereist (bestek)")}</span><span>{text("Submitted", "Aangeboden")}</span><span>{text("Result", "Resultaat")}</span><span>{text("Comment", "Opmerking")}</span><span>{text("Page", "Pagina")}</span><span />
@@ -199,7 +251,7 @@ export function SpecComplianceCheck({ client, projectId, projectFiles, buildingI
                   {(complianceRowResults as Array<keyof typeof resultLabels>).map((result) => <option value={result} key={result}>{text(resultLabels[result].en, resultLabels[result].nl)}</option>)}
                 </select>
                 <input aria-label={text("Comment", "Opmerking")} value={row.comment} maxLength={500} onChange={(event) => setRow(index, { comment: event.target.value })} />
-                <input aria-label={text("Page reference", "Paginaverwijzing")} value={row.page} maxLength={40} onChange={(event) => setRow(index, { page: event.target.value })} />
+                <input aria-label={text("Page reference", "Paginaverwijzing")} value={row.page} maxLength={40} onFocus={() => setViewPage(Number(row.page) || viewPage)} onChange={(event) => { setRow(index, { page: event.target.value }); if (Number(event.target.value) > 0) setViewPage(Number(event.target.value)); }} />
                 <button className="ui-button ui-button--quiet ui-button--md" type="button" disabled={rows.length === 1} onClick={() => setRows((current) => current.filter((_, position) => position !== index))} aria-label={text("Remove row", "Rij verwijderen")}><Trash2 size={14} /></button>
               </div>
             ))}

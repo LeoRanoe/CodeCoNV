@@ -48,7 +48,7 @@ type VerifyResult = {
   score: number;
 };
 
-async function indexFile(file: File, signal: AbortSignal, onProgress: (page: number, total: number) => void): Promise<IndexedDocument> {
+export async function indexFile(file: File, signal: AbortSignal, onProgress: (page: number, total: number) => void): Promise<IndexedDocument> {
   if (!file.size || file.size > 25 * 1024 * 1024) throw new Error("Choose a non-empty document up to 25 MB.");
   const data = await file.arrayBuffer();
   signal.throwIfAborted();

@@ -989,3 +989,13 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
 .sheet-section-title:first-of-type { border-top: 0; margin-top: 0; padding-top: 0; }
 .sheet-section-number { color: var(--ink-700); font-variant-numeric: tabular-nums; }
 .sheet-section-number::after { content: "."; }
+
+/* Rapid Verify compliance check: the bestek and the submittal side by side (Word 10.1). */
+.compliance-viewer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin-block: var(--space-3); }
+.compliance-pane { margin: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--space-2); min-width: 0; }
+.compliance-pane figcaption { display: grid; gap: var(--space-1); font-size: var(--text-sm); }
+.compliance-pane figcaption span { color: var(--ink-700); overflow-wrap: anywhere; }
+.compliance-pane iframe, .compliance-pane img { width: 100%; height: min(70vh, 640px); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); object-fit: contain; }
+.compliance-pane-note { margin: 0; color: var(--ink-700); }
+.compliance-assistant { display: grid; gap: var(--space-2); justify-items: start; margin-block: var(--space-2); }
+@media (max-width: 900px) { .compliance-viewer { grid-template-columns: 1fr; } .compliance-pane iframe, .compliance-pane img { height: 60vh; } }
