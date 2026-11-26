@@ -1498,6 +1498,8 @@ function arrange(form: SpecFormKey, order: string[], cards: Array<[string, strin
 }
 
 const locationHint: [string, string] = ["Pick the drawing and tap the spot", "Kies de tekening en tik de plek aan"];
+/** The Location card of a form that has no drawing (building and coordinates only). */
+const placeHint: [string, string] = ["Where is it?", "Waar is het?"];
 const signOff: [string, string] = ["Sign-off / review workflow", "Ondertekening / beoordelingsproces"];
 
 arrange("works_ongoing",
@@ -1512,7 +1514,7 @@ arrange("works_completed",
 
 arrange("issue",
   ["issue_type", "issue_category", "discipline", "description", "identified_at", "location", "priority", "impact_types", "immediate_action", "responsible", "target_date", "related_record", "corrective_action", "attachments", "workflow_status"],
-  [["issue_type", "Issue", "Issue", "What is the problem?", "Wat is het probleem?"], ["location", "Location", "Locatie", ...locationHint], ["priority", "Priority, impact & follow-up", "Prioriteit, impact en opvolging"], ["workflow_status", ...signOff]],
+  [["issue_type", "Issue", "Issue", "What is the problem?", "Wat is het probleem?"], ["location", "Location", "Locatie", ...placeHint], ["priority", "Priority, impact & follow-up", "Prioriteit, impact en opvolging"], ["workflow_status", ...signOff]],
   { issue_type: 12, issue_category: 6, discipline: 6, description: 12, identified_at: 4, location: 12, priority: 6, impact_types: 6, immediate_action: 12, responsible: 6, target_date: 3, related_record: 3, corrective_action: 6, attachments: 6, workflow_status: 12 });
 
 arrange("delivery",
@@ -1522,32 +1524,32 @@ arrange("delivery",
 
 arrange("delay_report",
   ["delay_start_at", "activity", "location", "delay_cause_type", "delay_cause_category", "responsible_party", "detailed_cause", "duration", "duration_unit", "critical_path", "milestone_impact", "recovery_action", "action_owner", "target_recovery_date", "photos", "status"],
-  [["delay_start_at", "Delay", "Vertraging", "What is delayed and since when?", "Wat is vertraagd en sinds wanneer?"], ["location", "Location", "Locatie", ...locationHint], ["delay_cause_type", "Cause", "Oorzaak", "Why is it delayed?", "Waarom is het vertraagd?"], ["duration", "Impact", "Impact", "How big is the delay?", "Hoe groot is de vertraging?"], ["recovery_action", "Recovery", "Herstel", "What will be done?", "Wat gaat er gebeuren?"], ["status", ...signOff]],
+  [["delay_start_at", "Delay", "Vertraging", "What is delayed and since when?", "Wat is vertraagd en sinds wanneer?"], ["location", "Location", "Locatie", ...placeHint], ["delay_cause_type", "Cause", "Oorzaak", "Why is it delayed?", "Waarom is het vertraagd?"], ["duration", "Impact", "Impact", "How big is the delay?", "Hoe groot is de vertraging?"], ["recovery_action", "Recovery", "Herstel", "What will be done?", "Wat gaat er gebeuren?"], ["status", ...signOff]],
   { delay_start_at: 4, activity: 8, location: 12, delay_cause_type: 12, delay_cause_category: 6, responsible_party: 6, detailed_cause: 12, duration: 4, duration_unit: 8, critical_path: 12, milestone_impact: 12, recovery_action: 6, action_owner: 3, target_recovery_date: 3, photos: 12, status: 12 });
 
 arrange("hse",
   ["hse_type", "hse_category", "person_involved", "description", "observed_at", "location", "potential_consequences", "risk_likelihood", "risk_severity", "risk_rating", "immediate_action", "corrective_action", "action_owner", "due_date", "photos", "related_record", "status"],
-  [["hse_type", "Observation", "Waarneming", "What did you see?", "Wat zag je?"], ["location", "Location", "Locatie", ...locationHint], ["potential_consequences", "Risk", "Risico", "Rating is calculated automatically", "De score wordt automatisch berekend"], ["corrective_action", "Action", "Actie", "Who fixes it and when?", "Wie lost het op en wanneer?"], ["status", ...signOff]],
+  [["hse_type", "Observation", "Waarneming", "What did you see?", "Wat zag je?"], ["location", "Location", "Locatie", ...placeHint], ["potential_consequences", "Risk", "Risico", "Rating is calculated automatically", "De score wordt automatisch berekend"], ["corrective_action", "Action", "Actie", "Who fixes it and when?", "Wie lost het op en wanneer?"], ["status", ...signOff]],
   { hse_type: 12, hse_category: 6, person_involved: 6, description: 12, observed_at: 4, location: 12, potential_consequences: 12, risk_likelihood: 6, risk_severity: 6, risk_rating: 6, immediate_action: 6, corrective_action: 6, action_owner: 3, due_date: 3, photos: 6, related_record: 6, status: 12 });
 
 arrange("ncr",
   ["ncr_type", "ncr_category", "description", "discipline", "requirement_reference", "raised_at", "location", "detected_during", "related_inspection", "severity", "containment", "disposition", "corrective_action", "action_owner", "target_date", "root_cause_category", "root_cause_analysis", "attachments", "workflow_status"],
-  [["ncr_type", "Non-conformance", "Afwijking", "What does not conform?", "Wat voldoet niet?"], ["location", "Location", "Locatie", ...locationHint], ["detected_during", "Detection & severity", "Constatering en ernst"], ["corrective_action", "Corrective action", "Corrigerende actie"], ["workflow_status", ...signOff]],
+  [["ncr_type", "Non-conformance", "Afwijking", "What does not conform?", "Wat voldoet niet?"], ["location", "Location", "Locatie", ...placeHint], ["detected_during", "Detection & severity", "Constatering en ernst"], ["corrective_action", "Corrective action", "Corrigerende actie"], ["workflow_status", ...signOff]],
   { ncr_type: 6, ncr_category: 6, description: 12, discipline: 6, requirement_reference: 6, raised_at: 4, location: 12, detected_during: 12, related_inspection: 6, severity: 6, containment: 12, disposition: 12, corrective_action: 6, action_owner: 3, target_date: 3, root_cause_category: 12, root_cause_analysis: 6, attachments: 6, workflow_status: 12 });
 
 arrange("technical_instruction",
   ["instruction_type", "discipline", "instruction_category", "reason", "description", "instruction_date", "location", "drawing_reference", "related_record", "attachments", "issued_to", "action_owner", "response_required_by", "workflow_status", "acknowledged_by", "closed_verified_by"],
-  [["instruction_type", "Instruction", "Instructie", "What kind of instruction?", "Wat voor instructie?"], ["location", "Location", "Locatie", ...locationHint], ["drawing_reference", "Reference", "Verwijzing"], ["issued_to", "Recipient", "Ontvanger", "Who must act?", "Wie moet handelen?"], ["workflow_status", ...signOff]],
+  [["instruction_type", "Instruction", "Instructie", "What kind of instruction?", "Wat voor instructie?"], ["location", "Location", "Locatie", ...placeHint], ["drawing_reference", "Reference", "Verwijzing"], ["issued_to", "Recipient", "Ontvanger", "Who must act?", "Wie moet handelen?"], ["workflow_status", ...signOff]],
   { instruction_type: 6, discipline: 6, instruction_category: 6, reason: 12, description: 12, instruction_date: 4, location: 12, drawing_reference: 6, related_record: 6, attachments: 12, issued_to: 4, action_owner: 4, response_required_by: 4, workflow_status: 12, acknowledged_by: 12, closed_verified_by: 12 });
 
 arrange("change_order",
   ["change_type", "change_category", "description", "change_reason", "originator", "request_date", "location", "quantity", "cost", "time", "drawing_reference", "assessment", "approval_status", "instruction_to_proceed", "related_record", "attachments", "approvers"],
-  [["change_type", "Change", "Wijziging", "What changes?", "Wat verandert er?"], ["location", "Location", "Locatie", ...locationHint], ["quantity", "Impact", "Impact", "Cost and time", "Kosten en tijd"], ["approval_status", "Approval", "Goedkeuring"], ["approvers", ...signOff]],
+  [["change_type", "Change", "Wijziging", "What changes?", "Wat verandert er?"], ["location", "Location", "Locatie", ...placeHint], ["quantity", "Impact", "Impact", "Cost and time", "Kosten en tijd"], ["approval_status", "Approval", "Goedkeuring"], ["approvers", ...signOff]],
   { change_type: 6, change_category: 6, description: 12, change_reason: 6, originator: 6, request_date: 4, location: 12, quantity: 12, cost: 6, time: 6, drawing_reference: 6, assessment: 6, approval_status: 6, instruction_to_proceed: 12, related_record: 6, attachments: 12, approvers: 12 });
 
 arrange("hse_incident",
   ["incident_type", "incident_category", "description", "incident_at", "location", "people_involved", "witnesses", "injury_classification", "injury_nature", "body_part", "environmental_impact", "damage", "immediate_response", "incident_severity", "investigation_required", "notified", "investigation_findings", "corrective_actions", "photos", "related_observation", "status", "reviewer"],
-  [["incident_type", "Incident", "Incident", "What happened and when?", "Wat gebeurde er en wanneer?"], ["location", "Location", "Locatie", ...locationHint], ["people_involved", "People & damage", "Personen en schade", "Fields appear only when relevant", "Velden verschijnen alleen als ze relevant zijn"], ["immediate_response", "Response & investigation", "Reactie en onderzoek"], ["corrective_actions", "Actions & evidence", "Acties en bewijs"], ["status", ...signOff]],
+  [["incident_type", "Incident", "Incident", "What happened and when?", "Wat gebeurde er en wanneer?"], ["location", "Location", "Locatie", ...placeHint], ["people_involved", "People & damage", "Personen en schade", "Fields appear only when relevant", "Velden verschijnen alleen als ze relevant zijn"], ["immediate_response", "Response & investigation", "Reactie en onderzoek"], ["corrective_actions", "Actions & evidence", "Acties en bewijs"], ["status", ...signOff]],
   { incident_type: 12, incident_category: 6, description: 12, incident_at: 4, location: 12, people_involved: 6, witnesses: 6, injury_classification: 12, injury_nature: 12, body_part: 12, environmental_impact: 12, damage: 12, immediate_response: 12, incident_severity: 6, investigation_required: 6, notified: 6, investigation_findings: 12, corrective_actions: 12, photos: 6, related_observation: 6, status: 12, reviewer: 12 });
 
 arrange("lessons_learned",

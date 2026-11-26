@@ -22,8 +22,19 @@
   border-right: 1px solid var(--line);
   color: var(--ink-900);
 }
+/* On a short screen only the list of pages scrolls. The logo, the project picker, "Take photo" and the user card keep their size and place, so the picker can no longer sit on top of the "Workspace" label and the user card stays reachable. */
+.sidebar { overflow: hidden; }
+.sidebar > * { flex-shrink: 0; }
+.sidebar > .sidebar-spacer { flex: 1 1 0; min-height: 0; }
+.sidebar > .side-nav { flex: 0 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; margin-inline: calc(var(--space-2) * -1); padding-inline: var(--space-2); }
 .sidebar .brand { margin-bottom: var(--space-2); padding: var(--space-2) var(--space-2) 0; }
 .sidebar .company-logo { height: 64px; width: auto; }
+@media (max-height: 960px) {
+  .sidebar .company-logo { height: 48px; }
+  .sidebar .quick-add-side { margin-block: var(--space-2); }
+  .sidebar .side-nav { gap: 0; margin-top: var(--space-2); }
+  .sidebar .side-nav .nav-label { display: none; }
+}
 .sidebar .company-logo-context { color: var(--green); font-weight: var(--weight-bold); letter-spacing: .01em; }
 
 /* The project picker is one compact row: the name, then the place, then the switch arrow. */
@@ -1008,7 +1019,7 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
 .sheet-section-number { align-items: center; background: var(--signal); border-radius: var(--radius-pill); color: var(--paper); display: inline-flex; flex: none; font-size: var(--text-sm); font-variant-numeric: tabular-nums; font-weight: var(--weight-bold); height: var(--space-6); justify-content: center; width: var(--space-6); }
 .sheet-section-hint { color: var(--muted); font-size: var(--text-sm); font-weight: var(--weight-normal); margin-inline-start: auto; text-align: end; }
 .sheet-card-grid { container-type: inline-size; display: grid; gap: var(--space-3) var(--space-4); grid-template-columns: repeat(12, minmax(0, 1fr)); }
-.sheet-cell { grid-column: span var(--span, 12); min-width: 0; }
+.sheet-cell { --span: 12; grid-column: span var(--span); min-width: 0; }
 .sheet-cell > .form-field, .sheet-cell > .sheet-row { margin: 0; }
 @container (max-width: 759px) { .sheet-cell { grid-column: 1 / -1; } }
 /* Mockups v6: the bar at the foot of a form stays in view: what is still needed on the left, Cancel, Save draft and the primary action on the right. */
@@ -1020,10 +1031,15 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
 .drawing-location-inline .drawing-location-body { max-height: min(60vh, 28rem); overflow: auto; padding: var(--space-3); }
 @container (min-width: 760px) {
   .sheet-cell[data-sheet-cell="drawing_location"] { grid-column: 1 / span 7; grid-row: span 2; }
-  .sheet-cell[data-sheet-cell="location"], .sheet-cell[data-sheet-cell="exact_location"] { grid-column: 8 / span 5; }
+  /* The place in words sits beside the drawing only where the card has a drawing; without one it takes the whole card. */
+  .sheet-card-grid:has(.sheet-cell[data-sheet-cell="drawing_location"]) > .sheet-cell[data-sheet-cell="location"],
+  .sheet-card-grid:has(.sheet-cell[data-sheet-cell="drawing_location"]) > .sheet-cell[data-sheet-cell="exact_location"] { grid-column: 8 / span 5; }
 }
 .sheet-row { grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); }
 .sheet-row > .sheet-slot-label { grid-column: 1 / -1; }
+/* The first control has no caption of its own (the row's label is its caption), its neighbours do: line the controls up, not the captions. */
+.sheet-row { align-items: end; }
+.sheet-row > .sheet-slot-label { align-self: start; }
 @container (max-width: 759px) { .sheet-row { grid-template-columns: minmax(0, 1fr); } }
 .sheet-workflow { align-items: center; color: var(--text); display: flex; flex-wrap: wrap; font-size: var(--text-sm); gap: var(--space-1) var(--space-2); margin: 0; }
 .sheet-role { background: var(--ink-100); border-radius: var(--radius-sm); font-weight: var(--weight-semibold); padding: 2px var(--space-2); }
