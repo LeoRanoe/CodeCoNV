@@ -54,6 +54,9 @@ test("the day overview exports every Workspace form of the day as PDF and Word",
   await page.locator("[data-workspace-destination='materials-delivery']").click();
   const form = page.locator(".record-form-shell").first();
   // The Materials Delivery sheet: the record is read back by its material description.
+  // A delivery of a traceable group (cement, concrete, steel, piles) is accepted only after a complying compliance check
+  // (Word 10.1), so this fixture is an insulation delivery.
+  await form.locator("[data-spec-field='material_group'] select").selectOption("Insulation");
   await form.locator("[data-spec-field='material_specification'] input").fill(title);
   await form.locator("[data-spec-field='delivered_quantity'] input").fill("12");
   await form.locator("[data-spec-field='unit'] select").selectOption("m³");

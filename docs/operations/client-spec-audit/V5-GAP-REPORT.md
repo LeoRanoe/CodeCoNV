@@ -14,13 +14,16 @@ Second round (later on 25-11-2026), built and checked in a browser or by Playwri
 
 Third round (evening of 25-11-2026), built and checked by unit tests and Playwright: B6 link-first prefill for related inspection, inspected work and affected activity (discipline, second discipline, activity, exact location; never over a filled field), B12 Works Completed candidate filter, B11 discipline from category (already built, now tested), B7 numbered sections on Works Ongoing and Works Completed, and the report builder options photos none / thumbnails / large, signatures on or off, sign-off log and records still open from before the period (saved in templates).
 
-Still open (not built, so not verified):
-- B6 for pin, contractor and unit, and Materials -> PO; B7 on the other forms (and the client must say whether Location or Work comes first); B8 Issue-card dialog for Verify / Return; B1 Photos auto bar (photos have no record number in the database); status labels of the v5 workflow in the lists; contractor scoping of Actions.
-- Report builder options: group by, contractor responses, summary versus full, photos and sign-off log in Excel; a schedule only sends a notification and does not produce the PDF or Excel itself.
-- Rapid Verify: side-by-side viewer, assistant, requirement lists per material group; a delivery without any compliance check can still be accepted.
-- The signing popup on inspection and field-tool forms.
-- Not checked in a browser: Client Portal ten submenus, View as, contractor data scoping, phone widths, and all of section C.
-- Section D: decisions that need the client (units 16 versus 13, Lessons Learned review step, section 20 items).
+Fourth round (overnight run, 25-11-2026), built and checked by unit tests, pgTAP and Playwright: B8 Issue-card Verify / Return dialog, B1 photo Record ID and auto bar (migration 202611250013), report builder group by, summary versus full and contractor responses in PDF, Word and Excel, photos and sign-off log in Excel, Actions contractor filter, the "Pending verification" label, delivery acceptance for traceable material groups (migration 202611250014), side-by-side documents and a deterministic assistant in the compliance check, signing popups on inspections and field notes, numbered sections on all 12 sheet forms, and a browser walk of the ten Client Portal and six Contractor Portal submenus. That walk found that "View as" never worked (wrong column name); fixed.
+
+Still open, with the reason (see `V5-DECISION-REGISTER.md` and `V5-REQUIREMENTS-TRACEABILITY.md`):
+- A schedule produces the PDF or Excel itself (D-16): only the "ready to make" notification exists. Needs a server-side snapshot run as the schedule's creator, server rendering and e-mail attachments.
+- Materials -> Purchase order link (D-17): the application has no purchase-order record.
+- Requirement lists per material group in Rapid Verify: needs the client's bestek clause lists.
+- Contractor scoping of Actions (A-03): Actions is a supervision screen; contractor data is scoped by RLS in the portal.
+- Not opened in a browser with real documents: the side-by-side viewer and the assistant button of the compliance check.
+- Not checked by eye: the Verify / Return dialog, the photo auto bar and the new report option controls on a phone; the Dutch wording on screen.
+- Section D: decisions that need the client (Work before or after Location, units 16 versus 13, section 20 items). They are decided provisionally in the decision register and marked as inferred.
 
 ## A. Gaps confirmed in code (nothing builds them yet)
 

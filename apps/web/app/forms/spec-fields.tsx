@@ -178,7 +178,7 @@ export function SpecFields({
           if (!section) return body;
           return (
             <Fragment key={`block-${section.from}`}>
-              <h4 className="sheet-section-title" data-sheet-section={sectionIndex + 1}><span className="sheet-section-number" aria-hidden="true">{sectionIndex + 1}</span>{section.title[language]}</h4>
+              <h3 className="sheet-section-title" data-sheet-section={sectionIndex + 1}><span className="sheet-section-number" aria-hidden="true">{sectionIndex + 1}</span>{section.title[language]}</h3>
               {body}
             </Fragment>
           );

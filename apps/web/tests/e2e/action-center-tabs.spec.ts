@@ -1,3 +1,4 @@
+import { createClient } from "@supabase/supabase-js";
 import { expect, type Page, test } from "@playwright/test";
 
 /**
@@ -134,6 +135,28 @@ test("the Action center tabs are not coloured like a late record and show no 'n/
  */
 test("the Action center can be filtered to one contractor and reset", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-office", "Layout is not under test.");
+  const supabaseUrl = process.env.CODECO_E2E_SUPABASE_URL;
+  const publishableKey = process.env.CODECO_E2E_PUBLISHABLE_KEY;
+  test.skip(!supabaseUrl || !publishableKey, "The local Supabase keys are required to seed the contractor's issues.");
+  // The follow-up of a contractor is seeded here: a freshly reset project has none until other specs have run.
+  const api = createClient(supabaseUrl!, publishableKey!, { auth: { persistSession: false } });
+  expect((await api.auth.signInWithPassword({ email: email!, password: password! })).error).toBeNull();
+  const project = (await api.from("projects").select("id").eq("name", projectName).single()).data!;
+  const building = (await api.from("buildings").select("id").eq("project_id", project.id).limit(1).single()).data!;
+  const contractor = (await api.from("parties").select("id").eq("project_id", project.id).eq("party_type", "contractor").limit(1).single()).data!;
+  const today = new Date().toISOString().slice(0, 10);
+  const report = await api.rpc("create_day_report", { p_project_id: project.id, p_report_date: today, p_idempotency_key: `report:${project.id}:${today}` });
+  expect(report.error).toBeNull();
+  const stamp = Date.now();
+  for (const index of [1, 2]) {
+    const created = await api.rpc("create_project_finding", {
+      p_project_id: project.id, p_building_id: building.id, p_day_report_id: report.data?.id ?? report.data, p_inspection_id: null,
+      p_inspection_response_id: null, p_finding_type: "deficiency", p_title: `Contractor filter ${stamp} ${index}`, p_description: "Contractor filter fixture.",
+      p_severity: "medium", p_responsible_party_id: contractor.id, p_assigned_user_id: null,
+      p_idempotency_key: `finding:contractor-filter:${stamp}:${index}`, p_issue_management: { issue_type: "quality", disposition: "to_be_corrected" },
+    });
+    expect(created.error).toBeNull();
+  }
   await page.setViewportSize({ width: 1280, height: 800 });
   await signIn(page);
   await openActions(page);

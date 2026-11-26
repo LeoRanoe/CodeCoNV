@@ -27,7 +27,8 @@ async function api() {
   return client;
 }
 
-test.beforeAll(async () => {
+test.beforeAll(async ({ }, testInfo) => {
+  if (testInfo.project.name !== "desktop-office") return;
   const admin = await api();
   const project = await admin.from("projects").select("id").eq("name", projectName).single();
   if (project.error) throw project.error;
