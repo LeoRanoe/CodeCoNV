@@ -28,9 +28,9 @@ export function ViewAsPortal({ client, mode, projectId, onClose, ...rest }: Omit
   const partiesQuery = useQuery({
     queryKey: ["view-as-parties", projectId, mode],
     queryFn: async () => {
-      const result = await client.from("parties").select("id,name,type").eq("project_id", projectId).order("name");
+      const result = await client.from("parties").select("id,name,party_type").eq("project_id", projectId).eq("active", true).order("name");
       if (result.error) throw result.error;
-      return (result.data ?? []) as Array<{ id: string; name: string; type: string }>;
+      return ((result.data ?? []) as Array<{ id: string; name: string; party_type: string }>).map(({ id, name, party_type }) => ({ id, name, type: party_type }));
     },
     staleTime: 5 * 60_000,
   });
