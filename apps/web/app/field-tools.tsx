@@ -3,6 +3,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Calculator, CheckCircle2, NotebookPen, Pencil, Save, ShieldCheck } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
+import { useSignedSubmit } from "@/app/forms/sign-submit";
 import { AgreementSignatureFields, agreementSignatureDetails, emptyAgreementSignature } from "@/app/agreement-signature";
 import { resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { appendDictation, DictateButton, speechToTextAvailable } from "@/app/dictate-button";
@@ -91,6 +92,16 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  // Developer package v5: saving a note opens the signing popup; the signature is optional for a note, so the popup also offers to save without one.
+  const noteSigning = useSignedSubmit({
+    value: noteSignature,
+    onChange: setNoteSignature,
+    submit: () => void saveNote(),
+    title: text("Sign and save this note", "Onderteken en bewaar deze notitie"),
+    declaration: text("I confirm that this note reflects what I recorded on site.", "Ik bevestig dat deze notitie weergeeft wat ik op de bouwplaats heb vastgelegd."),
+    nameSuggestion: currentUserName,
+    enabled: note.type !== "agreement" && !editingNoteId,
+  });
   const saveNote = async () => {
     if (note.title.trim().length < 3 || note.body.trim().length < 3) return;
     if (savingRef.current) return;
@@ -182,8 +193,8 @@ export function FieldTools({ data, projectId, buildingId, buildings, parties, re
           <div className="operation-alert"><CheckCircle2 size={17} /><div><strong>{text("Traceable agreement", "Traceerbare afspraak")}</strong></div></div>
         </div> : null}
         <label className="form-field"><span>{text("Text", "Tekst")}</span><textarea rows={7} value={note.body} onChange={(event) => setNote({ ...note, body: event.target.value })} /><DictateButton onText={(transcript) => { setNote((current) => ({ ...current, body: appendDictation(current.body, transcript) })); setDictated(true); }} /></label>
-        {note.type !== "agreement" ? <RecordSignatureField value={noteSignature} onChange={setNoteSignature} nameSuggestion={currentUserName} declaration={text("I confirm that this note reflects what I recorded on site.", "Ik bevestig dat deze notitie weergeeft wat ik op de bouwplaats heb vastgelegd.")} /> : null}
-        <div className="button-row"><button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || ((data.settings?.required_location_depth ?? "building") !== "building" && !noteLocationNodeId) || note.title.trim().length < 3 || note.body.trim().length < 3 || (note.type === "agreement" && (!note.agreementDate || !note.agreementTime))} onClick={() => void saveNote()}><Save size={15} /> {editingNoteId ? text("Save changes", "Wijzigingen opslaan") : note.type === "agreement" ? text("Save agreement", "Afspraak opslaan") : text("Save note", "Notitie opslaan")}</button></div>
+        {note.type !== "agreement" && editingNoteId ? <RecordSignatureField value={noteSignature} onChange={setNoteSignature} nameSuggestion={currentUserName} declaration={text("I confirm that this note reflects what I recorded on site.", "Ik bevestig dat deze notitie weergeeft wat ik op de bouwplaats heb vastgelegd.")} /> : null}
+        <div className="button-row"><button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || ((data.settings?.required_location_depth ?? "building") !== "building" && !noteLocationNodeId) || note.title.trim().length < 3 || note.body.trim().length < 3 || (note.type === "agreement" && (!note.agreementDate || !note.agreementTime))} onClick={noteSigning.request}><Save size={15} /> {editingNoteId ? text("Save changes", "Wijzigingen opslaan") : note.type === "agreement" ? text("Save agreement", "Afspraak opslaan") : text("Save note", "Notitie opslaan")}</button>{noteSigning.dialog}</div>
         {!speechAvailable ? <p className="field-tool-hint">{text("Speech recognition is not available in this browser.", "Spraakherkenning is niet beschikbaar in deze browser.")}</p> : null}
       </RecordFormShell>
 
