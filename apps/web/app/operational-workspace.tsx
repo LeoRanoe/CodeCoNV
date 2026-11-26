@@ -4302,7 +4302,7 @@ function ProjectOperations({
               {[
                 [text("Open", "Open"), scopedFindings.filter((item) => ["draft", "open", "assigned"].includes(item.status)).length],
                 [text("In progress", "In uitvoering"), scopedFindings.filter((item) => ["in_progress", "reopened"].includes(item.status)).length],
-                [text("Ready for verification", "Gereed voor verificatie"), scopedFindings.filter((item) => item.status === "ready_for_verification").length],
+                [text("Pending verification", "Wacht op verificatie"), scopedFindings.filter((item) => item.status === "ready_for_verification").length],
                 [text("Verified", "Geverifieerd"), scopedFindings.filter((item) => item.status === "closed").length],
               ].map(([label, count], index) => <div className={index === 2 ? "attention" : index === 3 ? "complete" : ""} key={String(label)}><span>{index + 1}</span><strong>{count}</strong><small>{label}</small></div>)}
             </div>

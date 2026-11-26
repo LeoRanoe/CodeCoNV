@@ -135,6 +135,8 @@ export function ProjectActionCenter({
   const [workFilter, setWorkFilter] = useState<WorkFilter>("open");
   const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>("overdue");
   const [focusFilter, setFocusFilter] = useState<FocusFilter>("all");
+  /** One contractor (party id) or "" for all: the list, the tiles and the tabs follow it. */
+  const [contractorFilter, setContractorFilter] = useState("");
   const [search, setSearch] = useState("");
 
   const partyName = (partyId: string | null | undefined) => parties.find((party) => party.id === partyId)?.name ?? "";
@@ -236,7 +238,16 @@ export function ProjectActionCenter({
     || deadlineFilter === "week" && withinWeek(item)
     || deadlineFilter === "later" && later(item)
     || deadlineFilter === "none" && withoutDeadline(item);
-  const scopedItems = (view === "mine" ? mine : items).filter(matchesFocus);
+  // Only the contractors that actually have follow-up in this project are offered, each with how many items it holds.
+  const contractorOptions = parties
+    .filter((party) => ["contractor", "subcontractor"].includes(party.type))
+    .map((party) => ({ id: party.id, name: party.name, count: items.filter((item) => item.partyId === party.id).length }))
+    .filter((option) => option.count > 0)
+    .sort((left, right) => left.name.localeCompare(right.name, locale));
+  const activeContractor = contractorOptions.some((option) => option.id === contractorFilter) ? contractorFilter : "";
+  const scopedItems = (view === "mine" ? mine : items).filter(matchesFocus).filter((item) => !activeContractor || item.partyId === activeContractor);
+  const filtersActive = Boolean(activeContractor || focusFilter !== "all" || typeFilter !== "all" || search.trim());
+  const resetFilters = () => { setContractorFilter(""); setFocusFilter("all"); setTypeFilter("all"); setSearch(""); setWorkFilter("open"); setDeadlineFilter("overdue"); };
   // A number on a tile or a tab is what the list shows after pressing it: tiles count within
   // the chosen type, tabs within the chosen state.
   const typeScopedItems = scopedItems.filter((item) => typeFilter === "all" || item.type === typeFilter);
@@ -372,6 +383,12 @@ export function ProjectActionCenter({
                 <option value="preventive">{text("Preventive actions", "Preventieve acties")}</option>
               </select>
             </label>
+            {contractorOptions.length ? <label className="action-center-focus"><span className="sr-only">{text("Contractor", "Aannemer")}</span>
+              <select aria-label={text("Contractor", "Aannemer")} value={activeContractor} onChange={(event) => setContractorFilter(event.target.value)} data-action-contractor>
+                <option value="">{text("All contractors", "Alle aannemers")}</option>
+                {contractorOptions.map((option) => <option value={option.id} key={option.id}>{option.name} ({option.count})</option>)}
+              </select>
+            </label> : null}
             <label className="action-center-search"><Search size={15} /><span className="sr-only">{text("Search action center", "Doorzoek actiecentrum")}</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text("Search reference, title or person", "Zoek referentie, titel of persoon")} /></label>
           </div>
 
@@ -391,7 +408,7 @@ export function ProjectActionCenter({
                 <span className={`document-status ${isSettledStatus(item.status) ? "approved" : ""}`}>{statusText(item.status, text)}</span>
                 <ArrowRight size={15} />
               </button>
-            )) : <div className="action-center-empty"><Filter size={24} /><div><strong>{view === "mine" ? text("Nothing is waiting for you", "Er wacht niets op jou") : !scopedItems.length ? text("No follow-up in this project yet", "Nog geen opvolging in dit project") : view === "deadlines" && deadlineFilter === "overdue" ? text("Nothing is overdue", "Niets is te laat") : text("No records match this view", "Geen registraties in deze weergave")}</strong></div>{scopedItems.length ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setTypeFilter("all"); setWorkFilter("all"); setDeadlineFilter("all"); setSearch(""); }}>{text("Clear filters", "Wis filters")}</button> : null}</div>}
+            )) : <div className="action-center-empty"><Filter size={24} /><div><strong>{view === "mine" ? text("Nothing is waiting for you", "Er wacht niets op jou") : !items.length ? text("No follow-up in this project yet", "Nog geen opvolging in dit project") : view === "deadlines" && deadlineFilter === "overdue" ? text("Nothing is overdue", "Niets is te laat") : text("No records match this view", "Geen registraties in deze weergave")}</strong></div>{items.length ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { resetFilters(); setWorkFilter("all"); setDeadlineFilter("all"); }}>{text("Clear filters", "Wis filters")}</button> : null}</div>}
           </div>
         </div>
 

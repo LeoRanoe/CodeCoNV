@@ -68,7 +68,7 @@ test("supervision sends a finished repair back with a reason, and the issue is o
   await openSavedRecords(page);
 
   const card = page.locator("article", { hasText: title });
-  await expect(card).toContainText("Ready for verification");
+  await expect(card).toContainText("Pending verification");
   await card.getByRole("button", { name: "Return for correction" }).click();
 
   // v5: the card opens the Verify / Return dialog; nothing is sent until the reason and the next responsible are filled in.

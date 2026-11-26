@@ -312,7 +312,7 @@ async function testExternalShareAndRevocation(page: Page, browser: Browser, find
   await outside.getByRole("button", { name: "Markeer gereed voor controle" }).click();
   await expect(outside.getByRole("heading", { name: "Bedankt" })).toBeVisible({ timeout: 60_000 });
   // LQA-013: the status badge above the reply follows the new state without a reload.
-  await expect(outside.locator(".external-share-status")).toHaveText("Gereed voor verificatie", { timeout: 15_000 });
+  await expect(outside.locator(".external-share-status")).toHaveText("Wacht op verificatie", { timeout: 15_000 });
 
   const activeLinks = finding.locator(".active-external-shares");
   await expect(activeLinks).toBeVisible({ timeout: 30_000 });

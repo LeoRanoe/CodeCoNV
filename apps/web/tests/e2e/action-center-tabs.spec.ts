@@ -127,3 +127,50 @@ test("the Action center tabs are not coloured like a late record and show no 'n/
   }
   await expect(page.locator(".section-nav__position")).toHaveCount(0);
 });
+
+/**
+ * Developer package v5, Word 4: Actions can be narrowed to one contractor. The list, the tiles and the tabs follow the
+ * chosen contractor; the option counts are the rows it leaves in the state "All records"; the filter resets.
+ */
+test("the Action center can be filtered to one contractor and reset", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-office", "Layout is not under test.");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await signIn(page);
+  await openActions(page);
+  await page.getByRole("tab", { name: /All project work/ }).click();
+  await page.locator(".action-center-summary button", { hasText: "All records" }).click();
+  const rows = page.locator(".unified-action-list > button");
+  const select = page.locator("[data-action-contractor]");
+  await expect(select, "a project with contractor follow-up offers the filter").toBeVisible();
+  const everything = await rows.count();
+
+  const options = await select.locator("option").evaluateAll((items) => items.map((item) => ({ value: (item as HTMLOptionElement).value, label: item.textContent ?? "" })));
+  expect(options[0].value).toBe("");
+  const contractors = options.filter((option) => option.value);
+  expect(contractors.length).toBeGreaterThan(0);
+  let counted = 0;
+  for (const option of contractors) {
+    await select.selectOption(option.value);
+    const expected = Number(option.label.match(/\((\d+)\)\s*$/)?.[1] ?? "NaN");
+    await expect(rows, `${option.label} leaves exactly its own items`).toHaveCount(expected);
+    await expect(page.locator(".action-center-summary button", { hasText: "All records" }).locator("strong")).toHaveText(String(expected));
+    counted += expected;
+  }
+  expect(counted, "no item belongs to two contractors").toBeLessThanOrEqual(everything);
+
+  // Combined with a type: the list is the intersection, and an empty result offers a reset.
+  await select.selectOption(contractors[0].value);
+  const typeTabs = page.locator(".action-type-tabs [role='tab']");
+  for (let index = 1; index < await typeTabs.count(); index += 1) {
+    if (Number((await typeTabs.nth(index).innerText()).match(/(\d+)\s*$/m)?.[1] ?? "0") === 0) {
+      await typeTabs.nth(index).click();
+      await expect(rows).toHaveCount(0);
+      await page.getByRole("button", { name: "Clear filters" }).click();
+      await expect(select).toHaveValue("");
+      await expect(rows).toHaveCount(everything);
+      return;
+    }
+  }
+  await select.selectOption("");
+  await expect(rows).toHaveCount(everything);
+});

@@ -54,7 +54,7 @@ async function log(client: SupabaseClient, id: string) {
   return data ?? [];
 }
 
-async function open(page: Page, title: string, status = "Ready for verification") {
+async function open(page: Page, title: string, status = "Pending verification") {
   await page.goto("/supervisie");
   await page.evaluate(() => {
     localStorage.setItem("codeco-field-guide-seen-v3", "yes"); localStorage.setItem("codeco-portal-guide-seen-v1-contractor", "yes"); localStorage.setItem("codeco-portal-guide-seen-v1-client", "yes");

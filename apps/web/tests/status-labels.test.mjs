@@ -37,8 +37,8 @@ test("every stored status and record type has wording in both languages", () => 
 });
 
 test("the same state reads the same in every module, in the interface language", () => {
-  assert.equal(statusText("ready_for_verification", nl), "Gereed voor verificatie");
-  assert.equal(statusText("ready_for_verification", en), "Ready for verification");
+  assert.equal(statusText("ready_for_verification", nl), "Wacht op verificatie");
+  assert.equal(statusText("ready_for_verification", en), "Pending verification");
   assert.equal(statusText("in_progress", nl), "In uitvoering");
   assert.equal(typeText("technical_instruction", nl), "Technische instructie (TI)");
   assert.equal(typeText("work_package", nl), "Werkpakket");

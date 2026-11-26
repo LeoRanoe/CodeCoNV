@@ -16,7 +16,7 @@ export const findingStatusLabels: Labels = {
   open: { en: "Open", nl: "Open" },
   assigned: { en: "Assigned", nl: "Toegewezen" },
   in_progress: { en: "In progress", nl: "In uitvoering" },
-  ready_for_verification: { en: "Ready for verification", nl: "Gereed voor verificatie" },
+  ready_for_verification: { en: "Pending verification", nl: "Wacht op verificatie" },
   closed: { en: "Closed", nl: "Gesloten" },
   rejected: { en: "Rejected", nl: "Afgewezen" },
   reopened: { en: "Reopened", nl: "Heropend" },
@@ -27,7 +27,7 @@ export const actionStatusLabels: Labels = {
   open: { en: "Open", nl: "Open" },
   accepted: { en: "Accepted", nl: "Geaccepteerd" },
   in_progress: { en: "In progress", nl: "In uitvoering" },
-  ready_for_verification: { en: "Ready for verification", nl: "Gereed voor verificatie" },
+  ready_for_verification: { en: "Pending verification", nl: "Wacht op verificatie" },
   verified: { en: "Verified", nl: "Geverifieerd" },
   cancelled: { en: "Cancelled", nl: "Geannuleerd" },
 };
