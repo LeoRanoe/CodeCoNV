@@ -1150,7 +1150,8 @@ export function OperationalWorkspace({
           actions={projectActions}
           buildings={buildings}
           parties={parties}
-          specSearch={<RapidVerifyHome key={projectId} projectName={projectName} projectFiles={snapshot.files} client={client} projectId={projectId} buildingId={buildingId} currentUserName={currentUserName} />}
+          specSearch={<RapidVerifyHome only="sources" key={projectId} projectName={projectName} projectFiles={snapshot.files} client={client} projectId={projectId} buildingId={buildingId} currentUserName={currentUserName} />}
+          specCompliance={<RapidVerifyHome only="compliance" key={`compliance-${projectId}`} projectName={projectName} projectFiles={snapshot.files} client={client} projectId={projectId} buildingId={buildingId} currentUserName={currentUserName} />}
           openRecord={(recordType, recordId) => {
             if (recordType === "action") { openProjectAction?.(recordId); return; }
             openProjectArea(recordType === "inspection" ? "inspections" : recordType === "register_entry" ? "registers" : "findings", recordId);
@@ -4686,7 +4687,7 @@ function ProjectOperations({
                         {registerDrawingLocation ? <span className="sheet-drawing-location-summary"><MapPin size={14} aria-hidden="true" /> {drawingLocationLabel(registerDrawingLocation, text("page", "pagina"))}</span> : <small>{text("Optional: point at the spot on the drawing.", "Optioneel: wijs de plek aan op de tekening.")}</small>}
                         <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setPickingRegisterDrawing(true)}><MapPin size={14} /> {registerDrawingLocation ? text("Change on drawing", "Wijzigen op tekening") : text("Choose on drawing", "Kies op tekening")}</button>
                         {registerDrawingLocation ? <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => setRegisterDrawingLocation(null)}><X size={14} /> {text("Remove", "Verwijderen")}</button> : null}
-                        {pickingRegisterDrawing ? <DrawingLocationPicker drawings={pickableDrawings(data.files, registerBuildingId)} buildings={buildings} client={client} initial={registerDrawingLocation} close={() => setPickingRegisterDrawing(false)} save={(location) => { setRegisterDrawingLocation(location); setPickingRegisterDrawing(false); }} /> : null}
+                        {pickingRegisterDrawing ? <DrawingLocationPicker drawings={pickableDrawings(data.files, registerBuildingId)} buildings={buildings} client={client} initial={registerDrawingLocation} subject="record" close={() => setPickingRegisterDrawing(false)} save={(location) => { setRegisterDrawingLocation(location); setPickingRegisterDrawing(false); }} /> : null}
                       </div>
                     ),
                     title: <input aria-label={text("Title", "Titel")} value={registerTitleEditable ? registerForm.title || registerTitleDerived : registerForm.title} maxLength={registerTitleEditable ? 120 : 160} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} />,
@@ -5688,7 +5689,8 @@ function ResponsiblePartyFields({ idPrefix, role, name, people, partyNames, onCh
 
 function StillNeeded({ items }: { items: string[] }) {
   const { text } = useLanguage();
-  const missing = items.filter(Boolean);
+  // The form's own checks and the workbook's rules can name the same field twice ("category", "Category"): list it once.
+  const missing = items.filter(Boolean).filter((item, index, all) => !all.some((other, otherIndex) => otherIndex > index && other.toLowerCase() === item.toLowerCase()));
   return missing.length ? <small className="confirm-needs"><strong>{text(`${missing.length} required left`, `Nog ${missing.length} verplicht`)}</strong>: {missing.join(" · ")} · {text("auto-saved", "automatisch bewaard")}</small> : null;
 }
 

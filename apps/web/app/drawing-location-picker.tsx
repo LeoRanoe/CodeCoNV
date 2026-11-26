@@ -54,6 +54,7 @@ export function DrawingLocationPicker({
   buildings = [],
   client,
   initial,
+  subject = "photo",
   close,
   save,
 }: {
@@ -62,6 +63,8 @@ export function DrawingLocationPicker({
   buildings?: BuildingOption[];
   client: SupabaseClient;
   initial?: DrawingLocation | null;
+  /** What is being placed: a photo (the default) or a register record such as a Works form. */
+  subject?: "photo" | "record";
   close: () => void;
   save: (location: DrawingLocation) => void;
 }) {
@@ -93,11 +96,11 @@ export function DrawingLocationPicker({
         <header className="modal-header">
           <div>
             <h2 id="drawing-location-title">{activeDrawing
-              ? text("Tap where this photo was taken", "Tik waar deze foto is genomen")
+              ? (subject === "photo" ? text("Tap where this photo was taken", "Tik waar deze foto is genomen") : text("Tap the spot on the drawing", "Tik de plek aan op de tekening"))
               : text("Choose the drawing first", "Kies eerst de tekening")}</h2>
             <p>{activeDrawing
               ? text("Saved as a pin on the drawing.", "Opgeslagen als pin op de tekening.")
-              : text("Choose the drawing this photo belongs to.", "Kies de tekening waar deze foto bij hoort.")}</p>
+              : (subject === "photo" ? text("Choose the drawing this photo belongs to.", "Kies de tekening waar deze foto bij hoort.") : text("Choose the drawing this record belongs to.", "Kies de tekening waar dit record bij hoort."))}</p>
           </div>
           <button className="modal-close" type="button" onClick={close} aria-label={text("Close", "Sluiten")}><X size={18} /></button>
         </header>
@@ -128,7 +131,7 @@ export function DrawingLocationPicker({
                   <ChevronRight size={16} />
                 </button>
               ))}
-              {!shown.length ? <p className="form-intro">{text("No drawing matches this search.", "Geen tekening gevonden met deze zoekterm.")}</p> : null}
+              {!shown.length ? <p className="form-intro">{drawings.length ? text("No drawing matches this search.", "Geen tekening gevonden met deze zoekterm.") : text("This project has no drawings yet. Upload them under Project Documents, then pick the spot here.", "Dit project heeft nog geen tekeningen. Upload ze onder Projectdocumenten en kies de plek dan hier.")}</p> : null}
             </div>
           ) : (
             <>
@@ -164,18 +167,18 @@ export function DrawingLocationPicker({
 
         <footer className="modal-actions">
           <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={close}>{text("Cancel", "Annuleren")}</button>
-          <button
+          {activeDrawing ? <button
             className="ui-button ui-button--primary ui-button--md"
             type="button"
-            disabled={!point || !activeDrawing}
-            onClick={() => point && activeDrawing && save({
+            disabled={!point}
+            onClick={() => point && save({
               fileId: activeDrawing.id,
               fileName: activeDrawing.original_name,
               pageNumber,
               xRatio: point.xRatio,
               yRatio: point.yRatio,
             })}
-          ><Check size={15} /> {text("Use this spot", "Gebruik deze plek")}</button>
+          ><Check size={15} /> {text("Use this spot", "Gebruik deze plek")}</button> : null}
         </footer>
       </section>
     </div>

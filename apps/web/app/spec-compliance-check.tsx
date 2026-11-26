@@ -209,6 +209,7 @@ export function SpecComplianceCheck({ client, projectId, projectFiles, buildingI
       <p className="form-intro">{text("Compare a submittal with the bestek clause it must meet. One row per requirement; the overall result is signed and stored with both documents.", "Vergelijk een inzending met het bestekartikel waaraan ze moet voldoen. Eén rij per eis; het totaalresultaat wordt getekend en met beide documenten bewaard.")}</p>
       {canVerify ? (
         <div className="spec-compliance-form">
+          {documents.length ? null : <p className="form-hint" role="status">{text("No specification or submittal documents yet. Register them under Project Documents with a type other than Drawing, then choose them here.", "Nog geen bestekken of inzendingen. Registreer ze onder Projectdocumenten met een ander type dan Tekening en kies ze dan hier.")}</p>}
           <div className="form-grid-2">
             <label className="form-field"><span>{text("Submittal / datasheet to check", "Inzending / datasheet om te controleren")}</span>
               <select value={subjectId} onChange={(event) => setSubjectId(event.target.value)}><option value="">{text("Choose a document", "Kies een document")}</option>{documents.map(fileOption)}</select>

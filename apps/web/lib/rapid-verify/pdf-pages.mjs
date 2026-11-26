@@ -18,9 +18,11 @@ export async function extractPdfPages(task, { signal, onProgress = (page, total)
         const content = await page.getTextContent();
         signal?.throwIfAborted();
         const text = content.items.map((item) => "str" in item ? item.str : "").join(" ").replace(/\s+/g, " ").trim();
+        // The same text with the line breaks of the page: a requirement is one line, and the compliance assistant reads lines.
+        const lines = content.items.map((item) => "str" in item ? item.str + (item.hasEOL ? "\n" : " ") : "").join("").replace(/[ \t]+/g, " ").replace(/ ?\n ?/g, "\n").trim();
         characters += text.length;
         if (characters > maxCharacters) throw new Error("Document text is too large. Split the document first.");
-        pages.push({ page: pageNumber, text });
+        pages.push({ page: pageNumber, text, lines });
         onProgress(pageNumber, pdf.numPages);
       } finally { page.cleanup(); }
       // Let input, cancellation and progress paint between pages.
