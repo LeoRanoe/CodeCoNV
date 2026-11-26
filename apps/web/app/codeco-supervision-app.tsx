@@ -1906,12 +1906,8 @@ export function CodecoSupervisionApp() {
         </nav>
 
         <div className="sidebar-spacer" />
-        {canRecord ? (
-          <button className={`quick-add-side${activeNav === "vandaag" ? "" : " has-page-primary"}`} type="button" onClick={openQuickAdd}>
-            <Camera size={18} strokeWidth={2.4} />
-            {text("Take photo", "Foto maken")}
-          </button>
-        ) : null}
+        {/* "Take photo" moved to the top bar (OPUS-F01): the sidebar holds the ten menus of Word section 2,
+            the project and the account, and fits a 720 px high laptop screen. */}
         <button className="user-card" type="button" onClick={() => void requestSignOut()} title={text("Sign out", "Afmelden")}>
           <span className="avatar" aria-hidden="true">{initials(currentUserName)}</span>
           <span className="user-copy">
@@ -1952,6 +1948,12 @@ export function CodecoSupervisionApp() {
             </button>
           </nav>
           <div className="top-actions">
+            {canRecord ? (
+              <button className={`quick-add-side ui-button ui-button--md${activeNav === "vandaag" ? " ui-button--primary" : " ui-button--secondary has-page-primary"}`} type="button" onClick={openQuickAdd}>
+                <Camera size={17} strokeWidth={2.2} aria-hidden="true" />
+                <span>{text("Take photo", "Foto maken")}</span>
+              </button>
+            ) : null}
             <FieldGuide
               canManage={canManageMembers}
               onOpenDestination={(destination) => {

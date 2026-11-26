@@ -94,7 +94,7 @@ async function openWorkspaceModule(page: Page, module: "Project Docs" | "Issues"
   const back = page.locator(".workspace-back-button");
   if (await back.isVisible().catch(() => false)) await back.click();
   if (module === "Issues") await page.locator("[data-workspace-destination='issues']").click();
-  else await page.locator(".workspace-support-strip").getByRole("button", { name: "Project Docs", exact: true }).click();
+  else await goTo(page, "Project Documents");
 }
 
 test("a client reads and signs; nothing offers to write", async ({ page }, testInfo) => {

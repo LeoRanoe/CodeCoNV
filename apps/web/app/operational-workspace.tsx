@@ -3617,6 +3617,11 @@ function ProjectOperations({
     lessons_learned: text("Lessons Learned (LL)", "Geleerde lessen (LL)"),
     agreement: text("Agreements Made", "Gemaakte afspraken"),
   };
+  // A Workspace tab opened on one of the client's forms lists that form's records only (OPUS-F02):
+  // Works ongoing used to list every delivery, agreement, change order and instruction of the project.
+  const registerListType = (focusRecordId && data.registerEntries.find((entry) => entry.id === focusRecordId)?.register_type) || registerForm.type;
+  const registerListFilter = !externalSubmissionIntent && workspacePageTitles[registerListType] ? registerListType : "";
+  const inRegisterList = (entry: { register_type: string }) => !registerListFilter || entry.register_type === registerListFilter;
   const projectSections: Array<[Exclude<ProjectTab, "home">, string, number]> = ([
     ["inspections", text("Inspections", "Inspecties"), data.inspections.length],
     ["findings", text("Issues", "Issues"), countOpenFindings(data.findings, "issue")],
@@ -3628,7 +3633,7 @@ function ProjectOperations({
     ["documents", "Project Docs", data.files.filter((file) => file.status === "available").length + data.registerEntries.filter((entry) => ["document", "drawing", "specification", "contract", "boq"].includes(entry.register_type)).length],
     // F17: a Workspace page opened on one of the client's forms carries that form's name (images 8 and 12).
     // F17: a saved record opened from the archive or a link is headed by its own form's name.
-    ["registers", workspacePageTitles[(focusRecordId && data.registerEntries.find((entry) => entry.id === focusRecordId)?.register_type) || registerForm.type] ?? text("Formal documents & registers", "Formele documenten & registers"), data.registerEntries.length],
+    ["registers", workspacePageTitles[(focusRecordId && data.registerEntries.find((entry) => entry.id === focusRecordId)?.register_type) || registerForm.type] ?? text("Formal documents & registers", "Formele documenten & registers"), data.registerEntries.filter(inRegisterList).length],
     ["visual", text("Visual evidence", "Visueel bewijs"), data.visualCaptures.length],
     ["drawings", text("Drawings", "Tekeningen"), data.files.filter((file) => file.category === "drawing" && file.status === "available").length],
     ["tools", text("Field tools", "Veldtools"), data.registerEntries.filter((entry) => ["notepad", "agreement", "technical_instruction"].includes(entry.register_type)).length],
@@ -5431,9 +5436,9 @@ function ProjectOperations({
               <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={openManagement}>{text("Back to Management", "Terug naar Management")}</button>
             </div>
           ) : null}
-          <SavedRecordsFold formOpen={showForm && !focusRecordId} count={data.registerEntries.filter((entry) => entry.register_type !== "boq" && (externalSubmissionIntent || !externalSubmissionRegisterTypes.includes(entry.register_type))).length} storageKey={`registers:${projectId}`}>
-          <ControlledDocumentList projectId={projectId} entries={data.registerEntries.filter((entry) => isControlledDocumentType(entry.register_type) && (externalSubmissionIntent || !externalSubmissionRegisterTypes.includes(entry.register_type)))} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={currentUserName} focusRecordId={focusRecordId} client={client} run={run} />
-          <RecordList empty={text("No additional project registers yet.", "Nog geen aanvullende projectregisters.")} rows={data.registerEntries.filter((entry) => !isControlledDocumentType(entry.register_type) && entry.register_type !== "boq").map((entry) => {
+          <SavedRecordsFold formOpen={showForm && !focusRecordId} count={data.registerEntries.filter((entry) => inRegisterList(entry) && entry.register_type !== "boq" && (externalSubmissionIntent || !externalSubmissionRegisterTypes.includes(entry.register_type))).length} storageKey={`registers:${projectId}`}>
+          <ControlledDocumentList projectId={projectId} entries={data.registerEntries.filter((entry) => inRegisterList(entry) && isControlledDocumentType(entry.register_type) && (externalSubmissionIntent || !externalSubmissionRegisterTypes.includes(entry.register_type)))} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={currentUserName} focusRecordId={focusRecordId} client={client} run={run} />
+          <RecordList empty={registerListFilter ? text("No records yet.", "Nog geen registraties.") : text("No additional project registers yet.", "Nog geen aanvullende projectregisters.")} rows={data.registerEntries.filter((entry) => inRegisterList(entry) && !isControlledDocumentType(entry.register_type) && entry.register_type !== "boq").map((entry) => {
             // The verdict and the quantity are the point of a delivery line, so the list
             // shows them instead of hiding them in the record.
             const outcome = String(entry.details?.outcome ?? "");

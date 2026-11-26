@@ -102,10 +102,7 @@ const screens: Array<{ name: string; open: (page: Page) => Promise<void> }> = [
   {
     name: "Project Docs",
     open: async (page) => {
-      await goTo(page, "Workspace");
-      const back = page.locator(".workspace-back-button");
-      if (await back.isVisible().catch(() => false)) await back.click();
-      await page.locator(".workspace-support-strip").getByRole("button", { name: "Project Docs", exact: true }).click();
+      await goTo(page, "Project Documents");
     },
   },
 ];

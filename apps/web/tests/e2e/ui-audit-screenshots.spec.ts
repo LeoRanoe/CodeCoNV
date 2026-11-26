@@ -31,7 +31,7 @@ const modules = [
 const workspaceTiles = [
   "Photos", "Works ongoing", "Works completed", "Workforce", "Project Delay Report", "Issues", "HSE", "Materials delivery",
   "Inspections", "Technical instructions", "Change order", "NCR", "Lessons Learned", "HSE incident", "Agreements Made",
-  "Rapid Verify", "Project Docs", "Assets & folders", "Drawings & pins", "Deadlines",
+  "Drawings & pins", "Calculator & notes", "Deadlines",
 ] as const;
 
 const screenshotDirectory = join(process.cwd(), "test-results", "ui-audit", "after");

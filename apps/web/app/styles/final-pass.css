@@ -1065,3 +1065,55 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
 .records-folders { display: grid; gap: 16px; }
 .records-folder-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .records-folder-head h2 { margin: 0; font-size: var(--text-lg); }
+
+/* ---------- Opus audit, 26-11-2026 ---------- */
+
+/* OPUS-F01. The sidebar is the ten menus of Word section 2, the project and the account. "Take photo" moved to the
+   top bar, and the rows are shorter on a short screen, so all ten menus and the account fit a 1280 x 720 laptop. */
+.sidebar .company-logo { height: 52px; }
+.sidebar .nav-button { min-height: var(--control-h-md); }
+.sidebar .project-context-card { min-height: 52px; }
+.sidebar .user-card { min-height: 52px; }
+@media (max-height: 960px) {
+  .sidebar .company-logo { height: 40px; }
+  .sidebar .brand { margin-bottom: var(--space-1); }
+}
+@media (max-height: 760px) {
+  .sidebar .brand { padding-top: 0; }
+  .sidebar .company-logo { height: 34px; }
+  .sidebar .nav-button { min-height: 38px; }
+  .sidebar .project-context-card { min-height: 48px; padding-block: var(--space-1); }
+  .sidebar .user-card { min-height: 48px; }
+}
+/* The photo button of the top bar: one quiet row with the other tools; orange only on the Overview, where it is the main action. */
+.topbar .quick-add-side { flex: none; font-size: var(--text-sm); gap: var(--space-2); min-height: var(--control-h-md); padding-inline: var(--space-3); white-space: nowrap; }
+@media (max-width: 1024px) { .topbar .quick-add-side { display: none; } }
+@media (min-width: 1025px) and (max-width: 1280px) { .topbar .quick-add-side > span { clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; } }
+
+/* OPUS-F03. A module page heads with one row: back, the module name with its count, "Open log" and "New". With three
+   columns for four items "New" fell to a second row under the back button and pushed every form 60 px down. */
+@media (min-width: 641px) {
+  .workspace-section-controls { align-items: center; column-gap: var(--space-3); display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; }
+  .workspace-section-controls > .workspace-module-create { grid-column: 4; grid-row: 1; }
+  .workspace-section-controls > .workspace-open-log { grid-column: 3; grid-row: 1; margin-left: 0; }
+}
+
+/* OPUS-F04. A record row is the icon, the title and its facts, and the state on the first line; View, Edit and
+   Withdraw on the line under the title. With the actions as a fourth item in a three-column grid they wrapped into
+   the icon's column, which pushed every title to the right and laid the state over "Withdraw". */
+.record-row.ui-list-row:has(> .record-row-actions) { grid-template-columns: auto minmax(0, 1fr) auto; row-gap: var(--space-2); }
+.record-row:has(> .record-row-actions) > .action-icon { grid-column: 1; grid-row: 1; align-self: start; }
+.record-row:has(> .record-row-actions) > div:not(.record-row-actions) { grid-column: 2; grid-row: 1; }
+.record-row:has(> .record-row-actions) > .task-status { align-self: start; grid-column: 3; grid-row: 1; justify-self: end; }
+.record-row:has(> .record-row-actions) > .record-row-actions { grid-column: 2 / -1; grid-row: 2; justify-self: start; }
+@container (max-width: 620px) {
+  .record-row:has(> .record-row-actions) > .task-status { grid-column: 2; grid-row: 2; justify-self: start; }
+  .record-row:has(> .record-row-actions) > .record-row-actions { grid-column: 1 / -1; grid-row: 3; justify-self: stretch; }
+}
+@media (max-width: 640px) {
+  .record-row:has(> .record-row-actions) > .task-status { grid-column: 2; grid-row: 2; justify-self: start; }
+  .record-row:has(> .record-row-actions) > .record-row-actions { grid-column: 1 / -1; grid-row: 3; justify-self: stretch; }
+}
+
+/* OPUS-F05. A field that gets focus scrolls clear of the sticky action bar at the foot of a form (and of the phone's bottom bar). */
+html { scroll-padding-bottom: calc(var(--mobile-nav-height, 0px) + 96px); }
