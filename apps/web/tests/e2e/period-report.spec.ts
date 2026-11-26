@@ -126,6 +126,8 @@ test("a stored photo is printed in the report as a thumbnail or large, and not a
   await choosePhotoPurpose(review, "Progress Documentation");
   await review.locator(".ui-button--primary").first().click();
   await expect(page.locator(".offline-queue")).toHaveCount(0, { timeout: 90_000 });
+  // Developer package v5: the stored photo carries its Record ID, <PROJECT>-PH-<YYYY>-<NNNN>.
+  await expect(page.getByText(/[A-Z0-9]+-PH-\d{4}-\d{4}/).first()).toBeVisible({ timeout: 30_000 });
 
   await page.locator(".sidebar").getByRole("button", { name: "Reports", exact: true }).click();
   await openSection(page, /^Create report$/);
@@ -145,6 +147,8 @@ test("a stored photo is printed in the report as a thumbnail or large, and not a
   expect(small.bytes, "a thumbnail adds image bytes").toBeGreaterThan(none.bytes + 2_000);
   expect(large.bytes, "a large photo is bigger than a thumbnail").toBeGreaterThan(small.bytes);
   expect(none.text).toContain("Foto");
+  expect(none.text, "the photo list prints the Record ID").toMatch(/[A-Z0-9]+-PH-\d{4}-\d{4}/);
+  expect(small.text, "a printed photo is captioned with its Record ID").toMatch(/[A-Z0-9]+-PH-\d{4}-\d{4}/);
 });
 
 test("Word 11.1 structure: group by contractor, summary versus full and contractor responses, in PDF, Word and Excel", async ({ page }, testInfo) => {

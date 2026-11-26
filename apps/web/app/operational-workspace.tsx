@@ -6515,7 +6515,7 @@ function ReportOperations({ focusRecordId, data, reportId, reportNumber, reportS
       ? (snapshot.visual_captures as Array<Record<string, unknown>>).flatMap((capture) => {
         const photo = extra.photos?.[String(capture.id)];
         if (!photo) return [];
-        return [{ code: String(capture.title ?? capture.id), caption: [capture.title, capture.location_label].filter(Boolean).join(" · "), building: buildingNames.get(String(capture.building_id ?? "")) ?? "", date: String(capture.captured_at ?? "").slice(0, 10), bytes: dataUrlBytes(photo.dataUrl), width: photo.width, height: photo.height }];
+        return [{ code: String(capture.capture_number ?? capture.title ?? capture.id), caption: [capture.title, capture.location_label].filter(Boolean).join(" · "), building: buildingNames.get(String(capture.building_id ?? "")) ?? "", date: String(capture.captured_at ?? "").slice(0, 10), bytes: dataUrlBytes(photo.dataUrl), width: photo.width, height: photo.height }];
       })
       : [];
     return { snapshot, extra, excelPhotos };

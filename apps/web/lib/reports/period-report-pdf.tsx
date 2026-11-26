@@ -175,7 +175,7 @@ function RecordRows({ rows, empty = "Geen registraties in deze periode." }: { ro
   if (!rows.length) return <Text style={styles.empty}>{empty}</Text>;
   return <View>{rows.map((row, index) => (
     <View style={styles.row} wrap={false} key={`${value(row, "id", String(index))}:${index}`}>
-      <Text style={styles.rowNumber}>{value(row, "entry_number", value(row, "finding_number", value(row, "inspection_number", value(row, "event_number", `#${index + 1}`))))}</Text>
+      <Text style={styles.rowNumber}>{value(row, "entry_number", value(row, "finding_number", value(row, "inspection_number", value(row, "event_number", value(row, "capture_number", `#${index + 1}`)))))}</Text>
       <View style={styles.rowBody}>
         <Text style={styles.rowTitle}>{value(row, "title", value(row, "day_summary", "Registratie"))}</Text>
         <Text style={styles.rowMeta}>{[humanizeToken(value(row, "status")), humanizeToken(value(row, "severity")), value(row, "occurred_at") ? formatDate(value(row, "occurred_at")) : "", detailsText(row), value(row, "signed_by") ? `Ondertekend door ${value(row, "signed_by")} · ${formatDate(value(row, "signed_at"))}` : ""].filter(Boolean).join(" | ")}</Text>
@@ -196,7 +196,7 @@ function CapturePhotos({ captures, photos, mode }: { captures: Array<Record<stri
       const fit = Math.min(frame.width / photo.width, frame.height / photo.height);
       return <View style={[styles.photoCard, { width: frame.width + 10 }]} wrap={false} key={value(capture, "id")}>
         <Image src={photo.dataUrl} style={[styles.photoImage, { height: Math.round(photo.height * fit), width: Math.round(photo.width * fit) }]} />
-        <Text style={styles.photoCaption}>{[value(capture, "title"), value(capture, "captured_at") ? formatDate(value(capture, "captured_at")) : "", value(capture, "location_label")].filter(Boolean).join(" · ")}</Text>
+        <Text style={styles.photoCaption}>{[value(capture, "capture_number"), value(capture, "title"), value(capture, "captured_at") ? formatDate(value(capture, "captured_at")) : "", value(capture, "location_label")].filter(Boolean).join(" · ")}</Text>
       </View>;
     })}</View>
     {rest.length ? <RecordRows rows={rest} /> : null}

@@ -46,7 +46,7 @@ function heading(title: string): Paragraph {
 function recordRows(rows: Array<Record<string, unknown>>, empty = "Geen registraties in deze periode."): Array<Paragraph | Table> {
   if (!rows.length) return [new Paragraph({ children: [new TextRun({ text: empty, italics: true, color: "74848D", size: 16 })], spacing: { after: 120 } })];
   return rows.flatMap((row, index) => {
-    const number = value(row, "entry_number", value(row, "finding_number", value(row, "inspection_number", value(row, "event_number", `#${index + 1}`))));
+    const number = value(row, "entry_number", value(row, "finding_number", value(row, "inspection_number", value(row, "event_number", value(row, "capture_number", `#${index + 1}`)))));
     const title = value(row, "title", value(row, "day_summary", "Registratie"));
     const meta = [humanizeToken(value(row, "status")), humanizeToken(value(row, "severity")), value(row, "occurred_at") ? formatDate(value(row, "occurred_at")) : "", detailsText(row), value(row, "signed_by") ? `Ondertekend door ${value(row, "signed_by")} · ${formatDate(value(row, "signed_at"))}` : ""].filter(Boolean).join(" | ");
     const paragraph = new Paragraph({
@@ -92,7 +92,7 @@ function capturePhotos(captures: Array<Record<string, unknown>>, options: Period
   const picture = (capture: Record<string, unknown>) => {
     const photo = photos[value(capture, "id")];
     const fit = Math.min(edge / photo.width, (large ? 300 : 112) / photo.height);
-    const caption = [value(capture, "title"), value(capture, "captured_at") ? formatDate(value(capture, "captured_at")) : "", value(capture, "location_label")].filter(Boolean).join(" · ");
+    const caption = [value(capture, "capture_number"), value(capture, "title"), value(capture, "captured_at") ? formatDate(value(capture, "captured_at")) : "", value(capture, "location_label")].filter(Boolean).join(" · ");
     return [
       new Paragraph({ children: [new ImageRun({ type: "jpg", data: dataUrlBytes(photo.dataUrl), transformation: { width: Math.round(photo.width * fit), height: Math.round(photo.height * fit) } })], spacing: { before: 60 } }),
       new Paragraph({ children: [new TextRun({ text: caption, color: "44525A", size: 14 })], spacing: { after: 100 } }),

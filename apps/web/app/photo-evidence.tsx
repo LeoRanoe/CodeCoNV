@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { appendPhotoDetail, MarkPhotoButton, PhotoMarkupPad, type MarkupOption, type PhotoMarkupContext } from "@/app/photo-markup";
 import { useLanguage } from "@/lib/i18n";
+import { FormAutoBar } from "@/app/forms/form-auto-bar";
+import { useSpecDirectory } from "@/app/forms/spec-directory";
 import { photoPurposes, workDisciplines } from "@/lib/forms/spec-catalogue";
 import { photoPurposeCategories as purposeCategories } from "@/lib/forms/spec-forms";
 import { specLabel } from "@/lib/forms/spec-labels-nl";
@@ -450,6 +452,7 @@ export function PhotoDetailSheet({
   workbookPhoto?: boolean;
 }) {
   const { language, text } = useLanguage();
+  const { currentUser } = useSpecDirectory();
   const [marking, setMarking] = useState(false);
   // On a phone this is a page of its own: the back gesture closes it instead of
   // leaving the record behind it. The entry stays while the marking pad is open on
@@ -496,6 +499,13 @@ export function PhotoDetailSheet({
         </header>
 
         <div className="modal-body photo-detail-body">
+          {/* Developer package v5, Photos: Record ID and Taken by sit in the auto bar and are read-only. The number is
+              assigned by the database when the photo is registered, so a photo that is not saved yet says so. */}
+          <FormAutoBar items={[
+            { key: "record-id", label: text("Record ID", "Registratienummer"), value: text("Assigned when saved", "Wordt toegekend bij opslaan") },
+            { key: "taken-by", label: text("Taken by", "Genomen door"), value: currentUser?.name || "-" },
+            { key: "status", label: "Status", value: text("Active", "Actief") },
+          ]} />
           <div className="photo-detail-visual">
             <PhotoThumbnail file={photo.file} large />
             <div className="photo-detail-visual-actions">
