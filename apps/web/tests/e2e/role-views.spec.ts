@@ -155,7 +155,7 @@ test("a contractor who types the Reports address lands back on the overview, wit
   await signInAs(page, contractorEmail!, contractorPassword!);
   await page.goto(addressOf(page, "rapporten"));
   await expect(page.locator(".portal-shell")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Client reports" })).toHaveCount(0);
+  await expect(page.locator(".report-page-header")).toHaveCount(0);
   await expect(page.locator(".period-report-card")).toHaveCount(0);
 });
 

@@ -46,6 +46,10 @@ type ProjectWorkspaceHomeProps = {
     issues: number;
     ncr: number;
     hse: number;
+    hseIncidents?: number;
+    worksOngoing?: number;
+    worksCompleted?: number;
+    workforceDays?: number;
     photos: number;
     deliveries: number;
     agreements: number;
@@ -117,6 +121,7 @@ export function ProjectWorkspaceHome({
       id: "works-ongoing",
       label: text("Works ongoing", "Werkzaamheden gaande"),
       icon: formIcons.works_ongoing,
+      count: counts.worksOngoing,
       // The Works Ongoing sheet of the specification workbook: one record per activity.
       action: () => openTask("registers", false, { registerType: "works_ongoing" }),
     },
@@ -124,12 +129,14 @@ export function ProjectWorkspaceHome({
       id: "works-completed",
       label: text("Works completed", "Werkzaamheden afgerond"),
       icon: formIcons.works_completed,
+      count: counts.worksCompleted,
       action: () => openTask("registers", false, { registerType: "works_completed" }),
     },
     {
       id: "workforce",
       label: text("Workforce", "Workforce"),
       icon: formIcons.workforce,
+      count: counts.workforceDays,
       // §4.3 of the product plan: the workforce register, not the day's work list.
       action: openWorkforce,
     },
@@ -209,6 +216,7 @@ export function ProjectWorkspaceHome({
       id: "hse-incident",
       label: text("HSE incident", "HSE-incident"),
       icon: formIcons.hse_incident,
+      count: counts.hseIncidents,
       module: "hse",
       action: () => openTask("hse", false, { hseEventType: "incident" }),
     },

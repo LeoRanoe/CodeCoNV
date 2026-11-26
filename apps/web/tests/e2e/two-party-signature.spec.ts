@@ -117,8 +117,11 @@ test("technical instruction: the issuer signs as themself, the recipient signs t
 
   // The formal files are generated from the same record.
   await mkdir(testInfo.outputPath("documents"), { recursive: true });
+  // Send and export are one tap behind "Send or export" (OPUS-F07).
+  await reloaded.getByRole("button", { name: "Send or export" }).click();
   const [pdf] = await Promise.all([page.waitForEvent("download"), reloaded.getByRole("button", { name: /PDF/ }).click()]);
   await pdf.saveAs(testInfo.outputPath("documents", "technical-instruction.pdf"));
+  await reloaded.getByRole("button", { name: "Send or export" }).click();
   const [docx] = await Promise.all([page.waitForEvent("download"), reloaded.getByRole("button", { name: /Word/ }).click()]);
   await docx.saveAs(testInfo.outputPath("documents", "technical-instruction.docx"));
   expect(pdf.suggestedFilename()).toMatch(/\.pdf$/);
@@ -160,6 +163,7 @@ test("change order: title and description once, one issuer signature, contractor
   await expect(card.locator(".controlled-history-signatures")).toContainText("Issuer: Supervisor Alpha");
 
   await mkdir(testInfo.outputPath("documents"), { recursive: true });
+  await card.getByRole("button", { name: "Send or export" }).click();
   const [pdf] = await Promise.all([page.waitForEvent("download"), card.getByRole("button", { name: /PDF/ }).click()]);
   await pdf.saveAs(testInfo.outputPath("documents", "change-order.pdf"));
 });

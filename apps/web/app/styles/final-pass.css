@@ -1117,3 +1117,19 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
 
 /* OPUS-F05. A field that gets focus scrolls clear of the sticky action bar at the foot of a form (and of the phone's bottom bar). */
 html { scroll-padding-bottom: calc(var(--mobile-nav-height, 0px) + 96px); }
+
+/* OPUS-F07. The secondary actions of a record card sit behind one "More actions" button: a short menu under it. */
+.more-actions { display: inline-block; position: relative; }
+.more-actions-menu { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow-overlay); display: grid; gap: var(--space-1); left: 0; min-width: 16rem; padding: var(--space-2); position: absolute; top: calc(100% + var(--space-1)); z-index: 30; }
+.more-actions-menu[hidden] { display: none; }
+.more-actions-menu > button,
+.more-actions-menu .download-group button,
+.more-actions-menu > .external-party-button { justify-content: flex-start; min-height: var(--control-h-md); width: 100%; }
+.more-actions-menu .download-group { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+@media (max-width: 640px) {
+  .more-actions { display: block; width: 100%; }
+  .more-actions > .more-actions-trigger { width: 100%; }
+  .more-actions-menu { min-width: 0; position: static; box-shadow: none; margin-top: var(--space-1); }
+}
+/* OPUS-F08. The record filters fold behind one button above the list. */
+.spec-facet-toggle-row { display: flex; justify-content: flex-end; margin-block: var(--space-2); }

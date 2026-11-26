@@ -12,6 +12,8 @@ const supabaseUrl = process.env.CODECO_E2E_SUPABASE_URL ?? "http://127.0.0.1:543
 const projectName = process.env.CODECO_E2E_PROJECT ?? "Paramaribo Field Readiness Demo";
 const lang = process.env.AUDIT_LANG === "nl" ? "nl" : "en";
 const out = process.env.AUDIT_OUT ?? "D:/CodeCoNV/tmp/audit";
+/** AUDIT_ONLY=issues|ncr limits the walk to the steps whose name matches. */
+const only = process.env.AUDIT_ONLY ? new RegExp(process.env.AUDIT_ONLY) : null;
 
 test.skip(!process.env.UX_WALK, "A review aid: set UX_WALK=1 to run it.");
 test.skip(!["127.0.0.1", "localhost"].includes(new URL(supabaseUrl).hostname), "Local Supabase only.");
@@ -64,7 +66,10 @@ function measure() {
     const cx = Math.min(Math.max(r.left + r.width / 2, 0), vw - 1);
     const cy = Math.min(Math.max(r.top + r.height / 2, 0), vh - 1);
     const hit = document.elementFromPoint(cx, cy);
-    if (hit && hit !== el && !el.contains(hit) && !hit.contains(el)) {
+    // Under a fixed or sticky bar (top bar, action bar, phone bar) or a dialog's backdrop is where scrolling puts a control
+    // for a moment, not an overlap; those are not counted.
+    const pinned = (node: Element | null) => { for (let n = node; n && n !== document.body; n = n.parentElement) { const p = getComputedStyle(n).position; if (p === "fixed" || p === "sticky") return true; } return false; };
+    if (hit && hit !== el && !el.contains(hit) && !hit.contains(el) && !(pinned(hit) && !pinned(el))) {
       const label = el.closest("label");
       if (!(label && label.contains(hit))) covered.push(`${describe(el)} under ${describe(hit)}`);
     }
@@ -150,6 +155,7 @@ for (const role of roles) {
         report[name] = await page.evaluate(measure);
       };
       const step = async (name: string, body: () => Promise<void>) => {
+        if (only && !only.test(name)) return;
         try { await body(); } catch (error) { report[name] = { error: String((error as Error).message).split("\n")[0].slice(0, 160) }; }
       };
       const nav = async (id: string) => {
@@ -180,6 +186,9 @@ for (const role of roles) {
             await nav("project");
             await page.locator(`[data-workspace-destination="${destination}"]`).click();
             await page.waitForTimeout(1500);
+            // A module can open with its form showing; the list is photographed with the form closed.
+            const toggle = page.locator(".workspace-module-create.ui-button--secondary");
+            if (await toggle.isVisible().catch(() => false)) { await toggle.click(); await page.waitForTimeout(800); }
             const create = page.locator("main").getByRole("button", { name: /^(New|Nieuw|\+ New|Add|Take a picture)/i }).first();
             await shoot(`03-${String(index + 1).padStart(2, "0")}-${destination}-list`);
             if (await create.isVisible().catch(() => false) && destination !== "photos") {
