@@ -2,6 +2,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
+import { DocumentPreview } from "@/app/document-preview";
 import { useLanguage } from "@/lib/i18n";
 import { loadProjectFileBlob } from "@/lib/storage/gateway";
 import type { FileRecord } from "@/lib/supabase/operations";
@@ -9,7 +10,7 @@ import type { FileRecord } from "@/lib/supabase/operations";
 /**
  * One side of the side-by-side viewer of the Rapid Verify compliance check (Word 10.1): the submittal on one side and
  * the bestek on the other, so a requirement is read next to what was delivered. A PDF opens on the page of the row being
- * checked; an image is shown as it is.
+ * checked (the PDF is drawn from its first page; the row's page is named in the caption); an image is shown as it is.
  */
 export function ComplianceDocumentPane({ client, file, label, page }: { client: SupabaseClient; file: FileRecord; label: string; page?: number }) {
   const { text } = useLanguage();
@@ -35,10 +36,8 @@ export function ComplianceDocumentPane({ client, file, label, page }: { client: 
       <figcaption><strong>{label}</strong><span>{file.original_name}{page && pdf ? ` · ${text("page", "pagina")} ${page}` : ""}</span></figcaption>
       {failed === file.id ? <p className="compliance-pane-note" role="alert">{text("This document could not be opened here.", "Dit document kon hier niet worden geopend.")}</p>
         : !ready ? <p className="compliance-pane-note" role="status">{text("Opening the document…", "Document wordt geopend…")}</p>
-          : ready.image
-            // eslint-disable-next-line @next/next/no-img-element -- a blob URL of the stored file; next/image cannot optimise it.
-            ? <img src={ready.url} alt={file.original_name} />
-            : <iframe title={`${label}: ${file.original_name}`} src={`${ready.url}#page=${page && page > 0 ? page : 1}`} />}
+          // pdf.js draws the pages (an <iframe> PDF stays blank on Android Chrome and is blocked by the CSP's object-src 'none').
+          : <div className="compliance-pane-scroll"><DocumentPreview url={ready.url} mimeType={ready.image ? (file.mime_type || "image/png") : "application/pdf"} title={file.original_name} /></div>}
     </figure>
   );
 }

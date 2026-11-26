@@ -38,3 +38,15 @@ test("a figure in another unit is not compared as if it were the same", () => {
   const rows = proposeComplianceRows([{ page: 1, text: "Wall thickness: 200 mm." }], [{ page: 1, text: "Wall thickness: 20 cm." }]);
   assert.equal(rows[0].result, "not_stated");
 });
+
+test("a requirement that stands on its own line of the page is read as its own requirement", () => {
+  const rows = proposeComplianceRows(
+    [{ page: 1, text: "Clause 5.2 Concrete Concrete strength class minimum 30 MPa Reinforcement cover minimum 40 mm Slump 80 mm", lines: "Clause 5.2 Concrete\nConcrete strength class minimum 30 MPa\nReinforcement cover minimum 40 mm\nSlump 80 mm" }],
+    [{ page: 1, text: "Supplier datasheet Concrete strength class 35 MPa Reinforcement cover 45 mm", lines: "Supplier datasheet\nConcrete strength class 35 MPa\nReinforcement cover 45 mm" }],
+  );
+  const strength = rows.find((row) => /strength/i.test(row.parameter));
+  assert.ok(strength, `a strength row is proposed (${rows.map((row) => row.parameter).join(" | ")})`);
+  assert.equal(strength.result, "complies", "35 MPa is at least 30 MPa");
+  const cover = rows.find((row) => /cover/i.test(row.parameter));
+  assert.equal(cover.result, "complies", "45 mm is at least 40 mm");
+});

@@ -96,6 +96,7 @@ export function VerificationWorkspace({
   buildings,
   parties,
   specSearch,
+  specCompliance,
   openRecord,
 }: {
   client: SupabaseClient;
@@ -105,6 +106,8 @@ export function VerificationWorkspace({
   buildings: Array<{ id: string; name: string }>;
   parties: Array<{ id: string; name: string; type: string }>;
   specSearch: ReactNode;
+  /** The spec compliance check, an entry of its own in the section menu. */
+  specCompliance: ReactNode;
   openRecord?: (recordType: string, recordId: string) => void;
 }) {
   const { language, locale, text } = useLanguage();
@@ -149,6 +152,7 @@ export function VerificationWorkspace({
     { id: "pending", label: text("Pending verification", "Wacht op verificatie"), count: queue.all.length },
     { id: "history", label: text("Verification history", "Verificatiehistorie"), count: historyQuery.data?.verifications.length },
     { id: "specs", label: text("Check against specs", "Toetsen aan specificaties") },
+    { id: "compliance", label: text("Spec compliance check", "Bestekcontrole") },
   ];
 
   const list = (items: QueueItem[], empty: string) => {
@@ -174,6 +178,7 @@ export function VerificationWorkspace({
 
   let body: ReactNode;
   if (section === "specs") body = specSearch;
+  else if (section === "compliance") body = specCompliance;
   else if (section === "history" ? historyQuery.isLoading : portalQuery.isLoading || (section === "dashboard" && historyQuery.isLoading)) {
     body = <p className="portal-loading" role="status"><Loader2 className="spin" size={16} /> {text("Loading verification…", "Verificatie laden…")}</p>;
   }
@@ -226,7 +231,7 @@ export function VerificationWorkspace({
     <section className="verification-workspace">
       {/* The source check carries its own "Rapid Verify" heading. */}
       <header className="secondary-header ui-page-header">{section !== "specs" ? <div><h1>Rapid Verify</h1></div> : null}
-        {section !== "specs" ? <label className="document-register-search"><Search size={15} /><span className="sr-only">{text("Search", "Zoeken")}</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text("Code, title, location or company", "Code, titel, locatie of bedrijf")} /></label> : null}
+        {section !== "specs" && section !== "compliance" ? <label className="document-register-search"><Search size={15} /><span className="sr-only">{text("Search", "Zoeken")}</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text("Code, title, location or company", "Code, titel, locatie of bedrijf")} /></label> : null}
       </header>
       <SectionNav label={text("Rapid Verify sections", "Rapid Verify-onderdelen")} items={sections.map((item) => ({ id: item.id, label: item.label, count: item.count, selected: section === item.id, onSelect: () => setSection(item.id) }))} />
       <div className="portal-section">{body}</div>

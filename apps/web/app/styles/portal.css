@@ -201,7 +201,7 @@
 .document-folders b { color: var(--muted); font-variant-numeric: tabular-nums; font-weight: var(--weight-semibold); }
 .document-register-main { display: grid; gap: var(--space-3); min-width: 0; }
 .document-register-toolbar { align-items: center; display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: space-between; }
-.document-register-search { align-items: center; border: 1px solid var(--ink-600); border-radius: var(--radius-control); display: flex; flex: 1 1 260px; gap: var(--space-2); padding-inline: var(--space-2); }
+.document-register-search { align-items: center; border: 1px solid var(--ink-600); border-radius: var(--radius-control); display: flex; flex: 1 1 auto; min-inline-size: min(260px, 100%); gap: var(--space-2); padding-inline: var(--space-2); }
 .document-register-search input { border: 0; flex: 1; min-height: var(--control-h-md); min-width: 0; }
 .document-register-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .document-current {

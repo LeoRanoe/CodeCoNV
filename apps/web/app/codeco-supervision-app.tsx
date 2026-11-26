@@ -1180,7 +1180,9 @@ export function CodecoSupervisionApp() {
       setWorkspaceStage("cockpit");
     }
     setActiveNav(navKeys.includes(restored.nav as NavKey) ? restored.nav as NavKey : "vandaag");
-    setInitialProjectTab(projectTabKeys.includes(restored.tab as ProjectTabKey) ? restored.tab as ProjectTabKey : "home");
+    // Project Documents and the punch list are the workspace with one module open: an address that names only them opens that module.
+    const entryTab: ProjectTabKey = restored.nav === "projectdocs" ? "documents" : restored.nav === "punchlist" ? "findings" : "home";
+    setInitialProjectTab(projectTabKeys.includes(restored.tab as ProjectTabKey) ? restored.tab as ProjectTabKey : entryTab);
     setFocusRecordId(restored.record ?? "");
     setSelectedAction(null);
     // A dialog that only makes sense with a record in hand is not restored from an

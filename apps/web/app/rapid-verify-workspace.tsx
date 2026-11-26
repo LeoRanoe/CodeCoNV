@@ -321,7 +321,9 @@ export function RapidVerifyWorkspace({
  * Rapid Verify as the client's Word 10 describes it: the source search of the project documents, and the
  * spec compliance check of a submittal against the bestek.
  */
-export function RapidVerifyHome({ projectName, projectFiles = [], client, projectId, buildingId, currentUserName }: {
+export function RapidVerifyHome({ projectName, projectFiles = [], client, projectId, buildingId, currentUserName, only }: {
+  /** One of the two tools on its own (the Rapid Verify section menu has an entry for each); without it both show behind a switch. */
+  only?: "sources" | "compliance";
   projectName: string;
   projectFiles?: FileRecord[];
   client: SupabaseClient;
@@ -331,13 +333,14 @@ export function RapidVerifyHome({ projectName, projectFiles = [], client, projec
 }) {
   const { text } = useLanguage();
   const canVerify = useProjectPermissions().can("findings.verify");
-  const [view, setView] = useState<"sources" | "compliance">("sources");
+  const [chosen, setView] = useState<"sources" | "compliance">("sources");
+  const view = only ?? chosen;
   return (
     <div className="rapid-verify-home">
-      <div className="rapid-verify-switch" role="tablist" aria-label={text("Rapid Verify", "Rapid Verify")}>
+      {only ? null : <div className="rapid-verify-switch" role="tablist" aria-label={text("Rapid Verify", "Rapid Verify")}>
         <button className={`ui-button ui-button--${view === "sources" ? "secondary" : "quiet"} ui-button--md`} type="button" role="tab" aria-selected={view === "sources"} onClick={() => setView("sources")}>{text("Search project documents", "Projectdocumenten doorzoeken")}</button>
         <button className={`ui-button ui-button--${view === "compliance" ? "secondary" : "quiet"} ui-button--md`} type="button" role="tab" aria-selected={view === "compliance"} onClick={() => setView("compliance")}>{text("Spec compliance check", "Bestekcontrole")}</button>
-      </div>
+      </div>}
       {view === "sources"
         ? <RapidVerifyWorkspace projectName={projectName} projectFiles={projectFiles} client={client} />
         : <SpecComplianceCheck client={client} projectId={projectId} projectFiles={projectFiles} buildingId={buildingId} currentUserName={currentUserName} canVerify={canVerify} />}

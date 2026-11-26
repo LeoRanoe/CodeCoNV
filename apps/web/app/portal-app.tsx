@@ -324,10 +324,17 @@ export function PortalApp({
                 {viewAs.parties.map((party) => <option key={party.id} value={party.id}>{party.name}</option>)}
               </select>
             </label>
-            <p>{text("Read-only. This is what this organisation sees. Actions are taken from the Workspace and are logged as Supervision.", "Alleen lezen. Dit ziet deze organisatie. Acties doe je vanuit de Werkruimte en worden vastgelegd als Supervisie.")}</p>
+            {preview ? null : <p>{text("Read-only. This is what this organisation sees. Actions are taken from the Workspace and are logged as Supervision.", "Alleen lezen. Dit ziet deze organisatie. Acties doe je vanuit de Werkruimte en worden vastgelegd als Supervisie.")}</p>}
           </div>
         ) : null}
-        {preview ? (
+        {preview && viewAs ? (
+          <p className="portal-note portal-preview-note" role="note">
+            {mode === "contractor"
+              ? text(`Preview of the Contractor Portal as ${viewAs.parties.find((party) => party.id === viewAs.partyId)?.name ?? ""}: what this organisation sees. Read-only: nothing here is sent, answered or counted as viewed. Actions are taken from the Workspace.`, `Voorbeeld van het Aannemersportaal als ${viewAs.parties.find((party) => party.id === viewAs.partyId)?.name ?? ""}: dit ziet deze organisatie. Alleen lezen: er wordt niets verstuurd, beantwoord of als gezien geteld. Acties doe je vanuit de Werkruimte.`)
+              : text(`Preview of the Client Portal as ${viewAs.parties.find((party) => party.id === viewAs.partyId)?.name ?? ""}: what this organisation sees. Read-only: nothing here is sent, answered or counted as viewed. Actions are taken from the Workspace.`, `Voorbeeld van het Opdrachtgeversportaal als ${viewAs.parties.find((party) => party.id === viewAs.partyId)?.name ?? ""}: dit ziet deze organisatie. Alleen lezen: er wordt niets verstuurd, beantwoord of als gezien geteld. Acties doe je vanuit de Werkruimte.`)}
+          </p>
+        ) : null}
+        {preview && !viewAs ? (
           <p className="portal-note portal-preview-note" role="note">
             {mode === "contractor"
               ? text("Preview of the Contractor Portal: every item shared with a contractor on this project. Read-only: nothing here is sent, answered or counted as viewed.", "Voorbeeld van het Aannemersportaal: alles wat met een aannemer in dit project is gedeeld. Alleen lezen: er wordt niets verstuurd, beantwoord of als gezien geteld.")
