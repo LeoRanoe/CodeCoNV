@@ -11,7 +11,8 @@ export async function fillSpecFields(scope: Locator) {
   // Developer package v5, Materials Delivery: traceable material (cement, steel, precast, piles) needs its
   // certificate. The upload sits beside the form fields, so it is attached here when the form shows it.
   const certificate = scope.locator("[data-sheet-slot='certificate'] input[type='file']");
-  if (await certificate.count()) {
+  // The upload needs the private Blob store, which only the fake Blob stack provides (the CI job has none).
+  if (process.env.CODECO_E2E_FAKE_BLOB && (await certificate.count())) {
     const attached = await scope.locator("[data-sheet-slot='certificate'] .boq-preview").count();
     if (!attached) await certificate.first().setInputFiles({ name: "certificate.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 certificate") });
   }
