@@ -304,13 +304,15 @@ test("every Workspace form is its workbook sheet, row by row", () => {
       assert.ok(keys.includes(field.key), `${form}: ${field.key} stands in the sheet order`);
     }
   }
-  // Sheet order, spot-checked against the workbook rows.
-  const order = (form) => sheetLayouts[form].map((item) => (isSheetRow(item) ? `#${item.row}` : isSheetSlot(item) ? `@${item.slot}` : item));
-  assert.deepEqual(order("issue").slice(0, 8), ["identified_at", "issue_type", "issue_category", "@title", "@description", "@location", "discipline", "priority"]);
-  assert.deepEqual(order("hse").slice(0, 6), ["observed_at", "hse_type", "hse_category", "@title", "@description", "@location"]);
-  assert.deepEqual(order("change_order").slice(0, 8), ["request_date", "change_type", "change_category", "@title", "@description", "change_reason", "originator", "@location"]);
-  assert.deepEqual(order("delivery").slice(0, 4), ["@title", "#delivery_at", "supplier", "purchase_order"]);
-  assert.deepEqual(order("lessons_learned").slice(0, 6), ["recorded_on", "project_phase", "lesson_category", "@title", "situation", "what_happened"]);
+  // Mockups v6 decide where the rows stand (the title is the bar above the cards, wherever it is listed).
+  const order = (form) => sheetLayouts[form].map((item) => (isSheetRow(item) ? `#${item.row}` : isSheetSlot(item) ? `@${item.slot}` : item)).filter((name) => name !== "@title" && name !== "title");
+  assert.deepEqual(order("issue").slice(0, 6), ["issue_type", "issue_category", "discipline", "@description", "identified_at", "@location"]);
+  assert.deepEqual(order("hse").slice(0, 6), ["hse_type", "hse_category", "person_involved", "@description", "observed_at", "@location"]);
+  assert.deepEqual(order("change_order").slice(0, 6), ["change_type", "change_category", "@description", "change_reason", "originator", "request_date"]);
+  assert.deepEqual(order("delivery").slice(0, 4), ["purchase_order", "supplier", "delivery_note_number", "#delivery_at"]);
+  assert.deepEqual(order("lessons_learned").slice(0, 4), ["project_phase", "lesson_category", "recorded_on", "situation"]);
+  assert.equal(order("works_ongoing")[0], "@drawing_location", "Works ongoing opens with its Location card (the drawing, then the place in words)");
+  assert.equal(order("works_completed")[0], "based_on", "Works completed opens with its Work card");
   // Literal labels and lists of the sheets (checked 20-11-2026).
   const field = (form, key) => specForms[form].find((item) => item.key === key);
   assert.deepEqual(field("issue", "responsible_party").options, ["Client", "Consultant", "Main Contractor", "Subcontractor", "Supplier", "Utility Provider", "Authority", "Weather", "Shared", "Undetermined"]);
@@ -388,18 +390,20 @@ function specFormsIssueCategoryDisciplines() {
   return issueCategoryDisciplines;
 }
 
-test("every numbered section of a sheet form starts at a real row, in the workbook's order, and the first one starts the form", async () => {
-  const { sheetLayouts, sheetSections, sheetItemName } = await import("../lib/forms/spec-forms.ts");
-  assert.ok(Object.keys(sheetSections).length >= 12, "every sheet form has numbered sections");
+test("every numbered card of a sheet form starts at a real row, in the mockups' order, and the first one starts the form", async () => {
+  const { sheetLayouts, sheetSections, sheetItemName, sheetSpans } = await import("../lib/forms/spec-forms.ts");
+  assert.ok(Object.keys(sheetSections).length >= 12, "every sheet form has numbered cards");
   for (const [form, sections] of Object.entries(sheetSections)) {
-    const names = (sheetLayouts[form] ?? []).map((item) => sheetItemName(item));
+    // The title is the bar above the cards, wherever it is listed.
+    const names = (sheetLayouts[form] ?? []).map((item) => sheetItemName(item)).filter((name) => name !== "title");
     assert.ok(names.length, `${form} has a sheet layout`);
     const positions = sections.map((section) => names.indexOf(section.from));
-    assert.ok(positions.every((position) => position >= 0), `${form}: every section starts at a row of the form (${sections.map((section) => section.from).join(", ")})`);
-    assert.equal(positions[0], 0, `${form}: the first section starts the form`);
-    assert.deepEqual([...positions].sort((left, right) => left - right), positions, `${form}: sections follow the order of the rows`);
-    assert.equal(new Set(positions).size, positions.length, `${form}: no two sections start at the same row`);
-    assert.equal(sections[0].title.en, "General");
-    assert.equal(sections.at(-1).title.en === "Sign-off" || form === "agreement", true, `${form} ends with the sign-off (agreement keeps its evidence last, as the workbook does)`);
+    assert.ok(positions.every((position) => position >= 0), `${form}: every card starts at a row of the form (${sections.map((section) => section.from).join(", ")})`);
+    assert.equal(positions[0], 0, `${form}: the first card starts the form`);
+    assert.deepEqual([...positions].sort((left, right) => left - right), positions, `${form}: cards follow the order of the rows`);
+    assert.equal(new Set(positions).size, positions.length, `${form}: no two cards start at the same row`);
+    assert.match(sections.at(-1).title.en, /^Sign-off/, `${form} ends with the sign-off`);
+    for (const name of Object.keys(sheetSpans[form] ?? {})) assert.ok(names.includes(name), `${form}: the column width of ${name} names a row of the form`);
+    for (const span of Object.values(sheetSpans[form] ?? {})) assert.ok(Number.isInteger(span) && span >= 1 && span <= 12, `${form}: a width is 1 to 12 columns`);
   }
 });

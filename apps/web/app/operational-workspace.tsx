@@ -4300,6 +4300,7 @@ function ProjectOperations({
                 />
               </RecordSignatures>
               <p className="form-helper">{text(`Entered by ${currentUserName}`, `Ingevoerd door ${currentUserName}`)}</p>
+              <div className="record-form-actions">
               <StillNeeded items={[
                 exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId ? text("exact location", "exacte locatie") : "",
                 !online && !findingPhotos.length ? text("a photo (you are offline)", "een foto (je bent offline)") : "",
@@ -4308,6 +4309,7 @@ function ProjectOperations({
                 ...findingSpecProblems,
               ]} />
               <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3 || findingSpecProblems.length > 0} onClick={findingSigning.request}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit NCR", "NCR indienen")}</button>{findingSigning.dialog}
+              </div>
             </div>
           ) : null}
           {/* Submitting is not the end of an NCR: the contractor has to receive it and
@@ -4684,6 +4686,7 @@ function ProjectOperations({
                   slots={{
                     drawing_location: (
                       <div className="sheet-drawing-location">
+                        <DrawingLocationPicker inline key={`inline-${registerBuildingId}`} drawings={pickableDrawings(data.files, registerBuildingId)} buildings={buildings} client={client} initial={registerDrawingLocation} subject="record" close={() => undefined} save={(location) => setRegisterDrawingLocation(location)} />
                         {registerDrawingLocation ? <span className="sheet-drawing-location-summary"><MapPin size={14} aria-hidden="true" /> {drawingLocationLabel(registerDrawingLocation, text("page", "pagina"))}</span> : <small>{text("Optional: point at the spot on the drawing.", "Optioneel: wijs de plek aan op de tekening.")}</small>}
                         <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setPickingRegisterDrawing(true)}><MapPin size={14} /> {registerDrawingLocation ? text("Change on drawing", "Wijzigen op tekening") : text("Choose on drawing", "Kies op tekening")}</button>
                         {registerDrawingLocation ? <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => setRegisterDrawingLocation(null)}><X size={14} /> {text("Remove", "Verwijderen")}</button> : null}
@@ -5360,6 +5363,7 @@ function ProjectOperations({
                   ) : null}
                 </RecordSignatures>
               ) : null}
+              <div className="record-form-actions">
               {(() => {
                 // What is still missing before the save button works, in words. A disabled button
                 // that does not say why is how a form gets abandoned; this mirrors the rules above.
@@ -5388,6 +5392,7 @@ function ProjectOperations({
                 return registerMissing.length ? <small className="confirm-needs"><strong>{text(`${registerMissing.length} required left`, `Nog ${registerMissing.length} verplicht`)}</strong>: {registerMissing.join(" · ")} · {text("auto-saved", "automatisch bewaard")}</small> : null;
               })()}
               <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !registerLocationNodeId) || registerTitle.length < 3 || (sheetRegister ? sheetRegisterMissing.length > 0 : !controlledFormReady || !lessonFormReady || !delayReportFormReady) || registerSpecProblems.length > 0} onClick={registerSigning.request}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : agreementRegister ? text("Save agreement", "Afspraak opslaan") : lessonsLearnedRegister ? text("Save lesson learned", "Geleerde les opslaan") : delayReportRegister ? text("Save delay report", "Vertragingsrapport opslaan") : text("Save register item", "Registeritem opslaan")}</button>{registerSigning.dialog}
+              </div>
             </RecordFormShell>
           ) : null}
           {/* The bill of quantities has nothing to do with a delivery or any other

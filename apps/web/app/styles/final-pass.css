@@ -873,6 +873,18 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
 .choice-tile.is-chosen .choice-icon { color: var(--signal-dark); }
 .choice-tile-tick { color: var(--signal-dark); position: absolute; right: 8px; top: 8px; }
 .choice-tile:has(input:disabled) { cursor: not-allowed; opacity: 0.55; }
+/* Mockups v6: a short ordered list is a segmented control, a longer one (or a multi-choice) is a row of pills. The pictures of the tiles stay in the markup and out of sight. */
+.choice-tiles--chips, .choice-tiles--segmented { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.choice-tiles--chips .choice-tile, .choice-tiles--segmented .choice-tile { display: inline-flex; flex-direction: row; gap: var(--space-2); justify-content: center; min-height: var(--control-h-md); padding: 0 var(--space-4); }
+.choice-tiles--chips .choice-icon, .choice-tiles--segmented .choice-icon, .choice-tiles--chips .choice-tile-tick, .choice-tiles--segmented .choice-tile-tick { display: none; }
+.choice-tiles--chips .choice-tile { border-color: var(--ink-400); border-radius: var(--radius-pill); color: var(--text); }
+.choice-tiles--chips .choice-tile span, .choice-tiles--segmented .choice-tile span { font-size: var(--text-sm); font-weight: var(--weight-normal); }
+.choice-tiles--chips .choice-tile.is-chosen span { font-weight: var(--weight-bold); }
+.choice-tiles--segmented { border: 1px solid var(--ink-400); border-radius: var(--radius-sm); gap: 0; overflow: hidden; }
+.choice-tiles--segmented .choice-tile { border: 0; border-inline-start: 1px solid var(--ink-300); border-radius: 0; color: var(--text); flex: 1 1 0; }
+.choice-tiles--segmented .choice-tile:first-child { border-inline-start: 0; }
+.choice-tiles--segmented .choice-tile.is-chosen { background: var(--signal-dark); color: var(--paper); }
+.choice-tiles--segmented .choice-tile.is-chosen span { font-weight: var(--weight-bold); }
 @media (max-width: 640px) {
   .choice-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .choice-tiles > *:last-child:nth-child(odd) { grid-column: 1 / -1; }
@@ -985,11 +997,44 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
 .spec-compliance-superseded { color: var(--ink-800); font-style: normal; font-weight: var(--weight-semibold); }
 .workspace-open-log { margin-left: auto; }
 
-/* Numbered sections of a sheet form: plain headings that group the rows, the order of the rows is the workbook's. */
-.sheet-section-title { align-items: baseline; border-top: 1px solid var(--line); color: var(--text); display: flex; font-size: var(--text-lg); font-weight: var(--weight-semibold); gap: var(--space-2); margin: var(--space-5) 0 var(--space-2); padding-top: var(--space-4); }
-.sheet-section-title:first-of-type { border-top: 0; margin-top: 0; padding-top: 0; }
-.sheet-section-number { color: var(--ink-700); font-variant-numeric: tabular-nums; }
-.sheet-section-number::after { content: "."; }
+/* Mockups v6: a sheet form is a title bar and numbered cards. A card has a number, a title and a hint, and its rows sit in a 12-column grid. */
+.sheet-form { display: grid; gap: var(--space-4); }
+.sheet-title-row { background: var(--paper); border: 2px solid var(--signal); border-radius: var(--radius-card); padding: var(--space-2) var(--space-4); }
+.sheet-title-row .form-field, .sheet-title-row .sheet-slot { align-items: center; display: flex; gap: var(--space-3); margin: 0; }
+.sheet-title-row .sheet-slot-label, .sheet-title-row label { color: var(--signal-dark); flex: none; font-weight: var(--weight-semibold); }
+.sheet-title-row input { border: 0; flex: 1; font-size: var(--text-lg); min-height: var(--control-h-lg); min-width: 0; }
+.sheet-card { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-card); display: grid; gap: var(--space-3); padding: var(--space-4) var(--space-5); }
+.sheet-section-title { align-items: center; color: var(--text); display: flex; font-size: var(--text-lg); font-weight: var(--weight-semibold); gap: var(--space-3); margin: 0; }
+.sheet-section-number { align-items: center; background: var(--signal); border-radius: var(--radius-pill); color: var(--paper); display: inline-flex; flex: none; font-size: var(--text-sm); font-variant-numeric: tabular-nums; font-weight: var(--weight-bold); height: var(--space-6); justify-content: center; width: var(--space-6); }
+.sheet-section-hint { color: var(--muted); font-size: var(--text-sm); font-weight: var(--weight-normal); margin-inline-start: auto; text-align: end; }
+.sheet-card-grid { container-type: inline-size; display: grid; gap: var(--space-3) var(--space-4); grid-template-columns: repeat(12, minmax(0, 1fr)); }
+.sheet-cell { grid-column: span var(--span, 12); min-width: 0; }
+.sheet-cell > .form-field, .sheet-cell > .sheet-row { margin: 0; }
+@container (max-width: 759px) { .sheet-cell { grid-column: 1 / -1; } }
+/* Mockups v6: the bar at the foot of a form stays in view: what is still needed on the left, Cancel, Save draft and the primary action on the right. */
+.record-form-actions { align-items: center; background: var(--paper); border-top: 1px solid var(--line); bottom: var(--mobile-nav-height); display: flex; flex-wrap: wrap; gap: var(--space-3); justify-content: flex-end; margin-top: var(--space-4); padding: var(--space-3) 0; position: sticky; z-index: 3; }
+.record-form-actions .confirm-needs { flex: 1 1 16rem; margin: 0; order: -1; }
+/* The Location card of the mockups: the drawing with its pin on the left, the place in words on the right. */
+.drawing-location-inline { background: var(--ink-50); border: 1px solid var(--line); border-radius: var(--radius-card); min-height: 12rem; overflow: hidden; width: 100%; }
+.drawing-location-inline > .modal-header, .drawing-location-inline > .modal-actions { display: none; }
+.drawing-location-inline .drawing-location-body { max-height: min(60vh, 28rem); overflow: auto; padding: var(--space-3); }
+@container (min-width: 760px) {
+  .sheet-cell[data-sheet-cell="drawing_location"] { grid-column: 1 / span 7; grid-row: span 2; }
+  .sheet-cell[data-sheet-cell="location"], .sheet-cell[data-sheet-cell="exact_location"] { grid-column: 8 / span 5; }
+}
+.sheet-row { grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); }
+.sheet-row > .sheet-slot-label { grid-column: 1 / -1; }
+@container (max-width: 759px) { .sheet-row { grid-template-columns: minmax(0, 1fr); } }
+.sheet-workflow { align-items: center; color: var(--text); display: flex; flex-wrap: wrap; font-size: var(--text-sm); gap: var(--space-1) var(--space-2); margin: 0; }
+.sheet-role { background: var(--ink-100); border-radius: var(--radius-sm); font-weight: var(--weight-semibold); padding: 2px var(--space-2); }
+.sheet-role--supervision { background: var(--signal-soft); color: var(--signal-dark); }
+/* The signatures continue the Sign-off card: supervision's own card outlined in orange, the counterpart beside it. */
+.sheet-form + .record-signatures { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-card); margin-top: calc(var(--space-4) * -1); padding: var(--space-4) var(--space-5) var(--space-5); }
+.sheet-form + .record-signatures > h3 { display: none; }
+.sheet-form + .record-signatures .record-signatures-grid { align-items: stretch; }
+.sheet-form + .record-signatures .signature-field { border: 2px solid var(--signal); border-radius: var(--radius-card); height: 100%; padding: var(--space-4); }
+.sheet-form + .record-signatures .contractor-signature-field .signature-field { border: 2px dashed var(--ink-400); }
+
 
 /* Rapid Verify compliance check: the bestek and the submittal side by side (Word 10.1). */
 .compliance-viewer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin-block: var(--space-3); }

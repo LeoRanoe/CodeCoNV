@@ -971,7 +971,23 @@ export const isSheetSlot = (item: SheetItem | string): item is SheetSlot => type
  * the sheet item named in `from` (a field key, a slot name or a row name) and runs to the next one. The rows keep the
  * order of the workbook; the headings only group them, so the order of the fields never changes.
  */
-export type SheetSection = { from: string; title: Words };
+/** `hint` is the short line at the right of the card heading in the mockups ("What is the problem?"). */
+export type SheetSection = { from: string; title: Words; hint?: Words };
+
+/**
+ * How many of the 12 columns of a section card a row takes (mockups v6). A row that is not listed takes 12 for a long
+ * control (text area, list, tiles, the screen's own slots) and 6 for a short one. On a phone every row takes the width.
+ */
+export const sheetSpans: Partial<Record<SpecFormKey, Record<string, number>>> = {};
+
+/** Fields the mockups show as a row of pills although their list is long (a dropdown elsewhere). */
+export const chipFields: readonly string[] = ["issue_type", "hse_type", "incident_type", "element_type", "delivery_status", "arrival_condition", "delay_cause_type", "detected_during", "root_cause_category", "reason", "meeting_source", "environmental_impact", "property_damage", "injury_classification", "injury_nature", "body_part", "discrepancy_type"];
+/** Fields the mockups show as one segmented control although their list has six values. */
+export const segmentedFields: readonly string[] = ["disposition", "inspection_status"];
+
+export function sheetSpan(form: SpecFormKey, name: string, fallback: number): number {
+  return sheetSpans[form]?.[name] ?? fallback;
+}
 export const sheetSections: Partial<Record<SpecFormKey, SheetSection[]>> = {
   works_ongoing: [
     { from: "title", title: w("General", "Algemeen") },
@@ -1463,3 +1479,100 @@ export function canChooseDecision(field: SpecField, option: string, canDecide: b
 export function sensitiveKeys(form: SpecFormKey) {
   return specForms[form].filter((field) => field.sensitive).flatMap((field) => [field.key, otherKey(field), refKey(field), refsKey(field)]);
 }
+
+/**
+ * Mockups v6 (tablet landscape, one continuous page): the order of the rows, the numbered cards (title and hint) and the
+ * columns of each sheet form. The fields are the Excel's; the mockups decide where they stand (the Excel decides what
+ * they are). A row not named in `order` stays at the end. `cards` lists the first row of each card with its title and
+ * hint; `spans` is the width of a row out of 12 (a row that is not listed takes 12 for a long control, 6 for a short one).
+ */
+function arrange(form: SpecFormKey, order: string[], cards: Array<[string, string, string, string?, string?]>, spans: Record<string, number>) {
+  const layout = sheetLayouts[form];
+  if (!layout) return;
+  const byName = new Map(layout.map((item) => [sheetItemName(item), item]));
+  const placed = order.map((name) => byName.get(name)).filter((item): item is SheetItem => Boolean(item));
+  const rest = layout.filter((item) => !order.includes(sheetItemName(item)));
+  sheetLayouts[form] = [...placed, ...rest];
+  sheetSections[form] = cards.map(([from, en, nl, hintEn, hintNl]) => ({ from, title: w(en, nl), hint: hintEn ? w(hintEn, hintNl ?? hintEn) : undefined }));
+  sheetSpans[form] = spans;
+}
+
+const locationHint: [string, string] = ["Pick the drawing and tap the spot", "Kies de tekening en tik de plek aan"];
+const signOff: [string, string] = ["Sign-off / review workflow", "Ondertekening / beoordelingsproces"];
+
+arrange("works_ongoing",
+  ["drawing_location", "location", "exact_location", "shift", "weather", "rain", "discipline", "activity", "work_item", "crew", "report_date", "progress_status", "progress_percent", "quantity", "quantity_unit", "times", "details", "inspection_reference", "blocker", "photos", "remarks", "workflow_status"],
+  [["drawing_location", "Location", "Locatie", ...locationHint], ["shift", "Work", "Werk", "What is being done and by whom?", "Wat gebeurt er en door wie?"], ["progress_status", "Progress", "Voortgang", "How far along is it today?", "Hoe ver is het vandaag?"], ["details", "Technical details", "Technische details", "Only shown for the selected activity", "Alleen getoond bij de gekozen activiteit"], ["blocker", "Blockers & evidence", "Belemmeringen en bewijs"], ["workflow_status", ...signOff]],
+  { drawing_location: 7, location: 5, exact_location: 5, report_date: 4, shift: 5, weather: 7, rain: 6, discipline: 6, activity: 6, work_item: 12, crew: 6, progress_status: 6, progress_percent: 6, quantity: 3, quantity_unit: 3, times: 6, details: 12, inspection_reference: 12, blocker: 12, photos: 6, remarks: 6, workflow_status: 12 });
+
+arrange("works_completed",
+  ["based_on", "completion_date", "discipline", "activity", "completed_items", "details", "quantity", "quantity_unit", "crew", "drawing_location", "location", "exact_location", "inspection", "reference", "outstanding", "photos", "remarks", "workflow_status"],
+  [["based_on", "Work", "Werk", "What was completed and by whom?", "Wat is afgerond en door wie?"], ["drawing_location", "Location", "Locatie", ...locationHint], ["inspection", "Inspection", "Keuring", "Physical completion and quality acceptance are kept separate", "Fysieke oplevering en kwaliteitsacceptatie blijven gescheiden"], ["photos", "Evidence", "Bewijs"], ["workflow_status", ...signOff]],
+  { based_on: 12, completion_date: 4, discipline: 6, activity: 6, completed_items: 12, details: 12, quantity: 4, quantity_unit: 4, crew: 4, drawing_location: 7, location: 5, exact_location: 5, inspection: 12, reference: 6, outstanding: 6, photos: 6, remarks: 6, workflow_status: 12 });
+
+arrange("issue",
+  ["issue_type", "issue_category", "discipline", "description", "identified_at", "location", "priority", "impact_types", "immediate_action", "responsible", "target_date", "related_record", "corrective_action", "attachments", "workflow_status"],
+  [["issue_type", "Issue", "Issue", "What is the problem?", "Wat is het probleem?"], ["location", "Location", "Locatie", ...locationHint], ["priority", "Priority, impact & follow-up", "Prioriteit, impact en opvolging"], ["workflow_status", ...signOff]],
+  { issue_type: 12, issue_category: 6, discipline: 6, description: 12, identified_at: 4, location: 12, priority: 6, impact_types: 6, immediate_action: 12, responsible: 6, target_date: 3, related_record: 3, corrective_action: 6, attachments: 6, workflow_status: 12 });
+
+arrange("delivery",
+  ["purchase_order", "supplier", "delivery_note_number", "delivery_at", "material_group", "material_category", "material_specification", "batch_number", "certificate", "concrete_ticket", "ordered_quantity", "delivered_quantity", "unit", "delivery_status", "arrival_condition", "inspection", "storage_location", "discrepancy", "photos", "received_by"],
+  [["purchase_order", "Delivery", "Levering", "Who delivered what?", "Wie leverde wat?"], ["ordered_quantity", "Quantity", "Hoeveelheid", "Ordered vs delivered", "Besteld en geleverd"], ["arrival_condition", "Inspection on arrival", "Keuring bij aankomst"], ["received_by", ...signOff]],
+  { purchase_order: 4, supplier: 4, delivery_note_number: 4, delivery_at: 4, material_group: 4, material_category: 4, material_specification: 12, batch_number: 6, certificate: 6, concrete_ticket: 12, ordered_quantity: 4, delivered_quantity: 4, unit: 4, delivery_status: 12, arrival_condition: 12, inspection: 12, storage_location: 6, discrepancy: 12, photos: 12, received_by: 12 });
+
+arrange("delay_report",
+  ["delay_start_at", "activity", "location", "delay_cause_type", "delay_cause_category", "responsible_party", "detailed_cause", "duration", "duration_unit", "critical_path", "milestone_impact", "recovery_action", "action_owner", "target_recovery_date", "photos", "status"],
+  [["delay_start_at", "Delay", "Vertraging", "What is delayed and since when?", "Wat is vertraagd en sinds wanneer?"], ["location", "Location", "Locatie", ...locationHint], ["delay_cause_type", "Cause", "Oorzaak", "Why is it delayed?", "Waarom is het vertraagd?"], ["duration", "Impact", "Impact", "How big is the delay?", "Hoe groot is de vertraging?"], ["recovery_action", "Recovery", "Herstel", "What will be done?", "Wat gaat er gebeuren?"], ["status", ...signOff]],
+  { delay_start_at: 4, activity: 8, location: 12, delay_cause_type: 12, delay_cause_category: 6, responsible_party: 6, detailed_cause: 12, duration: 4, duration_unit: 8, critical_path: 12, milestone_impact: 12, recovery_action: 6, action_owner: 3, target_recovery_date: 3, photos: 12, status: 12 });
+
+arrange("hse",
+  ["hse_type", "hse_category", "person_involved", "description", "observed_at", "location", "potential_consequences", "risk_likelihood", "risk_severity", "risk_rating", "immediate_action", "corrective_action", "action_owner", "due_date", "photos", "related_record", "status"],
+  [["hse_type", "Observation", "Waarneming", "What did you see?", "Wat zag je?"], ["location", "Location", "Locatie", ...locationHint], ["potential_consequences", "Risk", "Risico", "Rating is calculated automatically", "De score wordt automatisch berekend"], ["corrective_action", "Action", "Actie", "Who fixes it and when?", "Wie lost het op en wanneer?"], ["status", ...signOff]],
+  { hse_type: 12, hse_category: 6, person_involved: 6, description: 12, observed_at: 4, location: 12, potential_consequences: 12, risk_likelihood: 6, risk_severity: 6, risk_rating: 6, immediate_action: 6, corrective_action: 6, action_owner: 3, due_date: 3, photos: 6, related_record: 6, status: 12 });
+
+arrange("ncr",
+  ["ncr_type", "ncr_category", "description", "discipline", "requirement_reference", "raised_at", "location", "detected_during", "related_inspection", "severity", "containment", "disposition", "corrective_action", "action_owner", "target_date", "root_cause_category", "root_cause_analysis", "attachments", "workflow_status"],
+  [["ncr_type", "Non-conformance", "Afwijking", "What does not conform?", "Wat voldoet niet?"], ["location", "Location", "Locatie", ...locationHint], ["detected_during", "Detection & severity", "Constatering en ernst"], ["corrective_action", "Corrective action", "Corrigerende actie"], ["workflow_status", ...signOff]],
+  { ncr_type: 6, ncr_category: 6, description: 12, discipline: 6, requirement_reference: 6, raised_at: 4, location: 12, detected_during: 12, related_inspection: 6, severity: 6, containment: 12, disposition: 12, corrective_action: 6, action_owner: 3, target_date: 3, root_cause_category: 12, root_cause_analysis: 6, attachments: 6, workflow_status: 12 });
+
+arrange("technical_instruction",
+  ["instruction_type", "discipline", "instruction_category", "reason", "description", "instruction_date", "location", "drawing_reference", "related_record", "attachments", "issued_to", "action_owner", "response_required_by", "workflow_status", "acknowledged_by", "closed_verified_by"],
+  [["instruction_type", "Instruction", "Instructie", "What kind of instruction?", "Wat voor instructie?"], ["location", "Location", "Locatie", ...locationHint], ["drawing_reference", "Reference", "Verwijzing"], ["issued_to", "Recipient", "Ontvanger", "Who must act?", "Wie moet handelen?"], ["workflow_status", ...signOff]],
+  { instruction_type: 6, discipline: 6, instruction_category: 6, reason: 12, description: 12, instruction_date: 4, location: 12, drawing_reference: 6, related_record: 6, attachments: 12, issued_to: 4, action_owner: 4, response_required_by: 4, workflow_status: 12, acknowledged_by: 12, closed_verified_by: 12 });
+
+arrange("change_order",
+  ["change_type", "change_category", "description", "change_reason", "originator", "request_date", "location", "quantity", "cost", "time", "drawing_reference", "assessment", "approval_status", "instruction_to_proceed", "related_record", "attachments", "approvers"],
+  [["change_type", "Change", "Wijziging", "What changes?", "Wat verandert er?"], ["location", "Location", "Locatie", ...locationHint], ["quantity", "Impact", "Impact", "Cost and time", "Kosten en tijd"], ["approval_status", "Approval", "Goedkeuring"], ["approvers", ...signOff]],
+  { change_type: 6, change_category: 6, description: 12, change_reason: 6, originator: 6, request_date: 4, location: 12, quantity: 12, cost: 6, time: 6, drawing_reference: 6, assessment: 6, approval_status: 6, instruction_to_proceed: 12, related_record: 6, attachments: 12, approvers: 12 });
+
+arrange("hse_incident",
+  ["incident_type", "incident_category", "description", "incident_at", "location", "people_involved", "witnesses", "injury_classification", "injury_nature", "body_part", "environmental_impact", "damage", "immediate_response", "incident_severity", "investigation_required", "notified", "investigation_findings", "corrective_actions", "photos", "related_observation", "status", "reviewer"],
+  [["incident_type", "Incident", "Incident", "What happened and when?", "Wat gebeurde er en wanneer?"], ["location", "Location", "Locatie", ...locationHint], ["people_involved", "People & damage", "Personen en schade", "Fields appear only when relevant", "Velden verschijnen alleen als ze relevant zijn"], ["immediate_response", "Response & investigation", "Reactie en onderzoek"], ["corrective_actions", "Actions & evidence", "Acties en bewijs"], ["status", ...signOff]],
+  { incident_type: 12, incident_category: 6, description: 12, incident_at: 4, location: 12, people_involved: 6, witnesses: 6, injury_classification: 12, injury_nature: 12, body_part: 12, environmental_impact: 12, damage: 12, immediate_response: 12, incident_severity: 6, investigation_required: 6, notified: 6, investigation_findings: 12, corrective_actions: 12, photos: 6, related_observation: 6, status: 12, reviewer: 12 });
+
+arrange("lessons_learned",
+  ["project_phase", "lesson_category", "recorded_on", "situation", "what_happened", "impact", "root_cause", "lesson_learned", "recommendation", "applicability", "discipline", "action_owner", "photos", "review_status", "reviewed"],
+  [["project_phase", "Classification", "Indeling"], ["situation", "What happened", "Wat gebeurde er"], ["lesson_learned", "Lesson", "Les", "What do we do next time?", "Wat doen we de volgende keer?"], ["review_status", ...signOff]],
+  { project_phase: 6, lesson_category: 6, recorded_on: 4, situation: 6, what_happened: 6, impact: 12, root_cause: 12, lesson_learned: 6, recommendation: 6, applicability: 12, discipline: 4, action_owner: 4, photos: 4, review_status: 12, reviewed: 12 });
+
+arrange("agreement",
+  ["agreement_at", "source", "agreed_by", "agreement_type", "agreement_category", "description", "action_required", "action_owner", "due_date", "related", "related_record", "photos", "workflow_status"],
+  [["agreement_at", "Source", "Bron", "Where was it agreed?", "Waar is het afgesproken?"], ["agreement_type", "Agreement", "Afspraak", "What was agreed?", "Wat is afgesproken?"], ["action_required", "Follow-up", "Opvolging"], ["workflow_status", ...signOff]],
+  { agreement_at: 4, source: 12, agreed_by: 12, agreement_type: 6, agreement_category: 6, description: 12, action_required: 12, action_owner: 6, due_date: 6, related: 6, related_record: 6, photos: 12, workflow_status: 12 });
+
+/** The line under "Sign-off / review workflow" (mockups v6): who does what, in order, and the workflow's name. */
+export type WorkflowStep = { role: "Supervision" | "Contractor" | "Project Manager" | "Supplier" | "Client"; en: string; nl: string };
+export const sheetWorkflow: Partial<Record<SpecFormKey, { code: string; steps: WorkflowStep[] }>> = {
+  works_ongoing: { code: "WO-DAILY-SUPERVISION", steps: [{ role: "Supervision", en: "fills in, signs & submits (final)", nl: "vult in, tekent en dient in (definitief)" }] },
+  works_completed: { code: "WC-COMPLETION-SUPERVISION", steps: [{ role: "Supervision", en: "records & submits (final) → quality via linked Inspection", nl: "legt vast en dient in (definitief) → kwaliteit via gekoppelde keuring" }] },
+  issue: { code: "ISSUE-CLOSEOUT-SUPERVISION", steps: [{ role: "Supervision", en: "fills in & submits", nl: "vult in en dient in" }, { role: "Contractor", en: "reacts", nl: "reageert" }, { role: "Supervision", en: "verifies & closes", nl: "verifieert en sluit" }] },
+  delivery: { code: "MAT-RECEIPT-SUPERVISION", steps: [{ role: "Supervision", en: "records receipt & result (final)", nl: "legt ontvangst en resultaat vast (definitief)" }, { role: "Supplier", en: "signs (optional)", nl: "tekent (optioneel)" }] },
+  delay_report: { code: "PDR-REVIEW-SUPERVISION", steps: [{ role: "Supervision", en: "fills in & submits", nl: "vult in en dient in" }, { role: "Contractor", en: "reacts", nl: "reageert" }, { role: "Supervision", en: "reviews cause & impact · closes", nl: "beoordeelt oorzaak en impact · sluit" }] },
+  hse: { code: "HSE-OBSERVATION-SUPERVISION", steps: [{ role: "Supervision", en: "fills in & submits", nl: "vult in en dient in" }, { role: "Contractor", en: "reacts", nl: "reageert" }, { role: "Supervision", en: "verifies & closes", nl: "verifieert en sluit" }] },
+  ncr: { code: "NCR-CORRECTIVE-SUPERVISION", steps: [{ role: "Supervision", en: "raises NCR", nl: "meldt NCR" }, { role: "Contractor", en: "acknowledges · responds with action", nl: "bevestigt · reageert met actie" }, { role: "Supervision", en: "verifies & closes", nl: "verifieert en sluit" }] },
+  technical_instruction: { code: "TECH-INSTRUCTION-SUPERVISION", steps: [{ role: "Supervision", en: "issues instruction", nl: "geeft instructie uit" }, { role: "Contractor", en: "acknowledges · responds", nl: "bevestigt · reageert" }, { role: "Supervision", en: "verifies & closes", nl: "verifieert en sluit" }] },
+  change_order: { code: "CHANGE-APPROVAL-SUPERVISION", steps: [{ role: "Supervision", en: "prepares & submits", nl: "bereidt voor en dient in" }, { role: "Project Manager", en: "approves / rejects / returns → Instruction to proceed", nl: "keurt goed / af / retourneert → opdracht tot uitvoering" }] },
+  hse_incident: { code: "HSE-INCIDENT-SUPERVISION", steps: [{ role: "Supervision", en: "registers incident", nl: "registreert incident" }, { role: "Contractor", en: "reacts · adds action evidence", nl: "reageert · voegt bewijs van acties toe" }, { role: "Supervision", en: "verifies & closes (HSE)", nl: "verifieert en sluit (HSE)" }] },
+  lessons_learned: { code: "LESSON-REVIEW-SUPERVISION", steps: [{ role: "Supervision", en: "records & submits (final)", nl: "legt vast en dient in (definitief)" }] },
+  agreement: { code: "AGREEMENT-ACK-SUPERVISION", steps: [{ role: "Supervision", en: "records agreement", nl: "legt afspraak vast" }, { role: "Contractor", en: "acknowledges · accepts action", nl: "bevestigt · accepteert actie" }, { role: "Supervision", en: "confirms record", nl: "bevestigt record" }] },
+};

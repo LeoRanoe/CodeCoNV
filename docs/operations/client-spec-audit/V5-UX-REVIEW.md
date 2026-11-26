@@ -37,3 +37,24 @@ Question asked: are the gaps against the client's request verified, and are the 
 - Most screens on tablet and phone were not read by eye (the script only proves that nothing scrolls sideways).
 - Dutch wording on screen (all pictures are English).
 - Scanned PDFs without text in the compliance check (it says so, but it was not run on one).
+
+## Forms against the mockups (26-11-2026, second round)
+
+The user pointed out that the forms did not look like the mockup images. They were right: the first pass had only numbered the sections. The comparison with the 15 mockups (`mockups/00-15`) gave this list.
+
+Done (12 sheet forms: Issue, NCR, HSE, HSE incident, Delivery, Technical instruction, Change order, Project Delay Report, Lessons Learned, Agreements, Works ongoing, Works completed):
+- title bar above the cards; numbered cards with a hint; rows in the order and with the section titles of each mockup (decision D-27 for Works)
+- 12-column grid, up to four short fields per row on a wide card, stacked on a narrow one (D-28)
+- pills and segmented controls instead of pictured tiles and long dropdowns (D-29, D-30)
+- Sign-off card: the workflow line (who does what) and the workflow name, the signatures as an orange card and a dashed card
+- the action bar (what is still needed, Cancel, Save draft, the primary action) stays in view
+- Works ongoing and Works completed: the drawing with its pin is part of the Location card (tap to place the spot), the place in words beside it
+
+Not done:
+- Issue, NCR, HSE, Technical instruction, Change order, Project Delay Report and HSE incident have no drawing and pin in the Location card (the mockups show one); our forms only have building and coordinates. A pin per record needs storage; this is a feature, not a layout change
+- the header of a form (icon, breadcrumb, Draft pill, "± 8-12 min")
+- "AUTO / DEFAULT / FROM DRAWING" tags and the locked grey fields
+- the dashed "Shown because ..." panels around conditional fields
+- the signature is a popup after "Sign now", not a drawing pad inside the card (an earlier decision of the user)
+- Photos (01), Workforce (04) and Inspections (09) were not compared with their mockups yet
+- the primary button text ("Sign, submit & notify") differs per form; the accessible names of the buttons are kept because the tests select them

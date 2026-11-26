@@ -55,6 +55,7 @@ export function DrawingLocationPicker({
   client,
   initial,
   subject = "photo",
+  inline = false,
   close,
   save,
 }: {
@@ -65,6 +66,8 @@ export function DrawingLocationPicker({
   initial?: DrawingLocation | null;
   /** What is being placed: a photo (the default) or a register record such as a Works form. */
   subject?: "photo" | "record";
+  /** Shown inside the form (the mockups' Location card) instead of over it: a tap on the drawing saves the spot at once. */
+  inline?: boolean;
   close: () => void;
   save: (location: DrawingLocation) => void;
 }) {
@@ -88,11 +91,19 @@ export function DrawingLocationPicker({
   const choose = (clientX: number, clientY: number, target: HTMLElement) => {
     const normalized = normalizedImagePoint(clientX, clientY, target.getBoundingClientRect());
     setPoint({ xRatio: normalized.x, yRatio: normalized.y });
+    if (inline && activeDrawing) save({ fileId: activeDrawing.id, fileName: activeDrawing.original_name, pageNumber, xRatio: normalized.x, yRatio: normalized.y });
   };
 
-  return (
+  const frame = (children: React.ReactNode) => inline ? (
+    <section className="drawing-location-inline" aria-label={text("Drawing and spot", "Tekening en plek")}>{children}</section>
+  ) : (
     <div className="modal-backdrop" role="presentation" onPointerDown={(event) => event.target === event.currentTarget && close()}>
-      <section className="modal drawing-location-modal" role="dialog" aria-modal="true" aria-labelledby="drawing-location-title">
+      <section className="modal drawing-location-modal" role="dialog" aria-modal="true" aria-labelledby="drawing-location-title">{children}</section>
+    </div>
+  );
+
+  return frame(
+    <>
         <header className="modal-header">
           <div>
             <h2 id="drawing-location-title">{activeDrawing
@@ -180,8 +191,7 @@ export function DrawingLocationPicker({
             })}
           ><Check size={15} /> {text("Use this spot", "Gebruik deze plek")}</button> : null}
         </footer>
-      </section>
-    </div>
+    </>,
   );
 }
 
