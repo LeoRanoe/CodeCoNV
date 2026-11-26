@@ -11,7 +11,7 @@ import {
   sectionHeading,
   signatureBlock,
 } from "@/lib/reports/docx-shared";
-import { allPeriodReportSections, allPeriodReportTopics, hseIncidentTypes, immediateActionText, withoutSignatures, type PeriodReportOptions } from "@/lib/reports/period-report-pdf";
+import { allPeriodReportSections, allPeriodReportTopics, groupLineText, hseIncidentTypes, immediateActionText, structureText, withoutSignatures, type PeriodReportOptions } from "@/lib/reports/period-report-pdf";
 import { dataUrlBytes } from "@/lib/reports/report-photos";
 import type { PeriodReportSnapshot } from "@/lib/supabase/operations";
 
@@ -222,7 +222,25 @@ export function buildPeriodReportDocxDocument(source: PeriodReportSnapshot, opti
     }
   }
 
-  if (sections.has("work")) {
+  const structure = options.structure;
+  const summary = structure?.detail === "summary";
+  if (structure && (summary || structure.groupBy !== "none")) {
+    children.push(heading(structureText.overview(summary, structure.groupLabel)));
+    for (const group of structure.groups) {
+      if (group.label) children.push(new Paragraph({ children: [new TextRun({ text: `${group.label} (${group.lines.length})`, bold: true, size: 16 })], spacing: { before: 100 } }));
+      if (summary) {
+        const counts = new Map<string, number>();
+        for (const line of group.lines) counts.set(line.form, (counts.get(line.form) ?? 0) + 1);
+        counts.forEach((count, form) => children.push(new Paragraph({ children: [new TextRun({ text: `${count} · ${form}`, size: 16 })], spacing: { after: 40 } })));
+      } else {
+        for (const line of group.lines) children.push(new Paragraph({ children: [new TextRun({ text: groupLineText(line), size: 15 })], spacing: { after: 30 } }));
+      }
+    }
+    if (structure.groups.every((group) => group.lines.length === 0)) children.push(new Paragraph({ children: [new TextRun({ text: "Geen records in deze periode.", italics: true, size: 16 })] }));
+    if (summary && sections.has("actions") && topics.has("deadlines")) children.push(heading("Open deadlines en acties"), ...recordRows(snapshot.open_actions));
+  }
+
+  if (sections.has("work") && !summary) {
     children.push(heading("Dagverloop, werkzaamheden en voortgang"));
     if (snapshot.day_reports.length) {
       snapshot.day_reports.forEach((report) => {
@@ -247,7 +265,7 @@ export function buildPeriodReportDocxDocument(source: PeriodReportSnapshot, opti
     children.push(heading("Dagregistraties, activiteiten en locatie"), ...recordRows(snapshot.registrations));
   }
 
-  if (sections.has("quality")) {
+  if (sections.has("quality") && !summary) {
     const withProgress = (rows: Array<Record<string, unknown>>) => rows.map((finding) => {
       const progress = progressByFinding.get(value(finding, "id"));
       return { ...finding, details: { disposition: progress ? value(progress, "disposition") : "", progress_percent: progress ? value(progress, "progress_percent") : "0", inspected_at: progress ? value(progress, "inspected_at") : "" } };
@@ -257,21 +275,21 @@ export function buildPeriodReportDocxDocument(source: PeriodReportSnapshot, opti
     if (topics.has("issues")) children.push(heading("Issue control en bevindingen"), ...recordRows(withProgress(issueFindings), "Geen issues in deze periode."));
     if (topics.has("ncr")) children.push(heading("NCR - formele afwijkingen"), ...recordRows(withProgress(ncrFindings), "Geen NCR in deze periode."));
   }
-  if (sections.has("hse") && topics.has("hse")) children.push(heading("HSE-observaties en maatregelen"), ...recordRows(hseObservations, "Geen HSE-observatie in deze periode."));
-  if (sections.has("hse") && topics.has("hse_incident")) children.push(heading("HSE-incidenten, near misses en werkstops"), ...recordRows(hseIncidents, "Geen HSE-incident in deze periode."));
-  if (sections.has("environment")) children.push(heading("Milieu, social en housekeeping"), ...recordRows(register("environmental_report"), "Geen milieurapport of housekeepingobservatie in deze periode."));
-  if (sections.has("actions") && topics.has("deadlines")) children.push(heading("Open deadlines en acties"), ...recordRows(snapshot.open_actions));
-  if (sections.has("logistics") && topics.has("materials_delivery")) children.push(heading("Materialen en leveringen"), ...recordRows(register("delivery")));
-  if (sections.has("logistics") && topics.has("delays")) children.push(heading("Vertragingen"), ...recordRows(register("delay")));
-  if (sections.has("instructions") && topics.has("technical_instructions")) children.push(heading("Technische instructies"), ...recordRows([...register("technical_instruction"), ...register("site_instruction")]));
-  if (sections.has("commercial") && topics.has("change_order")) children.push(heading("Change orders en meer-/minderwerk"), ...recordRows([...register("change_order"), ...register("variation")]));
-  if (sections.has("communications") && topics.has("agreements_made")) children.push(heading("Afspraken, communicatie en besluiten"), ...recordRows([...register("agreement"), ...register("communication"), ...register("meeting")]));
-  if (sections.has("requests")) children.push(heading("RFA, RFI en inspectieverzoeken"), ...recordRows([...register("rfa"), ...register("rfi"), ...register("inspection_request")]));
-  if (sections.has("documents")) children.push(heading("Document control matrix"), ...recordRows(controlledDocuments, "Geen beheerde klantdocumenten in deze periode."));
-  if (sections.has("boq")) children.push(heading("BOQ, voortgang en declaraties"), ...recordRows([...register("boq"), ...register("declaration"), ...register("cost")]));
-  if (sections.has("visual") && topics.has("photos")) children.push(heading("Foto's en 360°-camerabeelden"), ...(options.photoMode && options.photoMode !== "none" && options.photos ? capturePhotos(snapshot.visual_captures, options) : recordRows(snapshot.visual_captures)));
+  if (!summary && sections.has("hse") && topics.has("hse")) children.push(heading("HSE-observaties en maatregelen"), ...recordRows(hseObservations, "Geen HSE-observatie in deze periode."));
+  if (!summary && sections.has("hse") && topics.has("hse_incident")) children.push(heading("HSE-incidenten, near misses en werkstops"), ...recordRows(hseIncidents, "Geen HSE-incident in deze periode."));
+  if (!summary && sections.has("environment")) children.push(heading("Milieu, social en housekeeping"), ...recordRows(register("environmental_report"), "Geen milieurapport of housekeepingobservatie in deze periode."));
+  if (!summary && sections.has("actions") && topics.has("deadlines")) children.push(heading("Open deadlines en acties"), ...recordRows(snapshot.open_actions));
+  if (!summary && sections.has("logistics") && topics.has("materials_delivery")) children.push(heading("Materialen en leveringen"), ...recordRows(register("delivery")));
+  if (!summary && sections.has("logistics") && topics.has("delays")) children.push(heading("Vertragingen"), ...recordRows(register("delay")));
+  if (!summary && sections.has("instructions") && topics.has("technical_instructions")) children.push(heading("Technische instructies"), ...recordRows([...register("technical_instruction"), ...register("site_instruction")]));
+  if (!summary && sections.has("commercial") && topics.has("change_order")) children.push(heading("Change orders en meer-/minderwerk"), ...recordRows([...register("change_order"), ...register("variation")]));
+  if (!summary && sections.has("communications") && topics.has("agreements_made")) children.push(heading("Afspraken, communicatie en besluiten"), ...recordRows([...register("agreement"), ...register("communication"), ...register("meeting")]));
+  if (!summary && sections.has("requests")) children.push(heading("RFA, RFI en inspectieverzoeken"), ...recordRows([...register("rfa"), ...register("rfi"), ...register("inspection_request")]));
+  if (!summary && sections.has("documents")) children.push(heading("Document control matrix"), ...recordRows(controlledDocuments, "Geen beheerde klantdocumenten in deze periode."));
+  if (!summary && sections.has("boq")) children.push(heading("BOQ, voortgang en declaraties"), ...recordRows([...register("boq"), ...register("declaration"), ...register("cost")]));
+  if (!summary && sections.has("visual") && topics.has("photos")) children.push(heading("Foto's en 360°-camerabeelden"), ...(options.photoMode && options.photoMode !== "none" && options.photos ? capturePhotos(snapshot.visual_captures, options) : recordRows(snapshot.visual_captures)));
 
-  if (sections.has("buildings")) {
+  if (sections.has("buildings") && !summary) {
     buildings.forEach((building) => {
       const buildingId = value(building, "id");
       const buildingFindings = snapshot.findings.filter((item) => value(item, "building_id") === buildingId);
@@ -294,7 +312,18 @@ export function buildPeriodReportDocxDocument(source: PeriodReportSnapshot, opti
     });
   }
 
-  if (options.signoffLog?.length) {
+  if (structure?.responses && !summary) {
+    children.push(heading(structureText.responses));
+    if (!structure.responses.length) children.push(new Paragraph({ children: [new TextRun({ text: structureText.noResponses, italics: true, size: 16 })] }));
+    for (const record of structure.responses) {
+      children.push(new Paragraph({ children: [new TextRun({ text: `${record.code} · ${record.title}`, bold: true, size: 16 })], spacing: { before: 100 } }));
+      for (const item of record.responses) {
+        children.push(new Paragraph({ children: [new TextRun({ text: [item.at, structureText.action(item.action), item.by, item.organization].filter(Boolean).join(" · "), size: 15 }), ...(item.comments ? [new TextRun({ text: `\n${item.comments}`, color: "5A646C", size: 15 })] : [])], spacing: { after: 40 } }));
+      }
+    }
+  }
+
+  if (options.signoffLog?.length && !summary) {
     children.push(heading("Ondertekeningslog"));
     for (const entry of options.signoffLog) {
       children.push(new Paragraph({ children: [new TextRun({ text: `${entry.code} · ${entry.title}`, bold: true, size: 16 })], spacing: { before: 100 } }));

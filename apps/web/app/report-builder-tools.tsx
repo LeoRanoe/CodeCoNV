@@ -17,7 +17,7 @@ export type ReportBuilderSettings = {
   photoMode?: string;
   signatures?: boolean;
   signoffLog?: boolean;
-  openFromBefore?: boolean;
+  openFromBefore?: boolean; groupBy?: string; detail?: string; contractorResponses?: boolean;
 };
 
 type ReportPresetId = "today" | "yesterday" | "this_week" | "last_week" | "this_month" | "last_month";

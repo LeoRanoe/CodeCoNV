@@ -66,3 +66,11 @@ test("contractor responses list only the answered records, with who answered and
   assert.equal(result[0].responses[1].at, "2026-11-04");
   assert.equal(result[0].responses[1].organization, "Beta NV");
 });
+
+test("a Dutch report names the forms in Dutch", () => {
+  const lines = reportRecordLines(snapshot, { ...lookup, language: "nl" });
+  const byCode = Object.fromEntries(lines.map((line) => [line.code, line.form]));
+  assert.equal(byCode["INS-001"], "Inspectie");
+  assert.equal(byCode["WO-001"], "Werk in uitvoering");
+  assert.equal(byCode["NCR-001"], "NCR");
+});

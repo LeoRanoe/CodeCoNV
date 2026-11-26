@@ -146,3 +146,59 @@ test("a stored photo is printed in the report as a thumbnail or large, and not a
   expect(large.bytes, "a large photo is bigger than a thumbnail").toBeGreaterThan(small.bytes);
   expect(none.text).toContain("Foto");
 });
+
+test("Word 11.1 structure: group by contractor, summary versus full and contractor responses, in PDF, Word and Excel", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-office", "The document is the same on every viewport.");
+  test.setTimeout(240_000);
+  await signIn(page);
+  await page.locator(".sidebar").getByRole("button", { name: "Reports", exact: true }).click();
+  await openSection(page, /^Create report$/);
+  const card = page.locator(".period-report-card");
+  const options = card.locator("[data-report-options]");
+  await card.locator("input[type='date']").first().fill("2026-09-01");
+  await options.getByLabel("Photos").selectOption("none");
+  await mkdir(testInfo.outputPath("documents"), { recursive: true });
+  const download = async (button: RegExp, extension: string) => {
+    const [file] = await Promise.all([page.waitForEvent("download"), card.getByRole("button", { name: button }).click()]);
+    const path = testInfo.outputPath("documents", `structure-${Date.now()}.${extension}`);
+    await file.saveAs(path);
+    return path;
+  };
+
+  // Full and ungrouped: the day-by-day pages are there, no overview and no responses.
+  const plain = await pdfText(await download(/PDF/, "pdf"));
+  expect(plain).toContain("Dagverloop, werkzaamheden en voortgang");
+  expect(plain).not.toContain("Overzicht per");
+  expect(plain).not.toContain("Reacties van aannemers");
+
+  // Grouped by contractor, with the responses.
+  await options.locator("[data-report-group-by]").selectOption("contractor");
+  await options.getByLabel("Contractor responses").check();
+  const grouped = await pdfText(await download(/PDF/, "pdf"));
+  expect(grouped).toContain("Overzicht per aannemer");
+  expect(grouped).toContain("Reacties van aannemers");
+  expect(grouped).toContain("Dagverloop, werkzaamheden en voortgang");
+
+  // The Excel workbook of the same choice has the grouped sheet and the responses sheet.
+  const JSZip = (await import("jszip")).default;
+  const workbook = await JSZip.loadAsync(await readFile(await download(/Excel/, "xlsx")));
+  const sheets = [...(await workbook.file("xl/workbook.xml")!.async("string")).matchAll(/<sheet name="([^"]+)"/g)].map((match) => match[1]);
+  expect(sheets).toEqual(expect.arrayContaining(["Summary", "Grouped", "Contractor responses"]));
+  expect(sheets).toContain("Day reports");
+
+  // A summary leaves the record pages out and counts per group.
+  await options.locator("[data-report-detail]").selectOption("summary");
+  const summary = await pdfText(await download(/PDF/, "pdf"));
+  expect(summary).toContain("Samenvatting per aannemer");
+  expect(summary).not.toContain("Dagverloop, werkzaamheden en voortgang");
+  expect(summary).not.toContain("Reacties van aannemers");
+  const summaryBook = await JSZip.loadAsync(await readFile(await download(/Excel/, "xlsx")));
+  const summarySheets = [...(await summaryBook.file("xl/workbook.xml")!.async("string")).matchAll(/<sheet name="([^"]+)"/g)].map((match) => match[1]);
+  expect(summarySheets).toEqual(["Summary", "Grouped", "Open actions"]);
+
+  // The Word file is built from the same structure.
+  const docx = await JSZip.loadAsync(await readFile(await download(/Word/, "docx")));
+  const body = await docx.file("word/document.xml")!.async("string");
+  expect(body).toContain("Samenvatting per aannemer");
+  expect(body).not.toContain("Dagverloop, werkzaamheden en voortgang");
+});

@@ -75,8 +75,9 @@ import { InspectionPlanForm, PlannedInspections } from "@/app/inspection-planner
 import { SharedLessons } from "@/app/forms/shared-lessons";
 import { InspectionSpecEditor } from "@/app/forms/inspection-spec-editor";
 import { SignoffPanel } from "@/app/forms/signoff-panel";
-import { loadSignoffHistory, signoffHistoryEntries } from "@/lib/forms/signoff";
+import { loadSignoffHistory, signoffHistoryEntries, type SignoffEvent } from "@/lib/forms/signoff";
 import { decideIssue, type IssueDecision } from "@/lib/forms/issue-decision";
+import { contractorResponses, groupReportLines, reportGroupingLabels, reportGroupings, reportRecordLines, snapshotLookup } from "@/lib/reports/report-structure.mjs";
 import { IssueDecisionDialog } from "@/app/forms/issue-decision-dialog";
 import { cleanSpecValues, isOtherOption, sensitiveKeys, sheetLayouts, specFacts, specForms, specLinks, specMissing, traceableMaterial, workflowProfiles, type SpecFormKey, type SpecRow, type SpecValue, type SpecValues } from "@/lib/forms/spec-forms";
 import { specLabel } from "@/lib/forms/spec-labels-nl";
@@ -6410,6 +6411,10 @@ function ReportOperations({ focusRecordId, data, reportId, reportNumber, reportS
   const [withSignatures, setWithSignatures] = useState(true);
   const [withSignoffLog, setWithSignoffLog] = useState(false);
   const [openFromBefore, setOpenFromBefore] = useState(false);
+  /** Word 11.1: group the records, print a summary or the full report, and list what the contractors answered. */
+  const [groupBy, setGroupBy] = useState("none");
+  const [detail, setDetail] = useState<"full" | "summary">("full");
+  const [withResponses, setWithResponses] = useState(false);
   const periodFacets = useMemo(() => [...data.findings, ...data.hseEvents, ...data.registerEntries, ...data.inspections]
     .map((record) => specFacets(recordSpec(record as unknown as Record<string, unknown>))), [data.findings, data.hseEvents, data.inspections, data.registerEntries]);
   const [periodLabel, setPeriodLabel] = useState(() => text("Monthly supervision report", "Maandelijks supervisierapport"));
@@ -6464,7 +6469,7 @@ function ReportOperations({ focusRecordId, data, reportId, reportNumber, reportS
     setPeriodLabel(label);
     setPeriodPreset(preset === "today" || preset === "yesterday" ? "day" : preset.endsWith("week") ? "week" : preset.endsWith("month") ? "month" : "custom");
   };
-  const builderSettings: ReportBuilderSettings = { reportChoice, forms: includedClientOptions, preset: periodPreset, label: periodLabel, filter: periodFilter as Record<string, unknown>, photoMode, signatures: withSignatures, signoffLog: withSignoffLog, openFromBefore };
+  const builderSettings: ReportBuilderSettings = { reportChoice, forms: includedClientOptions, preset: periodPreset, label: periodLabel, filter: periodFilter as Record<string, unknown>, photoMode, signatures: withSignatures, signoffLog: withSignoffLog, openFromBefore, groupBy, detail, contractorResponses: withResponses };
   /**
    * The snapshot and the options of one download: the period (plus what is still open from before), the facet filter,
    * the photos made small in the browser, and the sign-off log of the records that are printed.
@@ -6481,17 +6486,39 @@ function ReportOperations({ focusRecordId, data, reportId, reportNumber, reportS
       const loaded = await loadReportPhotos(client, snapshot.visual_captures, photoMode);
       Object.assign(extra, { photoMode, photos: loaded.photos, photosOmitted: loaded.omitted });
     }
+    const printed = [...snapshot.findings, ...snapshot.inspections, ...snapshot.register_entries, ...snapshot.hse_events] as Array<Record<string, unknown>>;
+    const codeOf = (row: Record<string, unknown>) => String(row.entry_number ?? row.finding_number ?? row.inspection_number ?? row.event_number ?? row.id);
+    const history = heavy && (withSignoffLog || withResponses)
+      ? await loadSignoffHistory(client, projectId, printed.map((row) => String(row.id ?? "")))
+      : new Map<string, SignoffEvent[]>();
     if (heavy && withSignoffLog) {
-      const printed = [...snapshot.findings, ...snapshot.inspections, ...snapshot.register_entries, ...snapshot.hse_events] as Array<Record<string, unknown>>;
-      const history = await loadSignoffHistory(client, projectId, printed.map((row) => String(row.id ?? "")));
       extra.signoffLog = printed.flatMap((row) => {
         const events = history.get(String(row.id ?? ""));
         if (!events?.length) return [];
-        const code = String(row.entry_number ?? row.finding_number ?? row.inspection_number ?? row.event_number ?? row.id);
-        return [{ code, title: String(row.title ?? ""), history: signoffHistoryEntries(events, "nl") }];
+        return [{ code: codeOf(row), title: String(row.title ?? ""), history: signoffHistoryEntries(events, "nl") }];
       });
     }
-    return { snapshot, extra };
+    // Group by, summary versus full, and the contractors' responses: one structure for the PDF, the Word file and the Excel workbook.
+    const effectiveGroupBy = detail === "summary" && groupBy === "none" ? "form" : groupBy;
+    const lines = reportRecordLines(snapshot, snapshotLookup(snapshot, "nl"));
+    extra.structure = {
+      groupBy: effectiveGroupBy,
+      groupLabel: effectiveGroupBy === "none" ? "" : reportGroupingLabels[effectiveGroupBy as keyof typeof reportGroupingLabels]?.nl ?? "",
+      detail,
+      groups: groupReportLines(lines, effectiveGroupBy),
+      responses: withResponses && heavy ? contractorResponses(printed.map((row) => ({ id: String(row.id ?? ""), code: codeOf(row), title: String(row.title ?? "") })), history as unknown as Map<string, Array<Record<string, unknown>>>) : undefined,
+    };
+    // The same photos as pictures for the Excel workbook.
+    const { dataUrlBytes } = await import("@/lib/reports/report-photos");
+    const buildingNames = new Map((snapshot.buildings ?? []).map((building) => [String(building.id), String(building.name ?? "")]));
+    const excelPhotos = Object.keys(extra.photos ?? {}).length
+      ? (snapshot.visual_captures as Array<Record<string, unknown>>).flatMap((capture) => {
+        const photo = extra.photos?.[String(capture.id)];
+        if (!photo) return [];
+        return [{ code: String(capture.title ?? capture.id), caption: [capture.title, capture.location_label].filter(Boolean).join(" · "), building: buildingNames.get(String(capture.building_id ?? "")) ?? "", date: String(capture.captured_at ?? "").slice(0, 10), bytes: dataUrlBytes(photo.dataUrl), width: photo.width, height: photo.height }];
+      })
+      : [];
+    return { snapshot, extra, excelPhotos };
   };
   const applyTemplate = (settings: ReportBuilderSettings) => {
     if (settings.reportChoice) setReportChoice(settings.reportChoice);
@@ -6502,6 +6529,9 @@ function ReportOperations({ focusRecordId, data, reportId, reportNumber, reportS
     if (typeof settings.signatures === "boolean") setWithSignatures(settings.signatures);
     if (typeof settings.signoffLog === "boolean") setWithSignoffLog(settings.signoffLog);
     if (typeof settings.openFromBefore === "boolean") setOpenFromBefore(settings.openFromBefore);
+    if (settings.groupBy && reportGroupings.includes(settings.groupBy)) setGroupBy(settings.groupBy);
+    if (settings.detail === "full" || settings.detail === "summary") setDetail(settings.detail);
+    if (typeof settings.contractorResponses === "boolean") setWithResponses(settings.contractorResponses);
   };
   const canReview = reportStatus === "ready_for_review" || reportStatus === "in_review";
   const canSign = reportStatus === "approved" || reportStatus === "signed";
@@ -6657,6 +6687,18 @@ function ReportOperations({ focusRecordId, data, reportId, reportNumber, reportS
             <label><input type="checkbox" checked={withSignatures} onChange={(event) => setWithSignatures(event.target.checked)} /><span>{text("Signatures", "Handtekeningen")}</span></label>
             <label><input type="checkbox" checked={withSignoffLog} onChange={(event) => setWithSignoffLog(event.target.checked)} /><span>{text("Sign-off log", "Ondertekeningslog")}</span></label>
             <label><input type="checkbox" checked={openFromBefore} onChange={(event) => setOpenFromBefore(event.target.checked)} /><span>{text("Include records still open from before the period", "Ook records die nog open staan van vóór de periode")}</span></label>
+            <label><input type="checkbox" checked={withResponses} onChange={(event) => setWithResponses(event.target.checked)} /><span>{text("Contractor responses", "Reacties van aannemers")}</span></label>
+            <label className="form-field"><span>{text("Group by", "Groeperen op")}</span>
+              <select value={groupBy} onChange={(event) => setGroupBy(event.target.value)} data-report-group-by>
+                {reportGroupings.map((option) => <option value={option} key={option}>{reportGroupingLabels[option as keyof typeof reportGroupingLabels][language === "nl" ? "nl" : "en"]}</option>)}
+              </select>
+            </label>
+            <label className="form-field"><span>{text("Detail", "Detailniveau")}</span>
+              <select value={detail} onChange={(event) => setDetail(event.target.value as "full" | "summary")} data-report-detail>
+                <option value="full">{text("Full report", "Volledig rapport")}</option>
+                <option value="summary">{text("Summary", "Samenvatting")}</option>
+              </select>
+            </label>
           </fieldset>
           <ReportPresets today={today} onPick={pickPreset} />
           {/* The full library is a view of its own now; this points at it instead of
@@ -6678,7 +6720,7 @@ function ReportOperations({ focusRecordId, data, reportId, reportNumber, reportS
             disabled={busy || !activeSections.length || !period.start || !period.end || period.end < period.start}
             onDownloadPdf={() => run(async () => { const { snapshot, extra } = await prepareReport(); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer, ...extra }); }, text(`${periodLabel} for ${projectName} downloaded.`, `${periodLabel} voor ${projectName} gedownload.`))}
             onDownloadWord={() => run(async () => { const { snapshot, extra } = await prepareReport(); const { downloadPeriodReportDocx } = await import("@/lib/reports/period-report-docx"); await downloadPeriodReportDocx(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer, ...extra }); }, text(`${periodLabel} for ${projectName} downloaded as Word.`, `${periodLabel} voor ${projectName} als Word gedownload.`))}
-            onDownloadExcel={() => run(async () => { const { snapshot } = await prepareReport(false); const { periodReportWorkbook } = await import("@/lib/reports/period-report-xlsx.mjs"); const title = `${periodLabel} · ${selectedReport.title}`; const blob = await periodReportWorkbook(snapshot, { title, language, filters: Object.entries(periodFilter ?? {}).filter(([, chosen]) => Array.isArray(chosen) ? chosen.length : Boolean(chosen)).map(([key, chosen]) => `${key}: ${Array.isArray(chosen) ? chosen.join(', ') : String(chosen)}`).join('; ') }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `${title.replace(/[^\p{L}\p{N} ._-]+/gu, '-')} ${period.start} ${period.end}.xlsx`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }, text("Excel workbook downloaded.", "Excel-werkmap gedownload."))}
+            onDownloadExcel={() => run(async () => { const { snapshot, extra, excelPhotos } = await prepareReport(); const { periodReportWorkbook } = await import("@/lib/reports/period-report-xlsx.mjs"); const title = `${periodLabel} · ${selectedReport.title}`; const blob = await periodReportWorkbook(snapshot, { title, language, groupBy, detail, responses: extra.structure?.responses ?? [], signoffLog: extra.signoffLog ?? [], photos: excelPhotos, filters: Object.entries(periodFilter ?? {}).filter(([, chosen]) => Array.isArray(chosen) ? chosen.length : Boolean(chosen)).map(([key, chosen]) => `${key}: ${Array.isArray(chosen) ? chosen.join(', ') : String(chosen)}`).join('; ') }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `${title.replace(/[^\p{L}\p{N} ._-]+/gu, '-')} ${period.start} ${period.end}.xlsx`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }, text("Excel workbook downloaded.", "Excel-werkmap gedownload."))}
           />
           <ReportTemplates client={client} projectId={projectId} current={builderSettings} canEdit={reportPermissions.can("reports.edit")} onApply={applyTemplate} onChanged={setSavedTemplates} />
           <ReportSchedules client={client} projectId={projectId} templates={savedTemplates} people={reportPeople} canEdit={reportPermissions.can("reports.edit")} canPublish={reportPermissions.can("reports.distribute")} />

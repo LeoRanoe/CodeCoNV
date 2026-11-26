@@ -26,6 +26,14 @@ const registerFormLabels = {
   rfa: "RFA", rfi: "RFI", inspection_request: "Inspection request", boq: "BOQ", declaration: "Declaration", cost: "Cost",
 };
 
+const registerFormLabelsNl = {
+  works_ongoing: "Werk in uitvoering", works_completed: "Afgerond werk", delivery: "Materiaallevering", delay_report: "Vertragingsmelding",
+  technical_instruction: "Technische instructie", site_instruction: "Werkinstructie", change_order: "Wijzigingsopdracht", variation: "Meer-/minderwerk",
+  agreement: "Afspraak", communication: "Communicatie", lessons_learned: "Lessons learned", environmental_report: "Milieurapport",
+  rfa: "RFA", rfi: "RFI", inspection_request: "Inspectieverzoek", boq: "BOQ", declaration: "Declaratie", cost: "Kosten",
+};
+const fixedFormsNl = { Inspection: "Inspectie", Issue: "Issue", NCR: "NCR", HSE: "HSE" };
+
 const text = (value) => (typeof value === "string" ? value.trim() : "");
 const first = (...values) => values.map(text).find(Boolean) ?? "";
 
@@ -39,18 +47,20 @@ const specOf = (record) => {
 /**
  * One line per printed record of the four record kinds.
  * @param {Record<string, any>} snapshot  a period report snapshot
- * @param {{ building?: (id: string) => string, party?: (id: string) => string, unassigned?: string }} [lookup]
+ * @param {{ building?: (id: string) => string, party?: (id: string) => string, unassigned?: string, language?: "en" | "nl" }} [lookup]
  */
 export function reportRecordLines(snapshot, lookup = {}) {
   const building = (id) => (id ? lookup.building?.(String(id)) ?? "" : "");
   const party = (id) => (id ? lookup.party?.(String(id)) ?? "" : "");
   const unassigned = lookup.unassigned ?? "Niet toegewezen";
+  const nl = lookup.language === "nl";
+  const formName = (form) => (nl ? fixedFormsNl[form] ?? form : form);
   const make = (kind, row, form, code, partyId, dateKeys) => {
     const spec = specOf(row);
     return {
       id: String(row.id ?? code),
       kind,
-      form,
+      form: formName(form),
       code: String(code ?? ""),
       title: text(row.title) || text(spec.title) || "",
       status: String(row.status ?? ""),
@@ -65,7 +75,7 @@ export function reportRecordLines(snapshot, lookup = {}) {
     ...rows("inspections").map((row) => make("inspection", row, "Inspection", row.inspection_number, row.responsible_party_id ?? row.contractor_party_id, ["scheduled_at", "created_at"])),
     ...rows("findings").map((row) => make("finding", row, row.finding_type === "ncr" ? "NCR" : "Issue", row.finding_number, row.responsible_party_id, ["created_at", "due_at"])),
     ...rows("hse_events").map((row) => make("hse", row, "HSE", row.event_number, row.responsible_party_id, ["occurred_at", "created_at"])),
-    ...rows("register_entries").map((row) => make("register", row, registerFormLabels[row.register_type] ?? String(row.register_type ?? "Register").replace(/_/g, " "), row.entry_number, row.party_id ?? row.responsible_party_id ?? row.contractor_party_id, ["created_at"])),
+    ...rows("register_entries").map((row) => make("register", row, (nl ? registerFormLabelsNl : registerFormLabels)[row.register_type] ?? String(row.register_type ?? "Register").replace(/_/g, " "), row.entry_number, row.party_id ?? row.responsible_party_id ?? row.contractor_party_id, ["created_at"])),
   ];
 }
 
@@ -125,4 +135,11 @@ export function contractorResponses(records, history) {
       })),
     }];
   });
+}
+
+/** The lookups that turn the ids of a snapshot into names, shared by the three report formats. */
+/** @param {Record<string, any>} snapshot @param {"en" | "nl"} [language] */
+export function snapshotLookup(snapshot, language = "nl") {
+  const names = new Map([...(snapshot.buildings ?? []), ...(snapshot.parties ?? [])].map((item) => [String(item.id), String(item.name ?? item.code ?? item.id)]));
+  return { building: (id) => names.get(id) ?? "", party: (id) => names.get(id) ?? "", unassigned: language === "nl" ? "Niet toegewezen" : "Not assigned", language };
 }
