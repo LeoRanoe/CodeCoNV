@@ -76,6 +76,8 @@ import { SharedLessons } from "@/app/forms/shared-lessons";
 import { InspectionSpecEditor } from "@/app/forms/inspection-spec-editor";
 import { SignoffPanel } from "@/app/forms/signoff-panel";
 import { loadSignoffHistory, signoffHistoryEntries } from "@/lib/forms/signoff";
+import { decideIssue, type IssueDecision } from "@/lib/forms/issue-decision";
+import { IssueDecisionDialog } from "@/app/forms/issue-decision-dialog";
 import { cleanSpecValues, isOtherOption, sensitiveKeys, sheetLayouts, specFacts, specForms, specLinks, specMissing, traceableMaterial, workflowProfiles, type SpecFormKey, type SpecRow, type SpecValue, type SpecValues } from "@/lib/forms/spec-forms";
 import { specLabel } from "@/lib/forms/spec-labels-nl";
 import { facetFilterActive, filterPeriodSnapshot, matchesSpecFacets, recordSpec, specFacets, type SpecFacetFilter } from "@/lib/forms/spec-facets";
@@ -4331,6 +4333,12 @@ function ProjectOperations({
             busy={busy}
             focusRecordId={focusRecordId}
             transition={(finding, nextStatus, note, finalMeasure, correction, verificationSignedBy, verificationSignatureImage, verification) => run(() => transitionFinding(client, finding.id, nextStatus, note, finalMeasure, correction, verificationSignedBy, verificationSignatureImage, verification), `Bevinding ${finding.finding_number} staat nu op ${findingStatusLabels[nextStatus] ?? nextStatus}.`)}
+            decide={(finding, choice) => run(
+              () => decideIssue(client, projectId, finding, choice, currentUserName),
+              choice.action === "verify"
+                ? text(`Issue ${finding.finding_number} is verified and closed.`, `Issue ${finding.finding_number} is geverifieerd en gesloten.`)
+                : text(`Issue ${finding.finding_number} went back for correction.`, `Issue ${finding.finding_number} is teruggestuurd voor correctie.`),
+            )}
             recordProgress={(finding, progressPercent, disposition, note) => run(
               () => recordFindingProgress(client, { findingId: finding.id, progressPercent, disposition, note }),
               text(`Progress recorded. 100% still needs verification.`, `Voortgang vastgelegd. 100% moet nog worden geverifieerd.`),
@@ -5964,7 +5972,7 @@ function SubmittedRecordShare({ finding, scope, projectName, projectCode, buildi
   );
 }
 
-function FindingList({ data, client, run, findings, progressUpdates, visualAnnotations, externalShareLinks, currentUserId, projectId, projectName, projectCode, buildings, locationNodes, currentUserName, resolveUserName, parties, busy, focusRecordId = "", transition, recordProgress, share, revoke, linkVisual, linkDrawing, openPhotoMarking, viewRecord, editRecord, withdrawRecord }: {
+function FindingList({ data, client, run, findings, progressUpdates, visualAnnotations, externalShareLinks, currentUserId, projectId, projectName, projectCode, buildings, locationNodes, currentUserName, resolveUserName, parties, busy, focusRecordId = "", transition, decide, recordProgress, share, revoke, linkVisual, linkDrawing, openPhotoMarking, viewRecord, editRecord, withdrawRecord }: {
   data: OperationSnapshot;
   client: SupabaseClient;
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
@@ -5987,6 +5995,8 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   /** The finding the action centre pointed at, so it is the one in front of the user. */
   focusRecordId?: string;
   transition: (finding: Finding, nextStatus: string, note: string, finalMeasure: string, correction: string, verificationSignedBy: string, verificationSignatureImage: string, verification?: QualityControlVerification) => Promise<boolean>;
+  /** Verify or return an issue through the Close / Verify / Approve dialog; the note lands in the sign-off log. */
+  decide: (finding: Finding, decision: IssueDecision) => Promise<boolean>;
   recordProgress: (finding: Finding, progressPercent: number, disposition: "validated" | "to_be_corrected" | "alternative_solution", note: string) => Promise<boolean>;
   share: (finding: Finding) => Promise<{ shareId: string; url: string; expiresAt: string } | null>;
   revoke: (shareId: string) => Promise<boolean>;
@@ -6010,6 +6020,8 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   const [correction, setCorrection] = useState("");
   /** Sending a repair back: the issue whose return form is open, and the reason the contractor will read. */
   const [returning, setReturning] = useState<string | null>(null);
+  /** The Verify / Return dialog of an issue (not an NCR, which has its own quality-control box). */
+  const [decision, setDecision] = useState<{ findingId: string; action: "verify" | "return" } | null>(null);
   const [returnReason, setReturnReason] = useState("");
   /** The written signature under the Quality Control / Verification box, required to
    * close an NCR — the client's own form marks that box "Signature *". */
@@ -6134,8 +6146,8 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
               </button> : null}
               <ReportDownloadButtons disabled={busy} onDownloadPdf={async () => { const signoffHistory = await recordHistory(client, projectId, finding.id, language); const { downloadNcrPdf } = await import("@/lib/reports/ncr-pdf"); await downloadNcrPdf(finding, latestProgress, { ...ncrContext(finding, recordBuildingName), signoffHistory }); }} onDownloadWord={async () => { const signoffHistory = await recordHistory(client, projectId, finding.id, language); const { downloadNcrDocx } = await import("@/lib/reports/ncr-docx"); await downloadNcrDocx(finding, latestProgress, { ...ncrContext(finding, recordBuildingName), signoffHistory }); }} />
               {!["closed", "cancelled", "rejected"].includes(finding.status) && permissions.can("findings.manage") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setProgressActive(progressActive === finding.id ? null : finding.id); setProgressPercent(String(latestProgress?.progress_percent ?? 0)); setProgressDisposition(latestProgress?.disposition ?? issue.disposition ?? "to_be_corrected"); }}>{text("Record inspection progress", "Inspectievoortgang vastleggen")}</button> : null}
-              {nextStatus ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setActive(active === finding.id ? null : finding.id); setCorrection(""); setVerificationSignature(null); }}>{nextStatus === "closed" ? finding.finding_type === "ncr" ? text("Quality control · resolve", "Kwaliteitscontrole · afsluiten") : text("Verify", "Verifiëren") : nextStatus === "ready_for_verification" ? text("Mark repair ready", "Herstel gereedmelden") : finding.finding_type === "ncr" ? text("Record contractor answer", "Antwoord aannemer vastleggen") : text("Update status", "Status bijwerken")}</button> : null}
-              {finding.status === "ready_for_verification" && permissions.can("findings.verify") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setReturning(returning === finding.id ? null : finding.id); setReturnReason(""); }}>{text("Return for correction", "Terug voor correctie")}</button> : null}
+              {nextStatus ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { if (nextStatus === "closed" && finding.finding_type !== "ncr") { setDecision({ findingId: finding.id, action: "verify" }); return; } setActive(active === finding.id ? null : finding.id); setCorrection(""); setVerificationSignature(null); }}>{nextStatus === "closed" ? finding.finding_type === "ncr" ? text("Quality control · resolve", "Kwaliteitscontrole · afsluiten") : text("Verify", "Verifiëren") : nextStatus === "ready_for_verification" ? text("Mark repair ready", "Herstel gereedmelden") : finding.finding_type === "ncr" ? text("Record contractor answer", "Antwoord aannemer vastleggen") : text("Update status", "Status bijwerken")}</button> : null}
+              {finding.status === "ready_for_verification" && permissions.can("findings.verify") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { if (finding.finding_type !== "ncr") { setDecision({ findingId: finding.id, action: "return" }); return; } setReturning(returning === finding.id ? null : finding.id); setReturnReason(""); }}>{text("Return for correction", "Terug voor correctie")}</button> : null}
             </div>
             {/* The three signed boxes of the client's NCR form, in the order of the form:
                 what the engineer recommends, what the contractor proposes, what quality
@@ -6322,6 +6334,24 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
           </article>
         );
       })}
+      {decision ? (() => {
+        const target = findings.find((item) => item.id === decision.findingId);
+        if (!target) return null;
+        return (
+          <IssueDecisionDialog
+            action={decision.action}
+            issueNumber={target.finding_number}
+            title={target.title}
+            defaultNextActor={parties.find((party) => party.id === target.responsible_party_id)?.name ?? ""}
+            onCancel={() => setDecision(null)}
+            onConfirm={async (choice) => {
+              const okay = await decide(target, choice);
+              if (okay) setDecision(null);
+              return okay;
+            }}
+          />
+        );
+      })() : null}
     </div>
   );
 }

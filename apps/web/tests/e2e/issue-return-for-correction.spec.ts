@@ -71,10 +71,15 @@ test("supervision sends a finished repair back with a reason, and the issue is o
   await expect(card).toContainText("Ready for verification");
   await card.getByRole("button", { name: "Return for correction" }).click();
 
-  const send = card.getByRole("button", { name: "Send back for correction" });
+  // v5: the card opens the Verify / Return dialog; nothing is sent until the reason and the next responsible are filled in.
+  const dialog = page.getByRole("dialog", { name: "Return issue for correction" });
+  const send = dialog.getByRole("button", { name: "Send back for correction" });
   await expect(send).toBeDisabled();
-  await card.getByLabel("What still has to be corrected").fill("Crack is still visible on the left side.");
+  await dialog.getByLabel(/What still has to be corrected/).fill("Crack is still visible on the left side.");
+  await expect(send).toBeDisabled();
+  await dialog.getByLabel(/Next responsible/).fill("Contractor site lead");
   await send.click();
+  await expect(dialog).toHaveCount(0);
 
   await expect(card).toContainText("Reopened");
   await expect(card.getByRole("button", { name: "Return for correction" })).toHaveCount(0);
