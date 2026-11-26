@@ -1151,3 +1151,19 @@ html { scroll-padding-bottom: calc(var(--mobile-nav-height, 0px) + 96px); }
 .document-register-main { align-content: start; }
 .project-document-tabs.section-nav--menu { width: 100%; }
 .project-document-tabs .section-nav__trigger { width: 100%; }
+/* OPUS-F14. The same placement for a row without actions (Workforce days): icon, title and facts, state. */
+.record-row.ui-list-row:not(:has(> .record-row-actions, > .record-row-open)) { grid-template-columns: auto minmax(0, 1fr) auto; }
+.record-row.ui-list-row:not(:has(> .record-row-actions, > .record-row-open)) > .action-icon { grid-column: 1; grid-row: 1; }
+.record-row.ui-list-row:not(:has(> .record-row-actions, > .record-row-open)) > div { grid-column: 2; grid-row: 1; }
+.record-row.ui-list-row:not(:has(> .record-row-actions, > .record-row-open)) > .task-status { align-self: start; grid-column: 3; grid-row: 1; justify-self: end; }
+@container (max-width: 620px) {
+  .record-row.ui-list-row:not(:has(> .record-row-actions, > .record-row-open)) > .task-status { grid-column: 2; grid-row: 2; justify-self: start; }
+}
+
+/* OPUS-F15. Actions: the five state counts share one row on a laptop (the fifth stood alone on a second row), and the
+   two pickers above the list sit side by side instead of one full row each. */
+@media (min-width: 1025px) { .action-center-summary { grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); } }
+@media (min-width: 641px) {
+  .action-center-toolbar { align-items: center; flex-flow: row wrap; }
+  .action-center-toolbar .action-center-search { flex: 1 1 100%; order: -1; }
+}

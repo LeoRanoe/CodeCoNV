@@ -744,7 +744,8 @@ test("keeps the project workspace mobile-first and task driven", async () => {
 
   assert.match(workspaceHome, /agreements-made/);
   assert.doesNotMatch(workspaceHome, /openRegister\("(wcr|rfi|rfa|inspection_request)"\)/);
-  assert.match(workspaceHome, /openTask\("documents", false\)/);
+  // Project Documents and Rapid Verify are main menus (Word 2); the Workspace no longer repeats them (OPUS-F06).
+  assert.doesNotMatch(workspaceHome, /openTask\("documents", false\)|openTask\("assets", false\)/);
   assert.match(styles, /\.workspace-task-hub/);
   assert.match(styles, /\.overview-shortcut\.mobile-redundant\s*\{\s*display: none/);
   assert.doesNotMatch(operations, /field-flow-launcher/);
@@ -1311,7 +1312,7 @@ test("keeps the action centre and makes its deadlines and choices true on site",
 
   // The action centre keeps the name the client asked for and gains the deadline view
   // instead of being renamed into one.
-  assert.match(actionCenter, /text\("Action center", "Actiecentrum"\)/);
+  assert.match(actionCenter, /<h1>\{text\("Actions", "Acties"\)\}<\/h1>/);
   assert.match(actionCenter, /export type ActionCenterView = "mine" \| "work" \| "deadlines"/);
   assert.match(actionCenter, /action-center-views/);
   assert.match(styles, /\.action-center-views/);

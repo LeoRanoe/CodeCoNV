@@ -209,7 +209,7 @@ test("desktop workspace exposes every client module through a working destinatio
 
   // Deadlines left the tile grid but stayed one tap away among the supporting tools.
   await page.locator(".workspace-support-strip").getByRole("button", { name: /Deadlines/ }).click();
-  await expect(page.getByRole("heading", { name: "Action center", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Actions", exact: true })).toBeVisible();
   await openWorkspace();
 
   await page.locator(".workspace-support-strip").getByRole("button", { name: /Rapid Verify/ }).click();
