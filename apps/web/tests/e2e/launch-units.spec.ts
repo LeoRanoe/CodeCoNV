@@ -1,19 +1,17 @@
 import { expect, type Page, test } from "@playwright/test";
 import { fillSpecFields } from "./spec-fill";
-import { finishSigning } from "./sign-popup";
 
 /**
- * Developer package v5 (25-11-2026): the Units list of the Shared Dropdown Lists and of Materials Delivery row 12
- * has 16 values (it replaces the 13 of decision 18, which had mm and cm). Works Ongoing, Works Completed and
- * Materials Delivery offer exactly those 16, in the workbook's order, and Materials Delivery saves a delivery in
- * the new units bags and litre (L).
+ * Decision 18 (XL-16-005): CODECO approved all 13 values of the workbook's Shared Dropdown Lists Units row,
+ * including mm and cm. Works Ongoing, Works Completed and Materials Delivery offer exactly those 13, in the
+ * workbook's order, and Materials Delivery saves a delivery in mm and one in cm.
  */
 const email = process.env.CODECO_E2E_EMAIL;
 const password = process.env.CODECO_E2E_PASSWORD;
 const projectName = process.env.CODECO_E2E_PROJECT ?? "Paramaribo Field Readiness Demo";
 test.skip(!email || !password, "A fixture account is required (tests/e2e/seed-local-fixtures.mjs).");
 
-const approved = ["m", "m²", "m³", "kg", "tonne", "pcs", "set", "lot", "bags", "trips / loads", "litre (L)", "sheets", "rolls", "days", "hours", "other"];
+const approved = ["m", "m²", "m³", "mm", "cm", "kg", "tonne", "pcs", "number", "lot", "hours", "set", "other"];
 
 async function signIn(page: Page) {
   await page.goto("/supervisie");
@@ -41,7 +39,7 @@ const unitOptions = (page: Page, form: string) =>
   page.locator(`[data-sheet-form='${form}'] [data-spec-field="${unitKey[form]}"] select option`).evaluateAll((options) =>
     options.map((option) => (option as HTMLOptionElement).value).filter(Boolean));
 
-test("the three forms that ask for a unit offer the 16 values of the workbook, in the workbook's order", async ({ page }, testInfo) => {
+test("the three forms that ask for a unit offer the 13 approved values, in the workbook's order", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-office", "The lists are the same on every viewport.");
   test.setTimeout(150_000);
   await signIn(page);
@@ -52,7 +50,7 @@ test("the three forms that ask for a unit offer the 16 values of the workbook, i
   }
 });
 
-for (const unit of ["bags", "litre (L)"]) {
+for (const unit of ["mm", "cm"]) {
   test(`Materials Delivery saves a delivery in ${unit}`, async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop-office", "One route is enough.");
     test.setTimeout(150_000);
@@ -67,15 +65,13 @@ for (const unit of ["bags", "litre (L)"]) {
     if (await description.count()) await description.fill(`Launch unit check ${stamp}.`);
     await fillSpecFields(page.locator("main"));
     await fillSpecFields(page.locator("main"));
-    await form.locator('[data-spec-field="material_group"] select').selectOption("Insulation");
-    // Five or fewer categories are shown as pictured tiles.
-    await form.locator('[data-spec-field="material_category"] .choice-tile', { hasText: "Thermal insulation" }).click();
+    await form.locator('[data-spec-field="material_group"] select').selectOption("Delivery Discrepancy");
+    await form.locator('[data-spec-field="material_category"] select').selectOption("Quantity Shortage");
     await form.locator('[data-spec-field="unit"] select').selectOption(unit);
     const stored = form.locator('[data-spec-field="stored_on_site"] input');
     if (await stored.isVisible()) await stored.uncheck();
     await expect(page.locator(".confirm-needs, .record-still-needed")).toHaveCount(0);
     await page.getByRole("button", { name: /^Save register item$/ }).click();
-    await finishSigning(page);
     await expect(page.getByText(/saved|opgeslagen/i).first()).toBeVisible({ timeout: 30_000 });
   });
 }

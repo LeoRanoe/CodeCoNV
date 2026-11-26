@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { expect, type Page, test } from "@playwright/test";
 import JSZip from "jszip";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 
@@ -25,7 +26,8 @@ const key = process.env.CODECO_E2E_PUBLISHABLE_KEY;
 const secret = process.env.CODECO_E2E_SECRET_KEY;
 const uploads = process.env.CODECO_E2E_FAKE_BLOB === "1";
 // A plain supervisor (no project.configure) is created locally by this spec, like seed-ui-demo-data does for the other roles.
-const fieldSupervisor = { email: "field-supervisor-a@codeco.test", password: "Local-E2E-FieldSupervisor-A-2026!", name: "Field Supervisor" };
+// Its password is derived from the local service key, so it is never written in the repository and every worker agrees on it.
+const fieldSupervisor = { email: "field-supervisor-a@codeco.test", password: `Fx-${createHash("sha256").update(`${secret ?? ""}:field-supervisor-a`).digest("base64url").slice(0, 28)}!1`, name: "Field Supervisor" };
 
 test.skip(!supervisor.email || !url || !key || !secret, "The fixture accounts and the local Supabase keys are required.");
 test.describe.configure({ mode: "serial" });
@@ -111,6 +113,9 @@ test.beforeAll(async () => {
     const created = await admin.auth.admin.createUser({ email: fieldSupervisor.email, password: fieldSupervisor.password, email_confirm: true, user_metadata: { display_name: fieldSupervisor.name } });
     if (created.error) throw created.error;
     userId = created.data.user.id;
+  } else {
+    const updated = await admin.auth.admin.updateUserById(userId, { password: fieldSupervisor.password });
+    if (updated.error) throw updated.error;
   }
   const organization = await supervisorApi.from("projects").select("organization_id").eq("id", mainProjectId).single();
   const provisioned = await supervisorApi.rpc("provision_internal_user", { p_organization_id: organization.data!.organization_id, p_user_id: userId, p_display_name: fieldSupervisor.name, p_role_code: "supervisor", p_project_id: mainProjectId });
