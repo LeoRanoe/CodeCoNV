@@ -2176,7 +2176,9 @@ test("processes the annotated screens of 5 August: one building field, a signed 
   assert.match(drawings, /initialInspectionId\?: string;/);
   assert.match(drawings, /linkedRecordType: incomingFinding \? "observation" : "inspection"/);
   assert.match(operations, /<RecordSignatureField[\s\S]{0,500}By signing you confirm that you checked every point/);
-  assert.match(operations, /disabled=\{busy \|\| !inspectionSignature/);
+  // v5: completing the checklist opens the signing popup, which cannot be skipped.
+  assert.match(operations, /onClick=\{inspectionSigning\.request\}/);
+  assert.match(operations, /const inspectionSigning = useSignedSubmit\(\{[\s\S]{0,600}required: true,/);
   assert.match(operations, /const raiseNcrFromInspection = async \(inspection: Inspection\)/);
   assert.match(operations, /Raise an NCR from this checklist|NCR opstellen vanuit deze checklist/);
   assert.match(hseMigration, /add column if not exists signature_image text/);

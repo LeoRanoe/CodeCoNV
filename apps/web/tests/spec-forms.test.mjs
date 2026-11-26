@@ -387,3 +387,19 @@ test("an Issue category with a fixed discipline sets it, and changing away clear
 function specFormsIssueCategoryDisciplines() {
   return issueCategoryDisciplines;
 }
+
+test("every numbered section of a sheet form starts at a real row, in the workbook's order, and the first one starts the form", async () => {
+  const { sheetLayouts, sheetSections, sheetItemName } = await import("../lib/forms/spec-forms.ts");
+  assert.ok(Object.keys(sheetSections).length >= 12, "every sheet form has numbered sections");
+  for (const [form, sections] of Object.entries(sheetSections)) {
+    const names = (sheetLayouts[form] ?? []).map((item) => sheetItemName(item));
+    assert.ok(names.length, `${form} has a sheet layout`);
+    const positions = sections.map((section) => names.indexOf(section.from));
+    assert.ok(positions.every((position) => position >= 0), `${form}: every section starts at a row of the form (${sections.map((section) => section.from).join(", ")})`);
+    assert.equal(positions[0], 0, `${form}: the first section starts the form`);
+    assert.deepEqual([...positions].sort((left, right) => left - right), positions, `${form}: sections follow the order of the rows`);
+    assert.equal(new Set(positions).size, positions.length, `${form}: no two sections start at the same row`);
+    assert.equal(sections[0].title.en, "General");
+    assert.equal(sections.at(-1).title.en === "Sign-off" || form === "agreement", true, `${form} ends with the sign-off (agreement keeps its evidence last, as the workbook does)`);
+  }
+});

@@ -116,6 +116,11 @@ for (const sheet of sheets) {
       await expect(titles.last()).toContainText("Sign-off");
       expect(await titles.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-sheet-section")))).toEqual(["1", "2", "3", "4", "5", "6", "7"]);
     }
+    // Every sheet form is numbered 1..n, starts with General and ends with the sign-off or the evidence.
+    const sections = await form.locator(".sheet-section-title").evaluateAll((nodes) => nodes.map((node) => ({ number: node.getAttribute("data-sheet-section"), title: node.textContent ?? "" })));
+    expect(sections.length, `${sheet.form} has numbered sections`).toBeGreaterThanOrEqual(5);
+    expect(sections.map((section) => section.number)).toEqual(sections.map((_, index) => String(index + 1)));
+    expect(sections[0].title).toContain("General");
     await page.screenshot({ path: testInfo.outputPath(`${sheet.form}.png`), fullPage: true });
 
     await expect(page.locator(".confirm-needs, .record-still-needed")).toHaveCount(0);
