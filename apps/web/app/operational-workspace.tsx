@@ -3695,6 +3695,18 @@ function ProjectOperations({
     lockName: true,
     locked: Boolean(data.hseEvents.find((item) => item.id === editingHseId)?.signature_image),
   });
+  // Developer package v5 (Word 6.1): completing an inspection opens the signing popup; the checklist cannot be completed unsigned.
+  const inspectionSigning = useSignedSubmit({
+    value: inspectionSignature,
+    onChange: setInspectionSignature,
+    submit: () => void submitInspection(),
+    title: text("Sign and complete this inspection", "Onderteken en rond deze inspectie af"),
+    declaration: text("By signing you confirm that you checked every point of this checklist yourself.", "Met je handtekening bevestig je dat je elk punt van deze checklist zelf hebt gecontroleerd."),
+    nameSuggestion: currentUserName,
+    lockName: true,
+    locked: Boolean(activeInspection?.signature_image),
+    required: true,
+  });
   const registerSigning = useSignedSubmit({
     value: controlledRegister ? signatureFromDetails(registerForm.signedBy, registerForm.signedAt, registerForm.signatureImage) : registerSignature,
     onChange: (signature) => {
@@ -3932,18 +3944,20 @@ function ProjectOperations({
               {inspectionPhotoError ? <p className="field-error" role="alert">{inspectionPhotoError}</p> : null}
               {/* "Geen optie om te ondertekenen! Naam etc." — the person who walked the
                   checklist signs it, here, before it is completed. */}
-              <RecordSignatureField
-                declaration={text(
-                  "By signing you confirm that you checked every point of this checklist yourself.",
-                  "Met je handtekening bevestig je dat je elk punt van deze checklist zelf hebt gecontroleerd.",
-                )}
-                nameSuggestion={currentUserName}
-                lockName
-                locked={Boolean(activeInspection.signature_image)}
-                value={inspectionSignature}
-                onChange={setInspectionSignature}
-                required
-              />
+              {activeInspection.signature_image ? (
+                <RecordSignatureField
+                  declaration={text(
+                    "By signing you confirm that you checked every point of this checklist yourself.",
+                    "Met je handtekening bevestig je dat je elk punt van deze checklist zelf hebt gecontroleerd.",
+                  )}
+                  nameSuggestion={currentUserName}
+                  lockName
+                  locked={Boolean(activeInspection.signature_image)}
+                  value={inspectionSignature}
+                  onChange={setInspectionSignature}
+                  required
+                />
+              ) : null}
               {/* "Locatie pinnen": the checklist itself gets its spot on the drawing. */}
               <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setDrawingInspectionId(activeInspection.id); setDrawingFindingId(""); switchTab("drawings"); }}>
                 <MapPin size={15} /> {text("Pin this location on the drawing", "Locatie op de tekening pinnen")}
@@ -3953,8 +3967,9 @@ function ProjectOperations({
               <button className="ui-button ui-button--secondary ui-button--md inspection-ncr-button" type="button" onClick={() => raiseNcrFromInspection(activeInspection)}>
                 <ShieldAlert size={15} /> {text("Raise an NCR from this checklist", "NCR opstellen vanuit deze checklist")}
               </button>
-              <div className="form-actions checklist-sticky-actions"><button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={busy} onClick={() => { if (!inspectionOpen(activeInspection)) { setActiveInspection(null); return; } void run(() => saveInspectionAnswers(client, activeInspection, inspectionAnswers), text("Checklist progress saved.", "Voortgang van de checklist opgeslagen.")).then((saved) => { if (saved) setActiveInspection(null); }); }}>{text("Complete later", "Later afronden")}</button><button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || !inspectionSignature || activeTemplate.items.some((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id]))} onClick={() => void submitInspection()}>{busy ? <Loader2 className="spin" size={15} /> : <FileCheck2 size={15} />} {text("Complete inspection", "Inspectie afronden")}</button></div>
-              {!inspectionSignature ? <p className="form-intro">{text("Sign the checklist to complete it.", "Onderteken de checklist om hem af te ronden.")}</p> : null}
+              <div className="form-actions checklist-sticky-actions"><button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={busy} onClick={() => { if (!inspectionOpen(activeInspection)) { setActiveInspection(null); return; } void run(() => saveInspectionAnswers(client, activeInspection, inspectionAnswers), text("Checklist progress saved.", "Voortgang van de checklist opgeslagen.")).then((saved) => { if (saved) setActiveInspection(null); }); }}>{text("Complete later", "Later afronden")}</button><button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || activeTemplate.items.some((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id]))} onClick={inspectionSigning.request}>{busy ? <Loader2 className="spin" size={15} /> : <FileCheck2 size={15} />} {text("Complete inspection", "Inspectie afronden")}</button></div>
+              {inspectionSigning.needsSignature ? <p className="form-intro">{text("You sign the checklist when you complete it.", "Je ondertekent de checklist bij het afronden.")}</p> : null}
+              {inspectionSigning.dialog}
             </RecordFormShell>
           ) : null}
           {showForm && !activeInspection ? (
