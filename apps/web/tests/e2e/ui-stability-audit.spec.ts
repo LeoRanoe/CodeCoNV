@@ -18,16 +18,23 @@ if (process.env.CODECO_E2E_REQUIRED === "1" && !(email && password)) {
 }
 test.skip(!email || !password, "A fixture account is required (tests/e2e/seed-local-fixtures.mjs).");
 
-const viewports = [
+// Short laptop screens are normal users (OPUS audit): 1366 x 768 and 1280 x 720, a tablet both ways and a phone both ways.
+const allViewports = [
   { name: "phone", width: 390, height: 844 },
-  { name: "tablet", width: 820, height: 1024 },
+  { name: "phone-landscape", width: 844, height: 390 },
+  { name: "tablet", width: 820, height: 1180 },
+  { name: "tablet-landscape", width: 1024, height: 768 },
+  { name: "laptop-720", width: 1280, height: 720 },
+  { name: "laptop-768", width: 1366, height: 768 },
   { name: "desktop", width: 1440, height: 900 },
 ] as const;
-const modules = ["Overview", "Workspace", "Actions", "Rapid Verify", "Reports", "Management"] as const;
+const viewports = process.env.VIEWPORTS ? allViewports.filter(({ name }) => process.env.VIEWPORTS!.split(",").includes(name)) : allViewports;
+// The ten menus of Word section 2, in its order.
+const modules = ["Overview", "Workspace", "Actions", "Rapid Verify", "Project Documents", "Records & Photos", "Reports", "Contractor Portal", "Client Portal", "Management"] as const;
 const tiles = [
   "Photos", "Works ongoing", "Works completed", "Workforce", "Project Delay Report", "Issues", "HSE", "Materials delivery",
   "Inspections", "Technical instructions", "Change order", "NCR", "Lessons Learned", "HSE incident", "Agreements Made",
-  "Project Docs", "Assets & folders", "Drawings & pins",
+  "Drawings & pins", "Calculator & notes",
 ] as const;
 
 type Finding = { kind: string; detail: string };
@@ -45,6 +52,15 @@ const measure = (page: Page, touch: boolean) => page.evaluate((touchScreen) => {
     const style = getComputedStyle(element);
     return style.visibility !== "hidden" && style.display !== "none" && Number(style.opacity) > 0;
   };
+  // The sidebar shows all ten menus and the account without scrolling (OPUS-F01: "Management" was cut off at 768 px).
+  const sidebar = document.querySelector<HTMLElement>(".sidebar");
+  if (sidebar && visible(sidebar)) {
+    for (const item of Array.from(sidebar.querySelectorAll<HTMLElement>(".nav-button, .user-card, .project-context-card"))) {
+      const rect = item.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      if (rect.top < -1 || rect.bottom > window.innerHeight + 1 || !hit || !(item === hit || item.contains(hit))) found.push({ kind: "sidebar-cut", detail: `${label(item)} at ${Math.round(rect.top)}..${Math.round(rect.bottom)} in a ${window.innerHeight}px window` });
+    }
+  }
   if (document.documentElement.scrollWidth > window.innerWidth + 1) {
     found.push({ kind: "sideways-scroll", detail: `${document.documentElement.scrollWidth}px wide in a ${window.innerWidth}px window` });
   }
@@ -161,7 +177,7 @@ async function signIn(page: Page) {
 
 test("every screen holds still and nothing sits on top of anything else", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-office", "This test sets all three widths itself.");
-  test.setTimeout(900_000);
+  test.setTimeout(2_400_000);
   await signIn(page);
 
   const addresses: Array<{ name: string; search: string }> = [];

@@ -177,7 +177,6 @@ import type { ReportPhotoMode } from "@/lib/reports/report-photos";
 import { assignProjectAction, type InternalMember, type ProjectParty } from "@/lib/supabase/data";
 import { isStorageGatewayConfigured, openProjectFile, uploadProjectFile } from "@/lib/storage/gateway";
 import { isPhotoFile, photoSourceIds } from "@/lib/media/photo-library.mjs";
-import { countOpenFindings } from "@/lib/records/finding-counts.mjs";
 import { createFileOriginResolver, filesForRecord, type FileOriginKind, type FileOriginResolver } from "@/lib/supabase/file-origins";
 import { loadProjectThumbnailUrl } from "@/lib/images/thumbnail";
 import {
@@ -3625,13 +3624,14 @@ function ProjectOperations({
   const inRegisterList = (entry: { register_type: string }) => !registerListFilter || entry.register_type === registerListFilter;
   const projectSections: Array<[Exclude<ProjectTab, "home">, string, number]> = ([
     ["inspections", text("Inspections", "Inspecties"), data.inspections.length],
-    ["findings", text("Issues", "Issues"), countOpenFindings(data.findings, "issue")],
-    ["ncr", "NCR", countOpenFindings(data.findings, "ncr")],
+    // Every tile and module header counts the form's records, like Records & Photos does; the open ones are counted on the page itself (OPUS-F11).
+    ["findings", text("Issues", "Issues"), data.findings.filter((finding) => finding.finding_type !== "ncr").length],
+    ["ncr", "NCR", data.findings.filter((finding) => finding.finding_type === "ncr").length],
     ["hse", hseSpecForm === "hse_incident" ? text("HSE incident registration", "HSE-incidentregistratie") : "HSE", data.hseEvents.length],
     // The page is named after what was asked for: one block of the day, or the whole day log.
     ["daily", !dayLogFocus ? text("Day log", "Daglog") : dailyWorkView === "works_completed" ? text("Works completed", "Werkzaamheden afgerond") : dailyWorkView === "delays" ? text("Delays", "Vertragingen") : text("Works ongoing", "Werkzaamheden gaande"), (data.dailyWork ?? []).length],
     ["workforce", text("Workforce", "Workforce"), workforceDays.length],
-    ["documents", "Project Docs", data.files.filter((file) => file.status === "available").length + data.registerEntries.filter((entry) => ["document", "drawing", "specification", "contract", "boq"].includes(entry.register_type)).length],
+    ["documents", text("Project Documents", "Projectdocumenten"), data.files.filter((file) => file.status === "available").length + data.registerEntries.filter((entry) => ["document", "drawing", "specification", "contract", "boq"].includes(entry.register_type)).length],
     // F17: a Workspace page opened on one of the client's forms carries that form's name (images 8 and 12).
     // F17: a saved record opened from the archive or a link is headed by its own form's name.
     ["registers", workspacePageTitles[(focusRecordId && data.registerEntries.find((entry) => entry.id === focusRecordId)?.register_type) || registerForm.type] ?? text("Formal documents & registers", "Formele documenten & registers"), data.registerEntries.filter(inRegisterList).length],
@@ -3753,8 +3753,8 @@ function ProjectOperations({
             projectName={projectName}
             counts={{
               inspections: data.inspections.length,
-              issues: countOpenFindings(data.findings, "issue"),
-              ncr: countOpenFindings(data.findings, "ncr"),
+              issues: data.findings.filter((finding) => finding.finding_type !== "ncr").length,
+              ncr: data.findings.filter((finding) => finding.finding_type === "ncr").length,
               // HSE and HSE incident are two forms (Word 3): each tile counts its own records (OPUS-F09).
               hse: data.hseEvents.filter((event) => !["incident", "near_miss"].includes(event.event_type)).length,
               hseIncidents: data.hseEvents.filter((event) => ["incident", "near_miss"].includes(event.event_type)).length,
@@ -3797,7 +3797,8 @@ function ProjectOperations({
       ) : (
         <>
           <div className="workspace-section-controls">
-            <button className="workspace-back-button" type="button" onClick={() => switchTab("home")}><ArrowLeft size={17} aria-hidden="true" /> <span className="workspace-back-label">{text("Workspace", "Werkruimte")}</span></button>
+            {/* Project Documents is a main menu (Word 2), not a Workspace form: it has no way "back" to the Workspace (OPUS-F13). */}
+            {tab !== "documents" ? <button className="workspace-back-button" type="button" onClick={() => switchTab("home")}><ArrowLeft size={17} aria-hidden="true" /> <span className="workspace-back-label">{text("Workspace", "Werkruimte")}</span></button> : null}
             <div className="workspace-current-module" aria-live="polite">
               <span>{projectName}</span>
               {/* The module's own title: a heading, so it is announced and navigable. */}

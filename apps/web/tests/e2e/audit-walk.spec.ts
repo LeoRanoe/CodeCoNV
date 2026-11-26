@@ -163,7 +163,7 @@ for (const role of roles) {
         await page.waitForLoadState("networkidle").catch(() => undefined);
         await page.waitForTimeout(600);
         const back = page.locator(".workspace-back-button");
-        if (await back.isVisible().catch(() => false)) await back.click();
+        if (id === "project" && await back.isVisible().catch(() => false)) await back.click();
       };
 
       if (role !== "supervisor") {

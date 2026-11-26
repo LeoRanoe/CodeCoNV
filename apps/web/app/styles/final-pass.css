@@ -1133,3 +1133,21 @@ html { scroll-padding-bottom: calc(var(--mobile-nav-height, 0px) + 96px); }
 }
 /* OPUS-F08. The record filters fold behind one button above the list. */
 .spec-facet-toggle-row { display: flex; justify-content: flex-end; margin-block: var(--space-2); }
+
+/* OPUS-F12. A phone on its side (390 px high): the bottom bar puts each label beside its icon and the photo button in the
+   row, and the top bar is shorter, so the bars take 100 px instead of 130 px of the screen. */
+@media (max-width: 1024px) and (max-height: 500px) {
+  :root { --mobile-nav-height: calc(52px + max(0px, env(safe-area-inset-bottom) - 4px)); }
+  .mobile-bottom-nav { min-height: 52px; padding: 4px var(--space-2) max(4px, env(safe-area-inset-bottom)); }
+  .mobile-nav-button { flex-direction: row; gap: var(--space-2); min-height: 44px; }
+  .mobile-nav-button.active::before { top: -4px; }
+  .mobile-nav-button.quick { padding-top: 0; }
+  .mobile-nav-button.quick .mobile-plus { border-width: 0; height: 36px; position: static; width: 36px; }
+  .topbar { min-height: 48px; }
+}
+
+/* OPUS-F13. Project Documents: the register's search, filters and list sit at the top of their column (the column was
+   stretched to the height of the folder list and spread its rows over it), and the category picker is a full row. */
+.document-register-main { align-content: start; }
+.project-document-tabs.section-nav--menu { width: 100%; }
+.project-document-tabs .section-nav__trigger { width: 100%; }
