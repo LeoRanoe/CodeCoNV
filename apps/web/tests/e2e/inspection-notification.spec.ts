@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { expect, type Page, test } from "@playwright/test";
-import { createHash } from "node:crypto";
 import { notificationPath } from "../../lib/notifications/record-link.mjs";
+import { createHash } from "node:crypto";
 
 /**
  * Word 14 / WD-192: "Inspection scheduled or updated" reaches the person who must carry it out.

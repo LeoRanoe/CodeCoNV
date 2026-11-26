@@ -1,6 +1,8 @@
 "use client";
 
+import { AutoActionList } from "@/app/auto-action-list";
 import { SectionNav } from "@/app/section-nav";
+import { autoActionRows } from "@/lib/actions/auto-list.mjs";
 import {
   AlertTriangle,
   ArrowRight,
@@ -53,13 +55,13 @@ type ActionType = "all" | "action" | "wcr" | "rfi" | "rfa" | "wir" | "issue" | "
  * client asked for the action centre; the deadline tile of the workspace opens the same page
  * on its deadline view.
  */
-export type ActionCenterView = "mine" | "work" | "deadlines";
+export type ActionCenterView = "mine" | "work" | "deadlines" | "followup";
 type WorkFilter = "open" | "escalated" | "verification" | "closed" | "all";
 /** The menu's action views: contractor, corrective and preventive actions. */
 type FocusFilter = "all" | "contractor" | "corrective" | "preventive";
 type DeadlineFilter = "overdue" | "week" | "later" | "none" | "all";
 /** Which record a row opens, so tapping it never lands on a list the record is not in. */
-export type ActionCenterTarget = "findings" | "ncr" | "registers" | "drawings";
+export type ActionCenterTarget = "findings" | "ncr" | "registers" | "drawings" | "inspections" | "hse";
 
 type UnifiedItem = {
   id: string;
@@ -98,6 +100,7 @@ function typeIcon(type: UnifiedItem["type"]) {
 
 export function ProjectActionCenter({
   data,
+  buildings,
   actions,
   projectName,
   initialView = "work",
@@ -109,6 +112,7 @@ export function ProjectActionCenter({
   openProjectArea,
 }: {
   data: OperationSnapshot;
+  buildings: Array<{ id: string; name: string }>;
   actions: ProjectActionItem[];
   projectName: string;
   /** "deadlines" when the workspace deadline tile opened this page. */
@@ -131,6 +135,8 @@ export function ProjectActionCenter({
   const [workFilter, setWorkFilter] = useState<WorkFilter>("open");
   const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>("overdue");
   const [focusFilter, setFocusFilter] = useState<FocusFilter>("all");
+  /** One contractor (party id) or "" for all: the list, the tiles and the tabs follow it. */
+  const [contractorFilter, setContractorFilter] = useState("");
   const [search, setSearch] = useState("");
 
   const partyName = (partyId: string | null | undefined) => parties.find((party) => party.id === partyId)?.name ?? "";
@@ -202,6 +208,7 @@ export function ProjectActionCenter({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actions, data.findings, data.registerEntries, parties, resolveUserName, text]);
 
+  const followUpCount = useMemo(() => (autoActionRows({ ...data, buildings, parties } as unknown as Record<string, unknown>, { now: new Date().toISOString() }) as unknown[]).length, [data, buildings, parties]);
   const mine = useMemo(() => items.filter((item) => Boolean(currentUserId) && item.ownerUserId === currentUserId), [currentUserId, items]);
   // Somebody who has work of their own starts on it: that is the question the page exists
   // to answer. Somebody without assigned work would only see an empty page, so they start
@@ -231,7 +238,16 @@ export function ProjectActionCenter({
     || deadlineFilter === "week" && withinWeek(item)
     || deadlineFilter === "later" && later(item)
     || deadlineFilter === "none" && withoutDeadline(item);
-  const scopedItems = (view === "mine" ? mine : items).filter(matchesFocus);
+  // Only the contractors that actually have follow-up in this project are offered, each with how many items it holds.
+  const contractorOptions = parties
+    .filter((party) => ["contractor", "subcontractor"].includes(party.type))
+    .map((party) => ({ id: party.id, name: party.name, count: items.filter((item) => item.partyId === party.id).length }))
+    .filter((option) => option.count > 0)
+    .sort((left, right) => left.name.localeCompare(right.name, locale));
+  const activeContractor = contractorOptions.some((option) => option.id === contractorFilter) ? contractorFilter : "";
+  const scopedItems = (view === "mine" ? mine : items).filter(matchesFocus).filter((item) => !activeContractor || item.partyId === activeContractor);
+  const filtersActive = Boolean(activeContractor || focusFilter !== "all" || typeFilter !== "all" || search.trim());
+  const resetFilters = () => { setContractorFilter(""); setFocusFilter("all"); setTypeFilter("all"); setSearch(""); setWorkFilter("open"); setDeadlineFilter("overdue"); };
   // A number on a tile or a tab is what the list shows after pressing it: tiles count within
   // the chosen type, tabs within the chosen state.
   const typeScopedItems = scopedItems.filter((item) => typeFilter === "all" || item.type === typeFilter);
@@ -313,9 +329,13 @@ export function ProjectActionCenter({
           { id: "mine", label: text("My work", "Mijn werk"), count: mine.filter(isOpen).length, icon: <UserRound size={18} />, selected: view === "mine", onSelect: () => setView("mine") },
           { id: "work", label: text("All project work", "Al het projectwerk"), icon: <ClipboardCheck size={18} />, selected: view === "work", onSelect: () => setView("work") },
           { id: "deadlines", label: text("Deadlines", "Deadlines"), count: items.filter(overdue).length, icon: <CalendarClock size={18} />, selected: view === "deadlines", onSelect: () => setView("deadlines") },
+          { id: "followup", label: text("Follow-up per form", "Opvolging per formulier"), count: followUpCount, icon: <FileCheck2 size={18} />, selected: view === "followup", onSelect: () => setView("followup") },
         ]}
       />
 
+      {view === "followup" ? (
+        <AutoActionList data={data} buildings={buildings} parties={parties} openRecord={(tab, recordId) => openProjectArea(tab as ActionCenterTarget, recordId)} />
+      ) : <>
       {view === "deadlines" ? (
         <div className="action-center-summary deadline-summary">
           {([
@@ -363,6 +383,13 @@ export function ProjectActionCenter({
                 <option value="preventive">{text("Preventive actions", "Preventieve acties")}</option>
               </select>
             </label>
+            {contractorOptions.length ? <label className="action-center-focus"><span className="sr-only">{text("Contractor", "Aannemer")}</span>
+              <select aria-label={text("Contractor", "Aannemer")} value={activeContractor} onChange={(event) => setContractorFilter(event.target.value)} data-action-contractor>
+                <option value="">{text("All contractors", "Alle aannemers")}</option>
+                {contractorOptions.map((option) => <option value={option.id} key={option.id}>{option.name} ({option.count})</option>)}
+              </select>
+            </label> : null}
+            {filtersActive ? <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={resetFilters} data-action-reset>{text("Reset filters", "Filters herstellen")}</button> : null}
             <label className="action-center-search"><Search size={15} /><span className="sr-only">{text("Search action center", "Doorzoek actiecentrum")}</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text("Search reference, title or person", "Zoek referentie, titel of persoon")} /></label>
           </div>
 
@@ -382,7 +409,7 @@ export function ProjectActionCenter({
                 <span className={`document-status ${isSettledStatus(item.status) ? "approved" : ""}`}>{statusText(item.status, text)}</span>
                 <ArrowRight size={15} />
               </button>
-            )) : <div className="action-center-empty"><Filter size={24} /><div><strong>{view === "mine" ? text("Nothing is waiting for you", "Er wacht niets op jou") : !scopedItems.length ? text("No follow-up in this project yet", "Nog geen opvolging in dit project") : view === "deadlines" && deadlineFilter === "overdue" ? text("Nothing is overdue", "Niets is te laat") : text("No records match this view", "Geen registraties in deze weergave")}</strong></div>{scopedItems.length ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setTypeFilter("all"); setWorkFilter("all"); setDeadlineFilter("all"); setSearch(""); }}>{text("Clear filters", "Wis filters")}</button> : null}</div>}
+            )) : <div className="action-center-empty"><Filter size={24} /><div><strong>{view === "mine" ? text("Nothing is waiting for you", "Er wacht niets op jou") : !items.length ? text("No follow-up in this project yet", "Nog geen opvolging in dit project") : view === "deadlines" && deadlineFilter === "overdue" ? text("Nothing is overdue", "Niets is te laat") : text("No records match this view", "Geen registraties in deze weergave")}</strong></div>{items.length ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { resetFilters(); setWorkFilter("all"); setDeadlineFilter("all"); }}>{text("Clear filters", "Wis filters")}</button> : null}</div>}
           </div>
         </div>
 
@@ -410,6 +437,7 @@ export function ProjectActionCenter({
           <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => openProjectArea("drawings")}><MapPin size={14} /> {text("Open coordinated drawing", "Open gecoördineerde tekening")} · {data.drawingPins.length} {text("points", "punten")} <ArrowRight size={14} /></button>
         </div>
       </div>
+      </>}
     </section>
   );
 }

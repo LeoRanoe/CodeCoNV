@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { expect, type Page, test } from "@playwright/test";
 import sharp from "sharp";
+import { choosePhotoPurpose } from "./photo-purpose";
 
 /**
  * Every approved photo format through the photo library: JPEG, PNG, WebP, GIF, HEIC, HEIF and AVIF.
@@ -78,7 +79,7 @@ test("each approved photo format is previewed, marked, saved, kept as the exact 
     await expect.poll(() => image.evaluate((element) => (element as HTMLImageElement).naturalWidth), { timeout: 30_000 }).toBeGreaterThan(0);
   };
   const markAndDescribe = async () => {
-    await review.getByLabel(/Photo purpose/).selectOption("Site Conditions");
+    await choosePhotoPurpose(review, "Site Conditions");
     await page.getByRole("button", { name: "Open the details of photo 1" }).click();
     await page.getByRole("button", { name: "Mark on photo" }).click();
     const markup = page.locator(".photo-markup-modal");
@@ -102,7 +103,7 @@ test("each approved photo format is previewed, marked, saved, kept as the exact 
   const offline = { name: `fmt-${stamp}-offline.heic`, mime: "image/heic", bytes: heic };
   await choose(offline.name, offline.mime, offline.bytes);
   await preview();
-  await review.getByLabel(/Photo purpose/).selectOption("Site Conditions");
+  await choosePhotoPurpose(review, "Site Conditions");
   await context.setOffline(true);
   await review.locator(".ui-button--primary").first().click();
   await expect(page.locator(".offline-queue")).toContainText("1 upload(s) waiting", { timeout: 60_000 });

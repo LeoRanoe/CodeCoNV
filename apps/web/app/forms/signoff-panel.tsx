@@ -11,6 +11,10 @@ import {
   commentRequired,
   effectiveProfile,
   loadSignoffEvents,
+  outcomeDetails,
+  outcomeFields,
+  outcomeLabels,
+  outcomeReady,
   recordSignoffAction,
   signoffActionLabels,
   signoffProfiles,
@@ -21,6 +25,7 @@ import {
 } from "@/lib/forms/signoff";
 
 type Text = (en: string, nl: string) => string;
+
 
 /**
  * "Sign-off / review workflow" and "Workflow status" of every form in the client's
@@ -71,6 +76,8 @@ export function SignoffPanel({
   const [comments, setComments] = useState("");
   const [nextActor, setNextActor] = useState("");
   const [dueAt, setDueAt] = useState("");
+  /** The Close / Verify / Approve fields of the chosen action (closure note, verification result, approved amount and days). */
+  const [outcome, setOutcome] = useState<Record<string, string>>({});
 
   const refresh = useCallback(async () => {
     try {
@@ -101,10 +108,12 @@ export function SignoffPanel({
   const chosen = offered.find((item) => item.action === action);
   const stageOf = (number: number) => profile.stages.find((stage) => stage.number === number);
   const needsComment = action ? commentRequired(action) : false;
+  const outcomeFieldList = outcomeFields(profile.code, action);
   const external = attestation !== "account";
   const signedDocument = attestation === "signed_document";
   const ready = Boolean(chosen)
     && (!needsComment || comments.trim().length >= 3)
+    && outcomeReady(outcomeFieldList, outcome)
     && (action !== "return" || nextActor.trim().length >= 2 || Boolean(nextActorUserId))
     && (!external || externalName.trim().length >= 2)
     && (attestation !== "external_representative" || Boolean(signature?.image))
@@ -140,6 +149,7 @@ export function SignoffPanel({
         nextActor: nextActor.trim() || undefined,
         nextActorUserId: nextActorUserId || null,
         dueAt: dueAt ? new Date(dueAt).toISOString() : null,
+        details: outcomeDetails(outcomeFieldList, outcome),
       });
       setAction("");
       setComments("");
@@ -147,6 +157,7 @@ export function SignoffPanel({
       setNextActorUserId("");
       setSignedFile(null);
       setDueAt("");
+      setOutcome({});
       setSignature(null);
       setExternalName("");
       setExternalOrganization("");
@@ -181,6 +192,13 @@ export function SignoffPanel({
               {event.attestation_method === "external_representative" ? <span className="signoff-meta"> · {text("signed on this device by an external representative", "op dit apparaat getekend door een externe vertegenwoordiger")}</span> : null}
               {event.attestation_method === "signed_document" ? <span className="signoff-meta"> · {text("signed document uploaded", "ondertekend document geüpload")}</span> : null}
               {event.action === "reopen" && event.actor_role === "Editor" ? <span className="signoff-meta"> · {text("new version: edited after submission", "nieuwe versie: gewijzigd na indienen")}</span> : null}
+              {event.details && Object.keys(event.details).length ? (
+                <dl className="signoff-outcome-log">
+                  {(["closure_note", "verification_result", "verified_by", "verified_on", "approved_amount", "approved_days"] as const).filter((key) => event.details?.[key]).map((key) => (
+                    <div key={key}><dt>{outcomeLabels[key][language]}</dt><dd>{event.details?.[key]}</dd></div>
+                  ))}
+                </dl>
+              ) : null}
               {event.comments ? <p>{event.comments}</p> : null}
               {event.next_actor ? <p className="signoff-meta">{text("Next", "Volgende")}: {event.next_actor}{event.due_at ? ` · ${when(event.due_at)}` : ""}</p> : null}
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -195,7 +213,7 @@ export function SignoffPanel({
           <div className="form-grid form-grid-2">
             <label className="form-field">
               <span>{text("Action", "Actie")}</span>
-              <select value={action} onChange={(event) => setAction(event.target.value as SignoffAction | "")}>
+              <select value={action} onChange={(event) => { setAction(event.target.value as SignoffAction | ""); setOutcome({}); }}>
                 <option value="">{text("Choose an action…", "Kies een actie…")}</option>
                 {offered.map((item) => <option key={item.action} value={item.action}>{word(signoffActionLabels[item.action])}</option>)}
               </select>
@@ -258,6 +276,28 @@ export function SignoffPanel({
           </div>
           {stageConfig?.required_approvals && stageConfig.required_approvals > 1 ? (
             <p className="form-helper">{text(`This step needs ${stageConfig.required_approvals} approvals before the record moves on.`, `Deze stap vraagt ${stageConfig.required_approvals} goedkeuringen voordat de registratie verder gaat.`)}</p>
+          ) : null}
+          {outcomeFieldList.length ? (
+            <div className="signoff-outcome" role="group" aria-label={chosen ? word(signoffActionLabels[chosen.action]) : undefined}>
+              <div className="form-grid form-grid-2">
+                {outcomeFieldList.map((field) => (
+                  <label className={`form-field${field.kind === "textarea" ? " signoff-outcome-wide" : ""}`} key={field.key}>
+                    <span>{word(field.label)} {field.required ? <em className="record-section-required">*</em> : null}</span>
+                    {field.kind === "textarea" ? (
+                      <textarea rows={3} maxLength={field.max} value={outcome[field.key] ?? ""} onChange={(event) => setOutcome({ ...outcome, [field.key]: event.target.value })} />
+                    ) : field.kind === "select" ? (
+                      <select value={outcome[field.key] ?? ""} onChange={(event) => setOutcome({ ...outcome, [field.key]: event.target.value })}>
+                        <option value="">{text("Choose…", "Kies…")}</option>
+                        {field.options?.map((option) => <option key={option} value={option}>{option}</option>)}
+                      </select>
+                    ) : (
+                      <input type="text" inputMode={field.kind === "number" ? "decimal" : undefined} maxLength={field.max} value={outcome[field.key] ?? ""} onChange={(event) => setOutcome({ ...outcome, [field.key]: event.target.value })} />
+                    )}
+                    {field.hint ? <small className="form-helper">{word(field.hint)}</small> : null}
+                  </label>
+                ))}
+              </div>
+            </div>
           ) : null}
           <label className="form-field">
             <span>{text("Comments", "Opmerkingen")} {needsComment ? <em className="record-section-required">*</em> : null}</span>

@@ -1,3 +1,4 @@
+import { choosePhotoPurpose } from "./photo-purpose";
 import { expect, type Page, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -73,7 +74,7 @@ test("the issue form takes a camera JPEG whatever label the browser gives it", a
   if (await back.isVisible().catch(() => false)) await back.click();
   await page.locator('[data-workspace-destination="issues"]').click();
   await expect(page.getByRole("heading", { name: "Create issue" })).toBeVisible();
-  const input = page.getByLabel("Add photo").first();
+  const input = page.getByLabel("Take a picture").first();
   const bytes = readFileSync(photoPath!);
   await input.setInputFiles({ name: "labelled.jpg", mimeType: "image/jpeg", buffer: bytes });
   await input.setInputFiles({ name: "android.jpg", mimeType: "image/jpg", buffer: bytes });
@@ -112,7 +113,7 @@ test("the photo library saves approved formats and keeps the exact originals", a
     const name = `approved-${stamp}.${extension}`;
     await input.setInputFiles({ name, mimeType: `image/${extension}`, buffer });
     const review = page.locator(".media-capture-review");
-    await review.getByLabel(/Photo purpose/).selectOption("Site Conditions");
+    await choosePhotoPurpose(review, "Site Conditions");
     await review.getByRole("button", { name: "Save with date" }).click();
     await expect(review).toHaveCount(0, { timeout: 60_000 });
     await expect.poll(() => deviceQueue(page), { timeout: 60_000 }).toEqual([]);
@@ -152,7 +153,7 @@ test("a photo stack is saved centrally and leaves nothing waiting on the device"
     { name: "stack-b.jpg", mimeType: "image/jpeg", buffer: bytes },
   ]);
   await page.getByLabel(/Keep together as one photo stack/).check();
-  await page.locator(".media-capture-review").getByLabel(/Photo purpose/).selectOption("Progress Documentation");
+  await choosePhotoPurpose(page.locator(".media-capture-review"), "Progress Documentation");
   await page.getByRole("button", { name: "Save photo stack" }).click();
   await expect(page.locator(".media-capture-review")).toHaveCount(0, { timeout: 60_000 });
   await expect.poll(() => deviceQueue(page), { timeout: 30_000 }).toEqual([]);
@@ -180,7 +181,7 @@ test("photos taken one after another are reviewed together and saved as separate
   await expect(page.getByText("Photo 2 of 2")).toBeVisible();
   await page.getByRole("dialog").getByLabel("Caption / observation").fill("Wapening zichtbaar aan de onderzijde");
   await page.getByRole("button", { name: "Close" }).click();
-  await page.locator(".media-capture-review").getByLabel(/Photo purpose/).selectOption("Technical / Quality Evidence");
+  await choosePhotoPurpose(page.locator(".media-capture-review"), "Technical / Quality Evidence");
   await page.getByRole("button", { name: "Save 2 photos" }).click();
   await expect(page.locator(".media-capture-review")).toHaveCount(0, { timeout: 60_000 });
   await expect.poll(() => deviceQueue(page), { timeout: 30_000 }).toEqual([]);

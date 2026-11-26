@@ -1,9 +1,11 @@
+import { choosePhotoPurpose } from "./photo-purpose";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, utimes, writeFile } from "node:fs/promises";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { expect, type Browser, type Page, test } from "@playwright/test";
 import JSZip from "jszip";
 import { fillSpecFields } from "./spec-fill";
+import { finishSigning } from "./sign-popup";
 
 /**
  * Word section 17, the three journeys end to end on the local fixture stack, plus the F05 photo
@@ -204,6 +206,7 @@ test("17.2 and 17.3 a revised drawing and a Technical Instruction issued against
   await fillSpecFields(page.locator("main"));
   await fillSpecFields(page.locator("main"));
   await page.locator("main").getByRole("button", { name: /^Create controlled document$/ }).last().click();
+  await finishSigning(page);
   await expect(page.locator(".operation-alert.success")).toBeVisible({ timeout: 30_000 });
 
   const lead = await api(supervisor);
@@ -324,7 +327,7 @@ codeco-e2e-${suffix}-${index}`), Buffer.alloc(950_000)]));
     const chooser = page.waitForEvent("filechooser");
     await page.getByRole("button", { name: /^Upload photos/ }).click();
     await (await chooser).setFiles(file);
-    if (file !== files[0]) await page.locator(".media-capture-review").getByLabel(/Photo purpose/).selectOption("Progress Documentation");
+    if (file !== files[0]) await choosePhotoPurpose(page.locator(".media-capture-review"), "Progress Documentation");
   };
   const save = page.locator(".media-capture-review .ui-button--primary").first();
 
@@ -332,7 +335,7 @@ codeco-e2e-${suffix}-${index}`), Buffer.alloc(950_000)]));
   await choose(files[0]);
   await save.click();
   await expect(page.getByRole("alert").filter({ hasText: "a purpose for every photo" })).toBeVisible();
-  await page.locator(".media-capture-review").getByLabel(/Photo purpose/).selectOption("Site Conditions");
+  await choosePhotoPurpose(page.locator(".media-capture-review"), "Site Conditions");
   await save.click();
   const lead = await api(supervisor);
   await expect.poll(async () => (await lead.from("files").select("id").eq("project_id", project).eq("sha256", hashes[0])).data?.length ?? 0, { timeout: 90_000 }).toBe(1);

@@ -1,6 +1,7 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { expect, type Page, test } from "@playwright/test";
 import { fillSpecFields } from "./spec-fill";
+import { finishSigning } from "./sign-popup";
 
 /**
  * Client, 19-11-2026: "the user must be able to export their own report of everything — all
@@ -53,6 +54,9 @@ test("the day overview exports every Workspace form of the day as PDF and Word",
   await page.locator("[data-workspace-destination='materials-delivery']").click();
   const form = page.locator(".record-form-shell").first();
   // The Materials Delivery sheet: the record is read back by its material description.
+  // A delivery of a traceable group (cement, concrete, steel, piles) is accepted only after a complying compliance check
+  // (Word 10.1), so this fixture is an insulation delivery.
+  await form.locator("[data-spec-field='material_group'] select").selectOption("Insulation");
   await form.locator("[data-spec-field='material_specification'] input").fill(title);
   await form.locator("[data-spec-field='delivered_quantity'] input").fill("12");
   await form.locator("[data-spec-field='unit'] select").selectOption("m³");
@@ -61,6 +65,7 @@ test("the day overview exports every Workspace form of the day as PDF and Word",
   const storedOnSite = form.locator("[data-spec-field='stored_on_site'] input");
   if (await storedOnSite.isVisible().catch(() => false)) await storedOnSite.uncheck();
   await page.getByRole("button", { name: "Save register item" }).click();
+  await finishSigning(page);
   await expect(page.getByText(/saved/i).first()).toBeVisible();
 
   await page.locator(".sidebar").getByRole("button", { name: "Reports", exact: true }).click();

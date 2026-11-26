@@ -55,8 +55,8 @@ create temporary table specs on commit drop as select
     'action_required', 'Yes') as agreement,
   jsonb_build_object('_rules', '1', 'report_date', '2026-11-24', 'discipline', 'Surveying & Setting Out', 'activity', 'Building / Grid Setting Out',
     'exact_location', 'Grid A-3', 'work_item', 'Grid lines', 'progress_status', 'In Progress', 'crew', jsonb_build_array('Contractor A NV'),
-    'quantity_na', 'yes') as works,
-  '{"_rules":"1","incident_at":"2026-11-24T09:00","incident_type":"Injury / Illness","incident_category":"First Aid Case",
+    'quantity_na', 'yes', 'weather', 'Dry / sunny') as works,
+  '{"_rules":"1","incident_at":"2026-11-24T09:00","incident_type":"Injury / Illness","incident_category":"Struck by / against object",
     "immediate_response":"Provide first aid","incident_severity":"Minor","investigation_required":"No","hse_reviewer":"Lena Lead",
     "corrective_actions":[{"action":"Remove obstruction","owner":"Lena Lead","due":"2026-11-30"}]}'::jsonb as incident;
 grant select on specs to authenticated;

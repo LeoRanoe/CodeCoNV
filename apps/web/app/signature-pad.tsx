@@ -28,6 +28,9 @@ export function SignaturePad({
   nameSuggestion = "",
   nameOptions = [],
   lockName = false,
+  confirmLabel,
+  skipLabel,
+  onSkip,
   close,
   save,
 }: {
@@ -39,6 +42,11 @@ export function SignaturePad({
   nameOptions?: string[];
   /** The signatory is the signed-in account itself: the name is shown, not typed. */
   lockName?: boolean;
+  /** The text of the confirm button; "Sign the document" when empty. */
+  confirmLabel?: string;
+  /** A second way out for a signature that is optional: carry on without signing. */
+  skipLabel?: string;
+  onSkip?: () => void;
   close: () => void;
   save: (signature: HandwrittenSignature) => void;
 }) {
@@ -232,7 +240,8 @@ export function SignaturePad({
 
         <footer className="modal-actions">
           <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={close}>{text("Cancel", "Annuleren")}</button>
-          <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={empty || name.trim().length < 2} onClick={confirm}><PenLine size={15} /> {text("Sign the document", "Onderteken het document")}</button>
+          {skipLabel && onSkip ? <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={onSkip}>{skipLabel}</button> : null}
+          <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={empty || name.trim().length < 2} onClick={confirm}><PenLine size={15} /> {confirmLabel ?? text("Sign the document", "Onderteken het document")}</button>
         </footer>
       </section>
     </div>

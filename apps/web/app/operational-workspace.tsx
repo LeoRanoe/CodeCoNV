@@ -38,6 +38,7 @@ import {
   Plus,
   RotateCcw,
   Save,
+  ScrollText,
   Send,
   Settings,
   ShieldAlert,
@@ -58,20 +59,28 @@ import NextImage from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type Dispatch, type SetStateAction } from "react";
 import { AgreementSignatureFields, agreementRecordDetails, agreementSignatureDetails, agreementSummaryLine, emptyAgreementRecord, emptyAgreementSignature } from "@/app/agreement-signature";
 import { ALL_BUILDINGS, BuildingMultiPicker, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
+import { readChecklistFile } from "@/lib/checklists/import-checklist.mjs";
 import { appendDictation, DictateButton, inputWithMicStyle, micInputStyle } from "@/app/dictate-button";
 import { RecordBuildingsField, RecordFormSection, RecordFormShell, RecordSignatureField } from "@/app/forms/record-form-shell";
 import { RecordList, SavedRecordsFold } from "@/app/forms/record-list";
 import { ContractorSignatureField, RecordSignatures, contractorSignatureDetails, contractorSignatureFrom, emptyContractorSignature, type ContractorSignatureValue } from "@/app/forms/contractor-signature";
 import { SpecFields, SpecLinkChips } from "@/app/forms/spec-fields";
+import { FormAutoBar, autoBarItems } from "@/app/forms/form-auto-bar";
+import { fileProblem, formCodes, nextRecordId, suggestTitle, titleFollowsSuggestion } from "@/lib/forms/record-defaults.mjs";
+import { AttachmentButtons } from "@/app/forms/attachment-buttons";
 import { WorkspaceSpecDirectory } from "@/app/forms/workspace-spec-directory";
 import { SpecConfigurationPanel } from "@/app/forms/spec-configuration-panel";
 import { ProjectInformationPanel } from "@/app/project-information";
+import { CompanyRegister } from "@/app/company-register";
 import { InspectionPlanForm, PlannedInspections } from "@/app/inspection-planner";
 import { SharedLessons } from "@/app/forms/shared-lessons";
 import { InspectionSpecEditor } from "@/app/forms/inspection-spec-editor";
 import { SignoffPanel } from "@/app/forms/signoff-panel";
-import { loadSignoffHistory, signoffHistoryEntries } from "@/lib/forms/signoff";
-import { cleanSpecValues, isOtherOption, sensitiveKeys, sheetLayouts, specFacts, specForms, specLinks, specMissing, workflowProfiles, type SpecFormKey, type SpecRow, type SpecValues } from "@/lib/forms/spec-forms";
+import { loadSignoffHistory, signoffHistoryEntries, type SignoffEvent } from "@/lib/forms/signoff";
+import { decideIssue, type IssueDecision } from "@/lib/forms/issue-decision";
+import { contractorResponses, groupReportLines, reportGroupingLabels, reportGroupings, reportRecordLines, snapshotLookup } from "@/lib/reports/report-structure.mjs";
+import { IssueDecisionDialog } from "@/app/forms/issue-decision-dialog";
+import { cleanSpecValues, isOtherOption, sensitiveKeys, sheetLayouts, specFacts, specForms, specLinks, specMissing, traceableMaterial, workflowProfiles, type SpecFormKey, type SpecRow, type SpecValue, type SpecValues } from "@/lib/forms/spec-forms";
 import { specLabel } from "@/lib/forms/spec-labels-nl";
 import { facetFilterActive, filterPeriodSnapshot, matchesSpecFacets, recordSpec, specFacets, type SpecFacetFilter } from "@/lib/forms/spec-facets";
 import { SpecFacetFilterBar } from "@/app/forms/spec-facet-filter";
@@ -101,8 +110,12 @@ import { RegisterReports } from "@/app/register-reports";
 import { RecordsArchive } from "@/app/records-archive";
 import { DocumentSettings } from "@/app/document-register";
 import { ProjectActionCenter, type ActionCenterView } from "@/app/project-action-center";
-import { RapidVerifyWorkspace } from "@/app/rapid-verify-workspace";
+import { RapidVerifyHome } from "@/app/rapid-verify-workspace";
 import { SignatureField, type HandwrittenSignature } from "@/app/signature-pad";
+import { ReportPresets, ReportSchedules, ReportTemplates, type ReportBuilderSettings } from "@/app/report-builder-tools";
+import { addOpenFromBefore, reportPresetRange, reportTypeForms, reportTypes, reportTypeSections } from "@/lib/reports/report-builder.mjs";
+import { DrawingLocationPicker, drawingLocationLabel, pickableDrawings, type DrawingLocation } from "@/app/drawing-location-picker";
+import { useSignedSubmit } from "@/app/forms/sign-submit";
 import { detailsForEdit } from "@/lib/forms/edit-details.mjs";
 import { controlledDocumentSignatures, documentSignatureState } from "@/lib/reports/controlled-document-signatures.mjs";
 import { findingStatusLabels as canonicalFindingStatusLabels, labelMap, statusText, typeText, codeText, optionText, severityText, partyTypeText } from "@/lib/status-labels";
@@ -158,7 +171,8 @@ import { prepareEvidencePhoto, forceSyncOfflineUploads, queueOfflineUpload, remo
 import { photoAccept, photoRefusalMessage, prepareCameraPhotos } from "@/lib/images/normalize-image";
 import { requestProjectNotificationDispatch } from "@/lib/notifications/client";
 import type { FormalReportSnapshot } from "@/lib/reports/daily-report-pdf";
-import type { PeriodReportSection, PeriodReportTopic } from "@/lib/reports/period-report-pdf";
+import type { PeriodReportOptions, PeriodReportSection, PeriodReportTopic } from "@/lib/reports/period-report-pdf";
+import type { ReportPhotoMode } from "@/lib/reports/report-photos";
 import { assignProjectAction, type InternalMember, type ProjectParty } from "@/lib/supabase/data";
 import { isStorageGatewayConfigured, openProjectFile, uploadProjectFile } from "@/lib/storage/gateway";
 import { isPhotoFile, photoSourceIds } from "@/lib/media/photo-library.mjs";
@@ -180,6 +194,7 @@ import {
   signInspection,
   importProjectBoq,
   installChecklistLibraryTemplate,
+  uploadChecklist,
   loadInspectionResponses,
   loadProjectOperations,
   recordDistribution,
@@ -591,14 +606,6 @@ const recordRootCauses = [
  * itself is handed out centrally when it is submitted — two people can be filling in the
  * same screen — so this is the one that is next in line, marked as provisional.
  */
-function nextRecordNumber(existing: string[], prefix: string, year: string) {
-  const pattern = new RegExp(`^${prefix}-${year}-([0-9]+)$`);
-  const highest = existing.reduce((top, number) => {
-    const match = pattern.exec(number.trim());
-    return match ? Math.max(top, Number(match[1])) : top;
-  }, 0);
-  return `${prefix}-${year}-${String(highest + 1).padStart(4, "0")}`;
-}
 
 
 /**
@@ -1123,6 +1130,7 @@ export function OperationalWorkspace({
       {mode === "actions" ? (
         <ProjectActionCenter
           data={snapshot}
+          buildings={buildings}
           actions={projectActions}
           projectName={projectName}
           initialView={actionCenterView}
@@ -1142,7 +1150,7 @@ export function OperationalWorkspace({
           actions={projectActions}
           buildings={buildings}
           parties={parties}
-          specSearch={<RapidVerifyWorkspace key={projectId} projectName={projectName} projectFiles={snapshot.files} client={client} />}
+          specSearch={<RapidVerifyHome key={projectId} projectName={projectName} projectFiles={snapshot.files} client={client} projectId={projectId} buildingId={buildingId} currentUserName={currentUserName} />}
           openRecord={(recordType, recordId) => {
             if (recordType === "action") { openProjectAction?.(recordId); return; }
             openProjectArea(recordType === "inspection" ? "inspections" : recordType === "register_entry" ? "registers" : "findings", recordId);
@@ -1153,6 +1161,7 @@ export function OperationalWorkspace({
         <ReportOperations
           key={focusRecordId}
           focusRecordId={focusRecordId}
+          reportPeople={companyEmployees.map((member) => ({ id: member.userId, name: member.displayName?.trim() || member.email, role: member.projectRoles.find((role) => role.projectId === projectId)?.roleName ?? member.organizationRoles[0]?.name ?? "" }))}
           data={snapshot}
           reportId={reportId}
           reportNumber={reportNumber}
@@ -1407,7 +1416,9 @@ function ProjectOperations({
     setDelayForm({ ...emptyDelayReport });
     setLessonForm({ ...emptyLessonLearned });
     setRegisterFiles([]);
+    setRegisterCertificates([]);
     setRegisterSignature(null);
+    setRegisterDrawingLocation(null);
     setRegisterContractorSignature({ ...emptyContractorSignature });
     setRegisterOutcome("");
     setRegisterLines([{ quantity: "", unit: "", description: "" }]);
@@ -1445,9 +1456,14 @@ function ProjectOperations({
     ...(externalSubmissionIntent ? { type: "rfi" } : {}),
   });
   const [registerSignature, setRegisterSignature] = useState<HandwrittenSignature | null>(null);
+  /** Excel v5.0 "Drawing location (PDF + pin)": the drawing, page and point the work is at. */
+  const [registerDrawingLocation, setRegisterDrawingLocation] = useState<DrawingLocation | null>(null);
+  const [pickingRegisterDrawing, setPickingRegisterDrawing] = useState(false);
   /** The contractor's representative signs a register item at its end (19-11-2026). */
   const [registerContractorSignature, setRegisterContractorSignature] = useState<ContractorSignatureValue>({ ...emptyContractorSignature });
   const [registerFiles, setRegisterFiles] = useState<File[]>([]);
+  /** Materials Delivery 9.2: the certificate of a traced material (cement, steel, precast, piles). */
+  const [registerCertificates, setRegisterCertificates] = useState<File[]>([]);
   const [boqFile, setBoqFile] = useState<File | null>(null);
   const [boqItems, setBoqItems] = useState<BoqImportItem[]>([]);
   const [boqError, setBoqError] = useState("");
@@ -1564,7 +1580,7 @@ function ProjectOperations({
     id: `form:register:${registerForm.type}:${projectId}`,
     enabled: openForNew && tab === "registers" && !editingRegisterId,
     value: {
-      registerForm, registerSignature, registerFiles, registerLines, registerPhotos, registerNamedPhotos, registerOutcome,
+      registerForm, registerSignature, registerFiles, registerCertificates, registerLines, registerPhotos, registerNamedPhotos, registerOutcome,
       registerDrawingId, registerLocationNodeId, registerBuildingId, registerBuildingIds,
       agreementForm, agreementRecord, changeOrder, delayForm, lessonForm,
     },
@@ -1572,6 +1588,7 @@ function ProjectOperations({
       setRegisterForm((current) => ({ ...current, ...draft.registerForm }));
       setRegisterSignature(draft.registerSignature ?? null);
       setRegisterFiles(Array.isArray(draft.registerFiles) ? draft.registerFiles : []);
+      setRegisterCertificates(Array.isArray(draft.registerCertificates) ? draft.registerCertificates : []);
       if (Array.isArray(draft.registerLines) && draft.registerLines.length) setRegisterLines(draft.registerLines);
       setRegisterPhotos(Array.isArray(draft.registerPhotos) ? draft.registerPhotos : []);
       setRegisterNamedPhotos(draft.registerNamedPhotos ?? {});
@@ -1729,18 +1746,6 @@ function ProjectOperations({
     const name = member.displayName?.trim() || member.email;
     return { id: member.userId, name, role: projectRole?.roleName ?? member.organizationRoles[0]?.name ?? "" };
   });
-  /** The department in the head of the screen is the role the reporter carries here. */
-  const reporterDepartment = (() => {
-    const me = companyEmployees.find((member) => member.userId === currentUserId);
-    const projectRole = me?.projectRoles.find((role) => role.projectId === projectId);
-    return projectRole?.roleName || me?.organizationRoles[0]?.name || text("Field operations", "Uitvoering");
-  })();
-  const liveWeatherLabel = liveWeather
-    ? `${({
-      sunny: text("Clear", "Helder"), partly_cloudy: text("Partly cloudy", "Licht bewolkt"),
-      cloudy: text("Cloudy", "Bewolkt"), rain: text("Rain", "Regen"), heavy_rain: text("Heavy rain", "Zware regen"),
-    } as Record<string, string>)[liveWeather.condition] ?? liveWeather.condition}`
-    : text("Not available", "Niet beschikbaar");
   /** Section 1: the tile decides the heading of the form and the kind of event it is. */
   /** The HSE incident tile opens the HSE form with the Incident tile already chosen. */
   const applyHsePreset = (eventType: string) => {
@@ -1783,8 +1788,9 @@ function ProjectOperations({
    */
   /** The number both screens show while the record is being written. */
   const recordYear = issueDate.slice(0, 4);
-  const nextIssueNumber = nextRecordNumber(data.findings.map((finding) => finding.finding_number), "Q", recordYear);
-  const nextHseNumber = nextRecordNumber(data.hseEvents.map((event) => event.event_number), "HSE", recordYear);
+  // Record IDs of developer package v5: <PROJECT>-<FORM CODE>-<YYYY>-<NNNN>; the database assigns the same number on submit.
+  const nextIssueNumber = nextRecordId(data.findings.map((finding) => finding.finding_number), projectCode, "issue", recordYear);
+  const nextHseNumber = nextRecordId(data.hseEvents.map((event) => event.event_number), projectCode, hseForm.type === "incident" ? "hse_incident" : "hse", recordYear);
   /**
    * The chip in the head of the record screens is not only a light: it is the way to push
    * what is still on the device. "Data will sync" has to be something you can also ask for.
@@ -2006,6 +2012,7 @@ function ProjectOperations({
   };
   const editRegister = (entry: RegisterEntry) => {
     const details = entry.details ?? {};
+    setRegisterDrawingLocation((details.drawing_location ?? null) as DrawingLocation | null);
     setRegisterSpec({ ...((details.spec ?? {}) as SpecValues), __stored: "yes" });
     setRegisterForm({
       ...emptyControlledDocumentDraft,
@@ -2055,6 +2062,7 @@ function ProjectOperations({
     setRegisterContractorSignature(entry.register_type === "change_order" ? { ...emptyContractorSignature } : contractorSignatureFrom(details));
     // Staged evidence belongs to the form it was added in, never to the record being edited.
     setRegisterFiles([]);
+    setRegisterCertificates([]);
     setRegisterPhotos([]);
     setRegisterNamedPhotos({});
     setRegisterPhotoError("");
@@ -2297,7 +2305,19 @@ function ProjectOperations({
   // used and the question is not asked a second time.
   // Delivery, TI, CO, PDR, Lessons Learned and Agreements Made are their workbook sheets, row by row.
   const sheetRegister = Boolean(registerSpecForm && sheetLayouts[registerSpecForm]);
-  const sheetRegisterValues: SpecValues = registerForm.type === "delivery"
+  // Works Ongoing 4.1 (v5.0): the weather is pre-filled from the first record of the same date and stays editable.
+  const dayWeather = (date: string) => {
+    if (!date) return "";
+    const first = data.registerEntries
+      .filter((entry) => entry.register_type === "works_ongoing" && entry.id !== editingRegisterId)
+      .map((entry) => ({ spec: ((entry.details as { spec?: Record<string, unknown> } | null)?.spec ?? {}), at: entry.occurred_at ?? "" }))
+      .filter((entry) => entry.spec.report_date === date && typeof entry.spec.weather === "string" && entry.spec.weather)
+      .sort((a, b) => String(a.at).localeCompare(String(b.at)))[0];
+    return first ? String(first.spec.weather) : "";
+  };
+  const sheetRegisterValues: SpecValues = registerForm.type === "works_ongoing"
+    ? { ...registerSpec, weather: registerSpec.weather ?? (dayWeather(typeof registerSpec.report_date === "string" ? registerSpec.report_date : new Date().toISOString().slice(0, 10)) || undefined) }
+    : registerForm.type === "delivery"
     ? { ...registerSpec, delivered_quantity: registerSpec.delivered_quantity ?? registerLines[0]?.quantity ?? "", unit: registerSpec.unit ?? registerLines[0]?.unit ?? "" }
     : registerForm.type === "technical_instruction"
       ? { ...registerSpec, response_required_by: registerForm.dueDate, issued_to: registerSpec.issued_to ?? registerForm.requestedTo }
@@ -2334,6 +2354,23 @@ function ProjectOperations({
       setDelayForm((current) => ({ ...current, description: one("detailed_cause").slice(0, 250), durationDays: days || current.durationDays, recoveryPlan: one("recovery_action") }));
     } else if (registerForm.type === "lessons_learned") {
       setLessonForm((current) => ({ ...current, projectPhase: one("project_phase"), issue: one("what_happened"), cause: one("root_cause"), solution: one("lesson_learned"), expectedResults: one("recommendation"), followUpAction: one("recommendation"), responsiblePerson: one("action_owner") }));
+    } else if (registerForm.type === "works_completed") {
+      // Row 3.1 (v5.0): choosing the Works Ongoing record fills what it already says; every field stays editable.
+      const reference = one("based_on_ref");
+      const previous = typeof registerSpec.based_on_ref === "string" ? registerSpec.based_on_ref : "";
+      const source = reference && reference !== previous ? data.registerEntries.find((entry) => reference.endsWith(`:${entry.id}`)) : undefined;
+      if (source) {
+        const spec = ((source.details as { spec?: Record<string, unknown> } | null)?.spec ?? {}) as Record<string, unknown>;
+        const copy: SpecValues = { ...next };
+        for (const key of ["discipline", "secondary_discipline", "activity", "exact_location", "quantity_unit", "quantity_unit_other", "crew", "crew_refs"] as const) {
+          const value = spec[key];
+          if (typeof value === "string" ? value : Array.isArray(value) && value.length) copy[key] = value as SpecValue;
+        }
+        setRegisterSpec(copy);
+        const buildings = source.building_ids?.length ? source.building_ids : source.building_id ? [source.building_id] : [];
+        if (buildings.length) { setRegisterBuildingIds(buildings); setRegisterBuildingId(buildings[0]!); }
+        setRegisterLocationNodeId(source.location_node_id ?? "");
+      }
     } else if (registerForm.type === "agreement") {
       // Rows 11 and 12: one action owner and due date when an action is required.
       const owner = one("action_owner_ref");
@@ -2351,7 +2388,11 @@ function ProjectOperations({
   const registerSpecSkip: string[] = sheetRegister ? (["works_ongoing", "works_completed"].includes(registerForm.type) ? ["building_area"] : []) : registerForm.type === "lessons_learned"
     ? ["project_phase", "action_owner"]
     : registerForm.type === "change_order" ? ["originator", "cost_impact", "time_impact", "time_impact_unit"] : [];
-  const registerSpecProblems = registerSpecForm ? specMissing(registerSpecForm, registerSpecValues, language, registerSpecSkip) : [];
+  const registerSpecProblems = [
+    ...(registerSpecForm ? specMissing(registerSpecForm, registerSpecValues, language, registerSpecSkip) : []),
+    // Materials Delivery 9.2: a traced material needs its certificate.
+    ...(registerForm.type === "delivery" && traceableMaterial(registerSpecValues) && !registerCertificates.length && !editingRegisterId ? [text("Certificate / test certificate", "Certificaat / testcertificaat")] : []),
+  ];
   // Section 3 is marked "photo required" on the client's own form, and section 5 asks for
   // one the moment the completion box is started.
   const delayReportFormReady = !delayReportRegister || (
@@ -2395,7 +2436,7 @@ function ProjectOperations({
   // lesson learned reads the same way off its own issue text.
   const sheetText = (key: string) => (typeof registerSpecValues[key] === "string" ? String(registerSpecValues[key]).trim() : "");
   // Sheets without a title row (delivery, TI, PDR) read back by what they are about.
-  const registerTitle = sheetRegister && registerForm.type === "delivery"
+  const registerTitleDerived = sheetRegister && registerForm.type === "delivery"
     ? sheetText("material_specification").slice(0, 120)
     : sheetRegister && registerForm.type === "technical_instruction"
     ? [sheetText("instruction_category") || sheetText("instruction_type"), registerForm.details.trim().split(/\r?\n/)[0]].filter(Boolean).join(" · ").slice(0, 120)
@@ -2416,6 +2457,9 @@ function ProjectOperations({
       delayForm.description.trim().split(/\r?\n/)[0],
     ].filter(Boolean).join(" · ").slice(0, 90)
     : registerForm.title.trim();
+  // Excel v5.0 row 2.1: the Title is pre-filled from what was entered and stays editable.
+  const registerTitleEditable = sheetRegister && ["works_ongoing", "works_completed", "delivery", "technical_instruction", "delay_report"].includes(registerForm.type);
+  const registerTitle = registerTitleEditable ? (registerForm.title.trim() || registerTitleDerived) : registerTitleDerived;
   // What a sheet form still needs: the rows of the screen's own boxes, then the sheet's rows.
   const sheetRegisterMissing = sheetRegister ? [
     registerTitle.length < 3 ? text("title", "titel") : "",
@@ -2762,6 +2806,21 @@ function ProjectOperations({
   };
 
   const addFindingPhotos = (files: FileList | null) => addPhotosToStack(files, setFindingPhotos, setFindingPhotoError);
+
+  // v5.0 "Form title": suggested as "<Type / Category> - <Location> - <date>" as soon as those are
+  // chosen; it follows the suggestion until the user writes their own title.
+  const findingTitleSuggestion = suggestTitle({
+    typeOrCategory: findingForm.issueCategory || String(findingSpec.ncr_category ?? ""),
+    location: findingCoversEveryBuilding ? "" : findingBuildingsLabel,
+    date: issueDateLabel,
+  });
+  const lastFindingTitleSuggestion = useRef("");
+  useEffect(() => {
+    const previous = lastFindingTitleSuggestion.current;
+    lastFindingTitleSuggestion.current = findingTitleSuggestion;
+    if (!findingTitleSuggestion) return;
+    setFindingForm((current) => (titleFollowsSuggestion(current.title, previous) && current.title !== findingTitleSuggestion ? { ...current, title: findingTitleSuggestion } : current));
+  }, [findingTitleSuggestion]);
 
   const addFinding = async () => {
     if (findingForm.description.trim().length < 3) return;
@@ -3257,7 +3316,7 @@ function ProjectOperations({
         // itself, so it cannot be added afterwards. Without a connection the register item
         // can still be written to the device — the attachment cannot, and saying so is
         // better than dropping the file silently.
-        if (!registerOnline && registerFiles.length) {
+        if (!registerOnline && (registerFiles.length || registerCertificates.length)) {
           throw new Error(text("Attachments need a connection. Remove them to save on this device, or go online.", "Bijlagen hebben verbinding nodig. Verwijder ze om op dit apparaat op te slaan, of ga online."));
         }
         // Photos attached to a delay report or a lesson learned (optional in the workbook, rows 20 / 18)
@@ -3287,6 +3346,17 @@ function ProjectOperations({
             size_bytes: file.size,
           });
         }
+        for (const file of registerCertificates) {
+          const uploaded = await uploadProjectFile(client, { projectId, buildingId: registerPhotoBuildingId, category: "document", file });
+          uploadedFiles.push({
+            file_id: uploaded.fileId,
+            sha256: uploaded.sha256,
+            name: file.name,
+            mime_type: file.type || "application/octet-stream",
+            size_bytes: file.size,
+            kind: "certificate",
+          });
+        }
         const registerInput = {
           projectId,
           buildingId: registerRecordBuildingId,
@@ -3304,6 +3374,7 @@ function ProjectOperations({
             attachment_files: uploadedFiles.length ? uploadedFiles : editingRegister?.details?.attachment_files ?? [],
             drawing_file_id: selectedDrawing?.id ?? editingRegister?.details?.drawing_file_id ?? null,
             drawing_name: selectedDrawing?.original_name ?? editingRegister?.details?.drawing_name ?? null,
+            ...(registerDrawingLocation ? { drawing_location: registerDrawingLocation } : {}),
           }),
           signedBy: controlledRegister ? registerForm.signedBy : registerSignature?.name,
           signedAt: controlledRegister ? registerForm.signedAt : registerSignature?.signedAt,
@@ -3450,6 +3521,8 @@ function ProjectOperations({
       setDelayForm({ ...emptyDelayReport });
       setLessonForm({ ...emptyLessonLearned });
       setRegisterFiles([]);
+      setRegisterCertificates([]);
+    setRegisterCertificates([]);
       setRegisterSignature(null);
       setRegisterContractorSignature({ ...emptyContractorSignature });
       setRegisterOutcome("");
@@ -3576,16 +3649,33 @@ function ProjectOperations({
     assets: moduleEnabled("documents") || moduleEnabled("visual_evidence"),
   })[sectionId]);
   const activeSectionLabel = projectSections.find(([id]) => id === tab)?.[1];
+  // Word 5.4: "Open log" on each Workspace tab opens that form's log in Records & Photos → Form Logs.
+  const registerLogType = (focusRecordId && data.registerEntries.find((entry) => entry.id === focusRecordId)?.register_type) || registerForm.type;
+  const activeFormLog: string | null = tab === "inspections" ? "inspection"
+    : tab === "findings" ? "issue"
+    : tab === "ncr" ? "ncr"
+    : tab === "hse" ? hseSpecForm
+    : tab === "workforce" ? "workforce"
+    : tab === "files" ? "photo"
+    : tab === "daily" ? (dayLogFocus ? (dailyWorkView === "works_completed" ? "works_completed" : dailyWorkView === "delays" ? "delay_report" : "works_ongoing") : null)
+    : tab === "registers" ? ({ works_ongoing: "works_ongoing", works_completed: "works_completed", delay_report: "delay_report", delivery: "delivery", technical_instruction: "technical_instruction", change_order: "change_order", lessons_learned: "lessons_learned", agreement: "agreement" } as Record<string, string>)[registerLogType] ?? null
+    : null;
+  const openFormLog = () => {
+    if (!activeFormLog) return;
+    try { window.sessionStorage.setItem("codeco.open-form-log", activeFormLog); } catch { /* the log then opens on its first form */ }
+    window.dispatchEvent(new CustomEvent("codeco:open-nav", { detail: "records" }));
+  };
   const activeSectionCount = projectSections.find(([id]) => id === tab)?.[2] ?? 0;
   const canCreateRecord = recordModuleTabs.includes(tab) && mayCreateHere;
   // The photo row of a register sheet (Photos / documents, Evidence, Attachments).
   const registerSheetPhotos = (
     <>
-      <label className="finding-photo-capture register-photo-capture">
-        <Camera size={22} />
-        <span><strong>{registerPhotos.length ? text(`${registerPhotos.length} photos ready`, `${registerPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
-        <input type="file" accept={photoAccept} capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setRegisterPhotos, setRegisterPhotoError); event.currentTarget.value = ""; }} />
-      </label>
+      <AttachmentButtons
+        cameraAccept={photoAccept}
+        fileAccept={photoAccept}
+        hint={registerPhotos.length ? text(`${registerPhotos.length} photos ready`, `${registerPhotos.length} foto’s klaar`) : photoCaptureHint}
+        onFiles={(files) => addPhotosToStack(files, setRegisterPhotos, setRegisterPhotoError)}
+      />
       <PhotoEvidenceList
         photos={registerPhotos}
         setPhotos={setRegisterPhotos}
@@ -3595,6 +3685,59 @@ function ProjectOperations({
     </>
   );
 
+  // "Sign, submit & notify": the submit button opens the signing popup while the record is unsigned.
+  const findingSigning = useSignedSubmit({
+    value: signatureFromDetails(findingForm.signedBy, findingForm.signedAt, findingForm.signatureImage),
+    onChange: (signature) => setFindingForm((current) => ({ ...current, signedBy: signature?.name ?? "", signedAt: signature?.signedAt ?? "", signatureImage: signature?.image ?? "" })),
+    submit: () => void addFinding(),
+    title: findingScope === "ncr" ? text("Sign and issue this NCR", "Onderteken en geef deze NCR uit") : text("Sign and report this issue", "Onderteken en meld dit issue"),
+    declaration: findingScope === "ncr"
+      ? text("By signing you issue this non-conformance report to the contractor named in the form.", "Met je handtekening geef je dit non-conformance report uit aan de aannemer in het formulier.")
+      : text("By signing you report this issue under your own name.", "Met je handtekening meld je dit issue onder je eigen naam."),
+    nameSuggestion: currentUserName,
+    nameOptions: documentIssuerOptions,
+  });
+  const hseSigning = useSignedSubmit({
+    value: hseSignature,
+    onChange: setHseSignature,
+    submit: () => void addHse(),
+    title: text("Sign and submit this HSE record", "Onderteken en dien deze HSE-registratie in"),
+    declaration: text("I confirm this HSE record is complete and accurate.", "Ik bevestig dat deze HSE-registratie volledig en juist is."),
+    nameSuggestion: currentUserName,
+    lockName: true,
+    locked: Boolean(data.hseEvents.find((item) => item.id === editingHseId)?.signature_image),
+  });
+  // Developer package v5 (Word 6.1): completing an inspection opens the signing popup; the checklist cannot be completed unsigned.
+  const inspectionSigning = useSignedSubmit({
+    value: inspectionSignature,
+    onChange: setInspectionSignature,
+    submit: () => void submitInspection(),
+    title: text("Sign and complete this inspection", "Onderteken en rond deze inspectie af"),
+    declaration: text("By signing you confirm that you checked every point of this checklist yourself.", "Met je handtekening bevestig je dat je elk punt van deze checklist zelf hebt gecontroleerd."),
+    nameSuggestion: currentUserName,
+    lockName: true,
+    locked: Boolean(activeInspection?.signature_image),
+    required: true,
+  });
+  const registerSigning = useSignedSubmit({
+    value: controlledRegister ? signatureFromDetails(registerForm.signedBy, registerForm.signedAt, registerForm.signatureImage) : registerSignature,
+    onChange: (signature) => {
+      if (!controlledRegister) { setRegisterSignature(signature); return; }
+      setRegisterForm((current) => ({ ...current, signedBy: signature?.name ?? "", signedAt: signature?.signedAt ?? "", signatureImage: signature?.image ?? "" }));
+      if (registerForm.type === "change_order") {
+        setChangeOrder((current) => ({ ...current, supervisionSignedBy: signature?.name ?? "", supervisionSignedAt: signature?.signedAt ?? "", supervisionSignatureImage: signature?.image ?? "", supervisionName: signature?.name || "" }));
+      }
+    },
+    submit: () => void addRegisterEntry(),
+    title: registerForm.type === "change_order" ? text("Sign and issue this change order", "Onderteken en geef deze wijzigingsopdracht uit") : text("Sign and submit", "Onderteken en dien in"),
+    declaration: registerForm.type === "change_order"
+      ? text("By signing you issue and approve this change order on behalf of supervision.", "Met je handtekening geef je deze wijzigingsopdracht uit en keur je die goed namens de supervisie.")
+      : text("By signing you confirm this record under your own name.", "Met je handtekening bevestig je dit record onder je eigen naam."),
+    nameSuggestion: submittedRegister ? registerForm.issuerName.trim() : currentUserName,
+    lockName: !submittedRegister,
+    locked: Boolean(editingDocument?.signature_image || editingDocument?.details?.signature_image),
+    enabled: !agreementRegister && !(submittedRegister && !registerForm.issuerName.trim()),
+  });
   return (
     <>
       {tab === "home" ? (
@@ -3649,6 +3792,7 @@ function ProjectOperations({
               <h1>{activeSectionLabel}</h1>
               <b>{activeSectionCount}</b>
             </div>
+            {activeFormLog ? <button className="ui-button ui-button--quiet ui-button--md workspace-open-log" type="button" onClick={openFormLog}><ScrollText size={15} aria-hidden="true" /> {text("Open log", "Open logboek")}</button> : null}
             {/* The "Switch module" dropdown used to sit here. The client wrote next to it: "ik
                 begrijp dit niet, misschien kan het weg". Every module is one tap away on the
                 workspace itself, so there is no second, hidden way in any more. */}
@@ -3743,6 +3887,16 @@ function ProjectOperations({
         <section className="operation-panel">
           {activeInspection && activeTemplate ? (
             <RecordFormShell code={activeInspection.inspection_number} title={activeInspection.title} icon={formIcons.inspection} status={text("In progress", "In uitvoering")} busy={busy} className="wide sectioned-record-form">
+              <FormAutoBar items={autoBarItems({
+                idLabel: text("Record ID", "Registratienummer"),
+                idValue: activeInspection.inspection_number,
+                dateLabel: text("Date/time", "Datum/tijd"),
+                dateValue: `${issueDateLabel} · ${issueTime}`,
+                byLabel: text("Inspected by", "Geïnspecteerd door"),
+                byValue: currentUserName,
+                statusValue: text("In progress", "In uitvoering"),
+                text,
+              })} />
               <p className="form-intro">{text("A failed point creates a finding when you complete the inspection.", "Een niet-geslaagd punt maakt een bevinding aan zodra je de inspectie afrondt.")}</p>
               <div className="checklist-progress" aria-label={text("Checklist progress", "Checklistvoortgang")}>
                 <span><b>{answeredChecklistItems}</b> / {activeTemplate.items.length} {text("answered", "beantwoord")}</span>
@@ -3802,18 +3956,20 @@ function ProjectOperations({
               {inspectionPhotoError ? <p className="field-error" role="alert">{inspectionPhotoError}</p> : null}
               {/* "Geen optie om te ondertekenen! Naam etc." — the person who walked the
                   checklist signs it, here, before it is completed. */}
-              <RecordSignatureField
-                declaration={text(
-                  "By signing you confirm that you checked every point of this checklist yourself.",
-                  "Met je handtekening bevestig je dat je elk punt van deze checklist zelf hebt gecontroleerd.",
-                )}
-                nameSuggestion={currentUserName}
-                lockName
-                locked={Boolean(activeInspection.signature_image)}
-                value={inspectionSignature}
-                onChange={setInspectionSignature}
-                required
-              />
+              {activeInspection.signature_image ? (
+                <RecordSignatureField
+                  declaration={text(
+                    "By signing you confirm that you checked every point of this checklist yourself.",
+                    "Met je handtekening bevestig je dat je elk punt van deze checklist zelf hebt gecontroleerd.",
+                  )}
+                  nameSuggestion={currentUserName}
+                  lockName
+                  locked={Boolean(activeInspection.signature_image)}
+                  value={inspectionSignature}
+                  onChange={setInspectionSignature}
+                  required
+                />
+              ) : null}
               {/* "Locatie pinnen": the checklist itself gets its spot on the drawing. */}
               <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setDrawingInspectionId(activeInspection.id); setDrawingFindingId(""); switchTab("drawings"); }}>
                 <MapPin size={15} /> {text("Pin this location on the drawing", "Locatie op de tekening pinnen")}
@@ -3823,12 +3979,23 @@ function ProjectOperations({
               <button className="ui-button ui-button--secondary ui-button--md inspection-ncr-button" type="button" onClick={() => raiseNcrFromInspection(activeInspection)}>
                 <ShieldAlert size={15} /> {text("Raise an NCR from this checklist", "NCR opstellen vanuit deze checklist")}
               </button>
-              <div className="form-actions checklist-sticky-actions"><button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={busy} onClick={() => { if (!inspectionOpen(activeInspection)) { setActiveInspection(null); return; } void run(() => saveInspectionAnswers(client, activeInspection, inspectionAnswers), text("Checklist progress saved.", "Voortgang van de checklist opgeslagen.")).then((saved) => { if (saved) setActiveInspection(null); }); }}>{text("Complete later", "Later afronden")}</button><button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || !inspectionSignature || activeTemplate.items.some((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id]))} onClick={() => void submitInspection()}>{busy ? <Loader2 className="spin" size={15} /> : <FileCheck2 size={15} />} {text("Complete inspection", "Inspectie afronden")}</button></div>
-              {!inspectionSignature ? <p className="form-intro">{text("Sign the checklist to complete it.", "Onderteken de checklist om hem af te ronden.")}</p> : null}
+              <div className="form-actions checklist-sticky-actions"><button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={busy} onClick={() => { if (!inspectionOpen(activeInspection)) { setActiveInspection(null); return; } void run(() => saveInspectionAnswers(client, activeInspection, inspectionAnswers), text("Checklist progress saved.", "Voortgang van de checklist opgeslagen.")).then((saved) => { if (saved) setActiveInspection(null); }); }}>{text("Complete later", "Later afronden")}</button><button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || activeTemplate.items.some((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id]))} onClick={inspectionSigning.request}>{busy ? <Loader2 className="spin" size={15} /> : <FileCheck2 size={15} />} {text("Complete inspection", "Inspectie afronden")}</button></div>
+              {inspectionSigning.needsSignature ? <p className="form-intro">{text("You sign the checklist when you complete it.", "Je ondertekent de checklist bij het afronden.")}</p> : null}
+              {inspectionSigning.dialog}
             </RecordFormShell>
           ) : null}
           {showForm && !activeInspection ? (
             <RecordFormShell title={text("Start inspection", "Inspectie starten")} icon={formIcons.inspection} status={text("New", "Nieuw")} busy={busy} className="wide sectioned-record-form">
+              <FormAutoBar items={autoBarItems({
+                idLabel: text("Record ID", "Registratienummer"),
+                idValue: nextRecordId(data.inspections.map((inspection) => inspection.inspection_number), projectCode, "inspection", recordYear),
+                dateLabel: text("Date/time", "Datum/tijd"),
+                dateValue: `${issueDateLabel} · ${issueTime}`,
+                byLabel: text("Inspected by", "Geïnspecteerd door"),
+                byValue: currentUserName,
+                statusValue: text("Draft", "Concept"),
+                text,
+              })} />
               <DraftNotice status={inspectionAutosave.status} savedAt={inspectionAutosave.savedAt} onDiscard={() => { inspectionAutosave.clear(); setInspectionTitle(""); setInspectionTemplateId(""); setInspectionLocationNodeId(""); }} />
               
               {anchorWorkPlanned && missingAnchorChecklistCodes.length ? (
@@ -3907,16 +4074,17 @@ function ProjectOperations({
                 <button className={`record-sync-chip${online ? "" : " offline"}`} type="button" disabled={busy} onClick={syncWaitingRecordsNow} title={text("Send what is still waiting on this device", "Verstuur wat nog op dit apparaat wacht")}>{online ? <CloudSun size={15} /> : <WifiOff size={15} />}<span><strong>{syncChip.label}</strong></span></button>
                 <button className="ui-button ui-button--secondary ui-button--md record-heading-draft" type="button" onClick={() => writeRecordDraft("issue", projectId, findingForm)}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button>
               </div>
-              <section className="controlled-document-context sectioned-record-context" aria-label={text("Issue header", "Kop van het issue")}>
-                <div><small>{text("Issue ID", "Issue ID")}</small><strong>{nextIssueNumber}</strong><span>{text("Provisional · fixed on submit", "Voorlopig · vast bij indienen")}</span></div>
-                <div><small>{text("Date and time", "Datum en tijd")}</small><strong>{issueDateLabel}</strong><span>{issueTime}</span></div>
-                <div><small>{text("Reporter", "Melder")}</small><strong>{currentUserName}</strong><span>{reporterDepartment}</span></div>
-                <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
-                <div><small>{text("Site / location", "Locatie")}</small><strong>{findingBuildingsLabel}</strong><span>{findingForm.latitude && findingForm.longitude ? `${findingForm.latitude}, ${findingForm.longitude}` : projectLocation || text("No coordinates yet", "Nog geen coördinaten")}</span></div>
-                <div><small>{text("Weather", "Weer")}</small><strong>{liveWeatherLabel}</strong><span>{liveWeather ? `${liveWeather.temperatureC}°C` : "—"}</span></div>
-                <div><small>{text("Department", "Afdeling")}</small><strong>{reporterDepartment}</strong><span>{text("Of the reporter", "Van de melder")}</span></div>
-                <div><small>{text("Status", "Status")}</small><strong className="record-status-preview">{issueStatusLabel}</strong><span>{text("On submit", "Bij indienen")}</span></div>
-              </section>
+              <FormAutoBar items={autoBarItems({
+                idLabel: text("Issue ID", "Issue ID"),
+                idValue: nextIssueNumber,
+                idNote: text("Provisional · fixed on submit", "Voorlopig · vast bij indienen"),
+                dateLabel: text("Date/time identified", "Datum/tijd vastgesteld"),
+                dateValue: `${issueDateLabel} · ${issueTime}`,
+                byLabel: text("Reported by", "Gemeld door"),
+                byValue: currentUserName,
+                statusValue: issueStatusLabel,
+                text,
+              })} />
               <DraftNotice status={findingAutosave.status} savedAt={findingAutosave.savedAt} onDiscard={() => { findingAutosave.clear(); resetFindingForm(); }} />
               {issueParkedDraft ? (
                 <p className="form-helper record-draft-notice">
@@ -3976,20 +4144,19 @@ function ProjectOperations({
                   ),
                   attachments: (
                     <>
-                      <div className="record-evidence-strip">
+                      <AttachmentButtons
+                        cameraAccept={photoAccept}
+                        fileAccept={photoAccept}
+                        onFiles={addFindingPhotos}
+                        hint={photoStripHint}
+                      >
                         <PhotoEvidenceList
                           photos={findingPhotos}
                           setPhotos={setFindingPhotos}
                           markupContext={{ ...markupOptions, defaultBuildingId: findingBuildingId }}
                           layout="gallery"
                         />
-                        <label className="record-add-photo">
-                          <Camera size={20} />
-                          <strong>{text("Add photo", "Foto toevoegen")}</strong>
-                          <input type="file" accept={photoAccept} capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
-                        </label>
-                      </div>
-                      <small className="record-photo-hint">{photoStripHint}</small>
+                      </AttachmentButtons>
                       {findingPhotoError ? <p className="field-error" role="alert">{findingPhotoError}</p> : null}
                     </>
                   ),
@@ -4039,7 +4206,7 @@ function ProjectOperations({
                   findingForm.description.trim().length < 3 ? text("description", "omschrijving") : "",
                   ...findingSpecProblems,
                 ]} />
-                <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || !findingForm.issueCategory || findingForm.title.trim().length < 3 || (issueNeedsResponsibleName && findingForm.responsiblePerson.trim().length < 2) || findingForm.description.trim().length < 3 || findingSpecProblems.length > 0} onClick={() => void addFinding()}><Send size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Issue indienen")}</button>
+                <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || !findingForm.issueCategory || findingForm.title.trim().length < 3 || (issueNeedsResponsibleName && findingForm.responsiblePerson.trim().length < 2) || findingForm.description.trim().length < 3 || findingSpecProblems.length > 0} onClick={findingSigning.request}><Send size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Issue indienen")}</button>{findingSigning.dialog}
               </div>
             </div>
           ) : null}
@@ -4048,15 +4215,16 @@ function ProjectOperations({
               <div className="operation-form-heading"><div><h2><formIcons.ncr className="record-form-heading-icon" size={20} aria-hidden="true" />{text("Non-conformance report", "Non-conformance report")}</h2></div>{!online ? <span className="experimental-badge"><WifiOff size={13} /> {text("Queues offline", "Offline wachtrij")}</span> : null}</div>
               {/* The head of the form is always first: project, contractor, date, author and
                   number, filled by the app - the same head every other form has. */}
-              <section className="controlled-document-context ncr-form-context" aria-label={text("Non-conformance report header", "Kop van het non-conformance report")}>
-                <div><small>{text("Project name and number", "Projectnaam en -nummer")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
-                <div><small>{text("Contractor", "Aannemer")}</small><strong>{parties.find((party) => party.id === findingForm.responsiblePartyId)?.name || text("Not assigned yet", "Nog niet toegewezen")}</strong><span>{findingBuildingsLabel}</span></div>
-                <div><small>{text("Date", "Datum")}</small><strong>{issueDateLabel}</strong><span>{issueTime}</span></div>
-                {/* An NCR says who drew it up, from the moment it is written: without it
-                    the contractor receives a formal report nobody stands behind. */}
-                <div><small>{text("Drawn up by", "Opgesteld door")}</small><strong>{currentUserName}</strong><span>{findingForm.signedBy ? text(`Signed by ${findingForm.signedBy}`, `Ondertekend door ${findingForm.signedBy}`) : text("Not signed yet", "Nog niet ondertekend")}</span></div>
-                <div><small>{text("Report no · automatic", "Rapportnummer · automatisch")}</small><strong>{text("On submit", "Bij indienen")}</strong><span>{text("Unique project code", "Unieke projectcode")}</span></div>
-              </section>
+              <FormAutoBar items={autoBarItems({
+                idLabel: text("NCR number", "NCR-nummer"),
+                idValue: text("On submit", "Bij indienen"),
+                dateLabel: text("Date raised", "Datum gemeld"),
+                dateValue: `${issueDateLabel} · ${issueTime}`,
+                byLabel: text("Raised by", "Gemeld door"),
+                byValue: currentUserName,
+                statusValue: text("Open", "Open"),
+                text,
+              })} />
               {/* The NCR sheet of the specification workbook, row by row in its order. */}
               <SpecFields
                 form="ncr"
@@ -4081,11 +4249,12 @@ function ProjectOperations({
                   ),
                   attachments: (
                     <>
-                      <label className="finding-photo-capture">
-                        <Camera size={22} />
-                        <span><strong>{findingPhotos.length ? text(`${findingPhotos.length} photos ready`, `${findingPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
-                        <input type="file" accept={photoAccept} capture="environment" onChange={(event) => { addFindingPhotos(event.target.files); event.currentTarget.value = ""; }} />
-                      </label>
+                      <AttachmentButtons
+                        cameraAccept={photoAccept}
+                        fileAccept={photoAccept}
+                        hint={findingPhotos.length ? text(`${findingPhotos.length} photos ready`, `${findingPhotos.length} foto’s klaar`) : photoCaptureHint}
+                        onFiles={(files) => addFindingPhotos(files)}
+                      />
                       <PhotoEvidenceList
                         photos={findingPhotos}
                         setPhotos={setFindingPhotos}
@@ -4137,7 +4306,7 @@ function ProjectOperations({
                 findingForm.description.trim().length < 3 ? text("description", "omschrijving") : "",
                 ...findingSpecProblems,
               ]} />
-              <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3 || findingSpecProblems.length > 0} onClick={() => void addFinding()}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit NCR", "NCR indienen")}</button>
+              <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3 || findingSpecProblems.length > 0} onClick={findingSigning.request}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit NCR", "NCR indienen")}</button>{findingSigning.dialog}
             </div>
           ) : null}
           {/* Submitting is not the end of an NCR: the contractor has to receive it and
@@ -4160,7 +4329,7 @@ function ProjectOperations({
               {[
                 [text("Open", "Open"), scopedFindings.filter((item) => ["draft", "open", "assigned"].includes(item.status)).length],
                 [text("In progress", "In uitvoering"), scopedFindings.filter((item) => ["in_progress", "reopened"].includes(item.status)).length],
-                [text("Ready for verification", "Gereed voor verificatie"), scopedFindings.filter((item) => item.status === "ready_for_verification").length],
+                [text("Pending verification", "Wacht op verificatie"), scopedFindings.filter((item) => item.status === "ready_for_verification").length],
                 [text("Verified", "Geverifieerd"), scopedFindings.filter((item) => item.status === "closed").length],
               ].map(([label, count], index) => <div className={index === 2 ? "attention" : index === 3 ? "complete" : ""} key={String(label)}><span>{index + 1}</span><strong>{count}</strong><small>{label}</small></div>)}
             </div>
@@ -4192,6 +4361,12 @@ function ProjectOperations({
             busy={busy}
             focusRecordId={focusRecordId}
             transition={(finding, nextStatus, note, finalMeasure, correction, verificationSignedBy, verificationSignatureImage, verification) => run(() => transitionFinding(client, finding.id, nextStatus, note, finalMeasure, correction, verificationSignedBy, verificationSignatureImage, verification), `Bevinding ${finding.finding_number} staat nu op ${findingStatusLabels[nextStatus] ?? nextStatus}.`)}
+            decide={(finding, choice) => run(
+              () => decideIssue(client, projectId, finding, choice, currentUserName),
+              choice.action === "verify"
+                ? text(`Issue ${finding.finding_number} is verified and closed.`, `Issue ${finding.finding_number} is geverifieerd en gesloten.`)
+                : text(`Issue ${finding.finding_number} went back for correction.`, `Issue ${finding.finding_number} is teruggestuurd voor correctie.`),
+            )}
             recordProgress={(finding, progressPercent, disposition, note) => run(
               () => recordFindingProgress(client, { findingId: finding.id, progressPercent, disposition, note }),
               text(`Progress recorded. 100% still needs verification.`, `Voortgang vastgelegd. 100% moet nog worden geverifieerd.`),
@@ -4235,16 +4410,17 @@ function ProjectOperations({
               {/* The head of the client's own screen: what the app already knows before a
                   single box is filled in. "Ik vermoed dat dag, datum & tijd zelf komen" —
                   they do, and so do the reporter, the project, the site and the weather. */}
-              <section className="controlled-document-context sectioned-record-context" aria-label={text("Issue header", "Kop van het issue")}>
-                <div><small>{text("Issue ID", "Issue ID")}</small><strong>{nextHseNumber}</strong><span>{text("Provisional · fixed on submit", "Voorlopig · vast bij indienen")}</span></div>
-                <div><small>{text("Date and time", "Datum en tijd")}</small><strong>{issueDateLabel}</strong><span>{issueTime}</span></div>
-                <div><small>{text("Reporter", "Melder")}</small><strong>{currentUserName}</strong><span>{reporterDepartment}</span></div>
-                <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
-                <div><small>{text("Site / location", "Locatie")}</small><strong>{hseBuildingIds.map((selectedId) => buildings.find((building) => building.id === selectedId)?.name).filter(Boolean).join(" · ") || buildingName}</strong><span>{hseForm.latitude && hseForm.longitude ? `${hseForm.latitude}, ${hseForm.longitude}` : projectLocation || text("No coordinates yet", "Nog geen coördinaten")}</span></div>
-                <div><small>{text("Weather", "Weer")}</small><strong>{liveWeatherLabel}</strong><span>{liveWeather ? `${liveWeather.temperatureC}°C` : "—"}</span></div>
-                <div><small>{text("Department", "Afdeling")}</small><strong>{reporterDepartment}</strong><span>{text("Of the reporter", "Van de melder")}</span></div>
-                <div><small>{text("Status", "Status")}</small><strong className="record-status-preview">{hseStatusLabel}</strong><span>{text("On submit", "Bij indienen")}</span></div>
-              </section>
+              <FormAutoBar items={autoBarItems({
+                idLabel: hseForm.issueType === "incident" || hseForm.issueType === "near_miss" ? text("Incident ID", "Incident-ID") : text("HSE report ID", "HSE-meldingsnummer"),
+                idValue: nextHseNumber,
+                idNote: text("Provisional · fixed on submit", "Voorlopig · vast bij indienen"),
+                dateLabel: text("Date/time observed", "Datum/tijd waargenomen"),
+                dateValue: `${issueDateLabel} · ${issueTime}`,
+                byLabel: text("Reported by", "Gemeld door"),
+                byValue: currentUserName,
+                statusValue: hseStatusLabel,
+                text,
+              })} />
               {/* "Ik vermoed dat dag, datum & tijd zelf komen" — the form says so out loud. */}
               <DraftNotice status={hseAutosave.status} savedAt={hseAutosave.savedAt} onDiscard={() => { hseAutosave.clear(); resetHseForm(); }} />
               {hseParkedDraft ? (
@@ -4301,11 +4477,11 @@ function ProjectOperations({
                           markupContext={{ ...markupOptions, defaultBuildingId: hseBuildingId }}
                           layout="gallery"
                         />
-                        <label className="record-add-photo">
-                          <Camera size={20} />
-                          <strong>{text("Add photo", "Foto toevoegen")}</strong>
-                          <input type="file" accept={photoAccept} capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setHsePhotos, setHsePhotoError); event.currentTarget.value = ""; }} />
-                        </label>
+                        <AttachmentButtons
+                          cameraAccept={photoAccept}
+                          fileAccept={photoAccept}
+                          onFiles={(files) => addPhotosToStack(files, setHsePhotos, setHsePhotoError)}
+                        />
                       </div>
                       <small className="record-photo-hint">{photoStripHint}</small>
                       {hsePhotoError ? <p className="field-error" role="alert">{hsePhotoError}</p> : null}
@@ -4348,7 +4524,7 @@ function ProjectOperations({
                   hseForm.description.trim().length < 3 ? text("description", "omschrijving") : "",
                   ...hseSpecProblems,
                 ]} />
-                <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !hseLocationNodeId) || !hseForm.issueCategory || hseForm.title.trim().length < 3 || hseForm.description.trim().length < 3 || hseSpecProblems.length > 0} onClick={() => void addHse()}><Send size={15} /> {text("Submit issue", "Issue indienen")}</button>
+                <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !hseLocationNodeId) || !hseForm.issueCategory || hseForm.title.trim().length < 3 || hseForm.description.trim().length < 3 || hseSpecProblems.length > 0} onClick={hseSigning.request}><Send size={15} /> {text("Submit issue", "Issue indienen")}</button>{hseSigning.dialog}
               </div>
             </RecordFormShell>
           ) : null}
@@ -4414,13 +4590,16 @@ function ProjectOperations({
                   project, location, date and author — before a single box is filled in. */}
               {!controlledRegister ? (
                 <>
-                  <section className="controlled-document-context sectioned-record-context" aria-label={delayReportRegister ? text("Delay report header", "Kop van het vertragingsrapport") : agreementRegister ? text("Agreement header", "Kop van de afspraak") : lessonsLearnedRegister ? text("Lesson learned header", "Kop van de les") : text("Register header", "Kop van de registratie")}>
-                    <div><small>{text("Form no · automatic", "Formuliernummer · automatisch")}</small><strong>{editingDocument?.entry_number || text("On submit", "Bij indienen")}</strong><span>{text("Unique project code", "Unieke projectcode")}</span></div>
-                    <div><small>{text("Project", "Project")}</small><strong>{projectName}</strong><span>{projectCode}</span></div>
-                    <div><small>{text("Location / area", "Locatie / gebied")}</small><strong>{registerContextLabel}</strong><span>{registerLocationNodeId ? locationBreadcrumb(data.locationNodes, registerLocationNodeId) : text("Building level", "Gebouwniveau")}</span></div>
-                    <div><small>{text("Date and time", "Datum en tijd")}</small><strong>{issueDateLabel}</strong><span>{issueTime}</span></div>
-                    <div><small>{delayReportRegister ? text("Reported by", "Gemeld door") : registerForm.type === "delivery" ? text("Received by", "Ontvangen door") : text("Prepared by", "Opgesteld door")}</small><strong>{currentUserName}</strong><span>{reporterDepartment}</span></div>
-                  </section>
+                  <FormAutoBar items={autoBarItems({
+                    idLabel: delayReportRegister ? text("PDR number", "PDR-nummer") : text("Record ID", "Registratienummer"),
+                    idValue: editingDocument?.entry_number || (formCodes[registerForm.type as keyof typeof formCodes] ? nextRecordId(data.registerEntries.map((entry) => entry.entry_number), projectCode, registerForm.type, recordYear) : text("On submit", "Bij indienen")),
+                    dateLabel: delayReportRegister ? text("Reported date/time", "Datum/tijd gemeld") : registerForm.type === "delivery" ? text("Delivery date/time", "Datum/tijd levering") : text("Date and time", "Datum en tijd"),
+                    dateValue: `${issueDateLabel} · ${issueTime}`,
+                    byLabel: delayReportRegister ? text("Reported by", "Gemeld door") : registerForm.type === "delivery" ? text("Received by", "Ontvangen door") : registerForm.type === "technical_instruction" ? text("Issued by", "Uitgegeven door") : text("Recorded by", "Vastgelegd door"),
+                    byValue: currentUserName,
+                    statusValue: text("Draft", "Concept"),
+                    text,
+                  })} />
                 </>
               ) : null}
               {/* A controlled document starts with the project information and the dates:
@@ -4502,7 +4681,15 @@ function ProjectOperations({
                   text={text}
                   language={language}
                   slots={{
-                    title: <input aria-label={text("Title", "Titel")} value={registerForm.title} maxLength={160} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} />,
+                    drawing_location: (
+                      <div className="sheet-drawing-location">
+                        {registerDrawingLocation ? <span className="sheet-drawing-location-summary"><MapPin size={14} aria-hidden="true" /> {drawingLocationLabel(registerDrawingLocation, text("page", "pagina"))}</span> : <small>{text("Optional: point at the spot on the drawing.", "Optioneel: wijs de plek aan op de tekening.")}</small>}
+                        <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setPickingRegisterDrawing(true)}><MapPin size={14} /> {registerDrawingLocation ? text("Change on drawing", "Wijzigen op tekening") : text("Choose on drawing", "Kies op tekening")}</button>
+                        {registerDrawingLocation ? <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => setRegisterDrawingLocation(null)}><X size={14} /> {text("Remove", "Verwijderen")}</button> : null}
+                        {pickingRegisterDrawing ? <DrawingLocationPicker drawings={pickableDrawings(data.files, registerBuildingId)} buildings={buildings} client={client} initial={registerDrawingLocation} close={() => setPickingRegisterDrawing(false)} save={(location) => { setRegisterDrawingLocation(location); setPickingRegisterDrawing(false); }} /> : null}
+                      </div>
+                    ),
+                    title: <input aria-label={text("Title", "Titel")} value={registerTitleEditable ? registerForm.title || registerTitleDerived : registerForm.title} maxLength={registerTitleEditable ? 120 : 160} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} />,
                     description: (
                       <label className="form-field record-description-field">
                         <textarea aria-label={text("Description", "Omschrijving")} value={registerForm.details} rows={5} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} />
@@ -4516,6 +4703,17 @@ function ProjectOperations({
                       </div>
                     ),
                     photos: registerSheetPhotos,
+                    certificate: registerForm.type === "delivery" ? (
+                      <>
+                        <label className="ui-button ui-button--secondary ui-button--md file-button controlled-document-upload">
+                          <Upload size={15} /> {registerCertificates.length
+                            ? text(`${registerCertificates.length} certificate(s) selected`, `${registerCertificates.length} certificaat/certificaten geselecteerd`)
+                            : text("Add a certificate", "Certificaat toevoegen")}
+                          <input type="file" multiple accept=".pdf,.doc,.docx,image/jpeg,image/png,image/webp,image/heic" hidden onChange={(event) => { setRegisterCertificates(Array.from(event.currentTarget.files ?? [])); event.currentTarget.value = ""; }} />
+                        </label>
+                        {registerCertificates.length ? <div className="boq-preview">{registerCertificates.map((file) => <div key={`${file.name}:${file.lastModified}`}><FileText size={15} /><span>{file.name}</span><small>{Math.max(1, Math.round(file.size / 1024))} KB</small></div>)}</div> : null}
+                      </>
+                    ) : null,
                     attachments: (
                       <>
                         {registerSheetPhotos}
@@ -4526,11 +4724,16 @@ function ProjectOperations({
                           <input
                             type="file"
                             multiple
-                            accept=".pdf,.dwg,.doc,.docx,.xls,.xlsx,.csv,.txt,image/jpeg,image/png,image/webp"
+                            accept=".pdf,.docx,.xlsx,.heic,image/jpeg,image/png"
                             hidden
                             onChange={(event) => {
-                              const files = Array.from(event.currentTarget.files ?? []);
-                              setRegisterFiles(files);
+                              const picked = Array.from(event.currentTarget.files ?? []);
+                              // START HERE "Field validation": listed file types, 20 MB each.
+                              const refused = picked.filter((file) => fileProblem(file));
+                              setRegisterPhotoError(refused.length
+                                ? text(`Not added: ${refused.map((file) => file.name).join(", ")}. Allowed: JPG, PNG, HEIC, PDF, DOCX, XLSX up to 20 MB.`, `Niet toegevoegd: ${refused.map((file) => file.name).join(", ")}. Toegestaan: JPG, PNG, HEIC, PDF, DOCX, XLSX tot 20 MB.`)
+                                : "");
+                              setRegisterFiles(picked.filter((file) => !fileProblem(file)));
                               event.currentTarget.value = "";
                             }}
                           />
@@ -5181,9 +5384,9 @@ function ProjectOperations({
     ] : []),
                   ...registerSpecProblems,
                 ].filter(Boolean);
-                return registerMissing.length ? <small className="confirm-needs">{text("Still needed", "Nog nodig")}: {registerMissing.join(" · ")}</small> : null;
+                return registerMissing.length ? <small className="confirm-needs"><strong>{text(`${registerMissing.length} required left`, `Nog ${registerMissing.length} verplicht`)}</strong>: {registerMissing.join(" · ")} · {text("auto-saved", "automatisch bewaard")}</small> : null;
               })()}
-              <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !registerLocationNodeId) || registerTitle.length < 3 || (sheetRegister ? sheetRegisterMissing.length > 0 : !controlledFormReady || !lessonFormReady || !delayReportFormReady) || registerSpecProblems.length > 0} onClick={() => void addRegisterEntry()}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : agreementRegister ? text("Save agreement", "Afspraak opslaan") : lessonsLearnedRegister ? text("Save lesson learned", "Geleerde les opslaan") : delayReportRegister ? text("Save delay report", "Vertragingsrapport opslaan") : text("Save register item", "Registeritem opslaan")}</button>
+              <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !registerLocationNodeId) || registerTitle.length < 3 || (sheetRegister ? sheetRegisterMissing.length > 0 : !controlledFormReady || !lessonFormReady || !delayReportFormReady) || registerSpecProblems.length > 0} onClick={registerSigning.request}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : agreementRegister ? text("Save agreement", "Afspraak opslaan") : lessonsLearnedRegister ? text("Save lesson learned", "Geleerde les opslaan") : delayReportRegister ? text("Save delay report", "Vertragingsrapport opslaan") : text("Save register item", "Registeritem opslaan")}</button>{registerSigning.dialog}
             </RecordFormShell>
           ) : null}
           {/* The bill of quantities has nothing to do with a delivery or any other
@@ -5486,7 +5689,7 @@ function ResponsiblePartyFields({ idPrefix, role, name, people, partyNames, onCh
 function StillNeeded({ items }: { items: string[] }) {
   const { text } = useLanguage();
   const missing = items.filter(Boolean);
-  return missing.length ? <small className="confirm-needs">{text("Still needed", "Nog nodig")}: {missing.join(" · ")}</small> : null;
+  return missing.length ? <small className="confirm-needs"><strong>{text(`${missing.length} required left`, `Nog ${missing.length} verplicht`)}</strong>: {missing.join(" · ")} · {text("auto-saved", "automatisch bewaard")}</small> : null;
 }
 
 function ControlledDocumentList({ entries, buildings, locationNodes, busy, currentUserName, focusRecordId = "", client, run, projectId }: {
@@ -5799,7 +6002,7 @@ function SubmittedRecordShare({ finding, scope, projectName, projectCode, buildi
   );
 }
 
-function FindingList({ data, client, run, findings, progressUpdates, visualAnnotations, externalShareLinks, currentUserId, projectId, projectName, projectCode, buildings, locationNodes, currentUserName, resolveUserName, parties, busy, focusRecordId = "", transition, recordProgress, share, revoke, linkVisual, linkDrawing, openPhotoMarking, viewRecord, editRecord, withdrawRecord }: {
+function FindingList({ data, client, run, findings, progressUpdates, visualAnnotations, externalShareLinks, currentUserId, projectId, projectName, projectCode, buildings, locationNodes, currentUserName, resolveUserName, parties, busy, focusRecordId = "", transition, decide, recordProgress, share, revoke, linkVisual, linkDrawing, openPhotoMarking, viewRecord, editRecord, withdrawRecord }: {
   data: OperationSnapshot;
   client: SupabaseClient;
   run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
@@ -5822,6 +6025,8 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   /** The finding the action centre pointed at, so it is the one in front of the user. */
   focusRecordId?: string;
   transition: (finding: Finding, nextStatus: string, note: string, finalMeasure: string, correction: string, verificationSignedBy: string, verificationSignatureImage: string, verification?: QualityControlVerification) => Promise<boolean>;
+  /** Verify or return an issue through the Close / Verify / Approve dialog; the note lands in the sign-off log. */
+  decide: (finding: Finding, decision: IssueDecision) => Promise<boolean>;
   recordProgress: (finding: Finding, progressPercent: number, disposition: "validated" | "to_be_corrected" | "alternative_solution", note: string) => Promise<boolean>;
   share: (finding: Finding) => Promise<{ shareId: string; url: string; expiresAt: string } | null>;
   revoke: (shareId: string) => Promise<boolean>;
@@ -5845,6 +6050,8 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   const [correction, setCorrection] = useState("");
   /** Sending a repair back: the issue whose return form is open, and the reason the contractor will read. */
   const [returning, setReturning] = useState<string | null>(null);
+  /** The Verify / Return dialog of an issue (not an NCR, which has its own quality-control box). */
+  const [decision, setDecision] = useState<{ findingId: string; action: "verify" | "return" } | null>(null);
   const [returnReason, setReturnReason] = useState("");
   /** The written signature under the Quality Control / Verification box, required to
    * close an NCR — the client's own form marks that box "Signature *". */
@@ -5969,8 +6176,8 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
               </button> : null}
               <ReportDownloadButtons disabled={busy} onDownloadPdf={async () => { const signoffHistory = await recordHistory(client, projectId, finding.id, language); const { downloadNcrPdf } = await import("@/lib/reports/ncr-pdf"); await downloadNcrPdf(finding, latestProgress, { ...ncrContext(finding, recordBuildingName), signoffHistory }); }} onDownloadWord={async () => { const signoffHistory = await recordHistory(client, projectId, finding.id, language); const { downloadNcrDocx } = await import("@/lib/reports/ncr-docx"); await downloadNcrDocx(finding, latestProgress, { ...ncrContext(finding, recordBuildingName), signoffHistory }); }} />
               {!["closed", "cancelled", "rejected"].includes(finding.status) && permissions.can("findings.manage") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setProgressActive(progressActive === finding.id ? null : finding.id); setProgressPercent(String(latestProgress?.progress_percent ?? 0)); setProgressDisposition(latestProgress?.disposition ?? issue.disposition ?? "to_be_corrected"); }}>{text("Record inspection progress", "Inspectievoortgang vastleggen")}</button> : null}
-              {nextStatus ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setActive(active === finding.id ? null : finding.id); setCorrection(""); setVerificationSignature(null); }}>{nextStatus === "closed" ? finding.finding_type === "ncr" ? text("Quality control · resolve", "Kwaliteitscontrole · afsluiten") : text("Verify", "Verifiëren") : nextStatus === "ready_for_verification" ? text("Mark repair ready", "Herstel gereedmelden") : finding.finding_type === "ncr" ? text("Record contractor answer", "Antwoord aannemer vastleggen") : text("Update status", "Status bijwerken")}</button> : null}
-              {finding.status === "ready_for_verification" && permissions.can("findings.verify") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setReturning(returning === finding.id ? null : finding.id); setReturnReason(""); }}>{text("Return for correction", "Terug voor correctie")}</button> : null}
+              {nextStatus ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { if (nextStatus === "closed" && finding.finding_type !== "ncr") { setDecision({ findingId: finding.id, action: "verify" }); return; } setActive(active === finding.id ? null : finding.id); setCorrection(""); setVerificationSignature(null); }}>{nextStatus === "closed" ? finding.finding_type === "ncr" ? text("Quality control · resolve", "Kwaliteitscontrole · afsluiten") : text("Verify", "Verifiëren") : nextStatus === "ready_for_verification" ? text("Mark repair ready", "Herstel gereedmelden") : finding.finding_type === "ncr" ? text("Record contractor answer", "Antwoord aannemer vastleggen") : text("Update status", "Status bijwerken")}</button> : null}
+              {finding.status === "ready_for_verification" && permissions.can("findings.verify") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { if (finding.finding_type !== "ncr") { setDecision({ findingId: finding.id, action: "return" }); return; } setReturning(returning === finding.id ? null : finding.id); setReturnReason(""); }}>{text("Return for correction", "Terug voor correctie")}</button> : null}
             </div>
             {/* The three signed boxes of the client's NCR form, in the order of the form:
                 what the engineer recommends, what the contractor proposes, what quality
@@ -6158,11 +6365,29 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
           </article>
         );
       })}
+      {decision ? (() => {
+        const target = findings.find((item) => item.id === decision.findingId);
+        if (!target) return null;
+        return (
+          <IssueDecisionDialog
+            action={decision.action}
+            issueNumber={target.finding_number}
+            title={target.title}
+            defaultNextActor={parties.find((party) => party.id === target.responsible_party_id)?.name ?? ""}
+            onCancel={() => setDecision(null)}
+            onConfirm={async (choice) => {
+              const okay = await decide(target, choice);
+              if (okay) setDecision(null);
+              return okay;
+            }}
+          />
+        );
+      })() : null}
     </div>
   );
 }
 
-function ReportOperations({ focusRecordId, data, reportId, reportNumber, reportStatus, currentUserName, projectId, projectName, busy, run, client, openModule, openDeadlines, openReportCheck, buildings, parties, projectCode, openRecord, projectActions = [] }: { focusRecordId: string; projectActions?: Array<{ id: string; action_number: string; title: string; status: string; priority: string; due_at: string | null; owner_party_id?: string | null; action_category?: string | null }>; data: OperationSnapshot; reportId: string | null; reportNumber: string; reportStatus: string; currentUserName: string; projectId: string; projectName: string; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>; client: SupabaseClient; openModule: (tab: "documents" | "drawings" | "findings" | "ncr" | "hse" | "inspections" | "registers" | "files" | "assets" | "daily") => void; openDeadlines: () => void; openReportCheck?: () => void; buildings: BuildingOption[]; parties: ProjectParty[]; projectCode: string; openRecord: (tab: "findings" | "ncr" | "hse" | "inspections" | "registers" | "daily" | "files", recordId?: string) => void }) {
+function ReportOperations({ focusRecordId, data, reportId, reportNumber, reportStatus, currentUserName, projectId, projectName, busy, run, client, openModule, openDeadlines, openReportCheck, buildings, parties, projectCode, openRecord, projectActions = [], reportPeople = [] }: { focusRecordId: string; reportPeople?: Array<{ id: string; name: string; role: string }>; projectActions?: Array<{ id: string; action_number: string; title: string; status: string; priority: string; due_at: string | null; owner_party_id?: string | null; action_category?: string | null }>; data: OperationSnapshot; reportId: string | null; reportNumber: string; reportStatus: string; currentUserName: string; projectId: string; projectName: string; busy: boolean; run: (operation: () => Promise<unknown>, success: string) => Promise<boolean>; client: SupabaseClient; openModule: (tab: "documents" | "drawings" | "findings" | "ncr" | "hse" | "inspections" | "registers" | "files" | "assets" | "daily") => void; openDeadlines: () => void; openReportCheck?: () => void; buildings: BuildingOption[]; parties: ProjectParty[]; projectCode: string; openRecord: (tab: "findings" | "ncr" | "hse" | "inspections" | "registers" | "daily" | "files", recordId?: string) => void }) {
   const { language, locale, text } = useLanguage();
   const statusLabels = language === "en" ? reportStatusLabelsEnglish : reportStatusLabels;
   const [reviewComment, setReviewComment] = useState("");
@@ -6200,6 +6425,8 @@ function ReportOperations({ focusRecordId, data, reportId, reportNumber, reportS
     { id: "management", title: text("Management report", "Managementrapport"), sections: ["management", "workforce", "work", "actions", "commercial"] },
     { id: "quality", title: text("Quality and HSE", "Kwaliteit & HSE"), sections: ["quality", "hse", "environment", "actions", "visual", "buildings"] },
     { id: "visual", title: text("Visual progress report", "Visueel voortgangsrapport"), sections: ["visual", "work"] },
+    // Word 11.2: the report types of the specification; each one pre-selects its usual forms.
+    ...reportTypes.map((type) => ({ id: type.id, title: text(type.en, type.nl), sections: reportTypeSections(type.id) as PeriodReportSection[] })),
   ];
   const [reportChoice, setReportChoice] = useState(data.settings?.report_sections?.length ? "project" : "complete");
   // "Eén centraal rapport": Reports opens on the day overview — everything recorded today.
@@ -6209,6 +6436,15 @@ function ReportOperations({ focusRecordId, data, reportId, reportNumber, reportS
   useRecordFocus(focusRecordId, Boolean(focusRecordId && reportView === "history" && data.dayReports?.some((report) => report.id === focusRecordId)));
   const [periodPreset, setPeriodPreset] = useState<"day" | "week" | "month" | "custom">("month");
   const [periodFilter, setPeriodFilter] = useState<SpecFacetFilter>({});
+  // Word 11.1 options beyond the period and the forms.
+  const [photoMode, setPhotoMode] = useState<ReportPhotoMode>("thumbnails");
+  const [withSignatures, setWithSignatures] = useState(true);
+  const [withSignoffLog, setWithSignoffLog] = useState(false);
+  const [openFromBefore, setOpenFromBefore] = useState(false);
+  /** Word 11.1: group the records, print a summary or the full report, and list what the contractors answered. */
+  const [groupBy, setGroupBy] = useState("none");
+  const [detail, setDetail] = useState<"full" | "summary">("full");
+  const [withResponses, setWithResponses] = useState(false);
   const periodFacets = useMemo(() => [...data.findings, ...data.hseEvents, ...data.registerEntries, ...data.inspections]
     .map((record) => specFacets(recordSpec(record as unknown as Record<string, unknown>))), [data.findings, data.hseEvents, data.inspections, data.registerEntries]);
   const [periodLabel, setPeriodLabel] = useState(() => text("Monthly supervision report", "Maandelijks supervisierapport"));
@@ -6229,6 +6465,7 @@ function ReportOperations({ focusRecordId, data, reportId, reportNumber, reportS
     { id: "deadlines", label: text("Deadlines", "Deadlines"), sections: ["actions"] },
     { id: "hse_incident", label: text("HSE incident", "HSE-incident"), sections: ["hse"] },
     { id: "agreements_made", label: text("Agreements made", "Gemaakte afspraken"), sections: ["communications"] },
+    { id: "document_register", label: text("Document register", "Documentregister"), sections: ["documents"] },
   ];
   const [includedClientOptions, setIncludedClientOptions] = useState(() => clientReportOptions.map((option) => option.id));
   const activeSections = [...new Set(clientReportOptions
@@ -6246,6 +6483,85 @@ function ReportOperations({ focusRecordId, data, reportId, reportNumber, reportS
     setPeriod({ start: new Intl.DateTimeFormat("en-CA", { timeZone: "America/Paramaribo" }).format(start), end: today });
     setPeriodLabel(label);
     setPeriodPreset(preset);
+  };
+  const reportPermissions = useProjectPermissions();
+  const [savedTemplates, setSavedTemplates] = useState<Array<{ id: string; name: string }>>([]);
+  /** A report type pre-selects its usual forms; the period follows for the daily, weekly and monthly types. */
+  const chooseReportType = (id: string) => {
+    setReportChoice(id);
+    if (!reportTypes.some((type) => type.id === id)) return;
+    setIncludedClientOptions(reportTypeForms(id));
+    const preset = id === "daily" ? "today" : id === "weekly" ? "last_week" : id === "monthly" ? "last_month" : "";
+    if (preset) pickPreset(reportPresetRange(preset, today), reportTypes.find((type) => type.id === id)?.[language === "en" ? "en" : "nl"] ?? "", preset);
+  };
+  const pickPreset = (range: { start: string; end: string }, label: string, preset: string) => {
+    setPeriod(range);
+    setPeriodLabel(label);
+    setPeriodPreset(preset === "today" || preset === "yesterday" ? "day" : preset.endsWith("week") ? "week" : preset.endsWith("month") ? "month" : "custom");
+  };
+  const builderSettings: ReportBuilderSettings = { reportChoice, forms: includedClientOptions, preset: periodPreset, label: periodLabel, filter: periodFilter as Record<string, unknown>, photoMode, signatures: withSignatures, signoffLog: withSignoffLog, openFromBefore, groupBy, detail, contractorResponses: withResponses };
+  /**
+   * The snapshot and the options of one download: the period (plus what is still open from before), the facet filter,
+   * the photos made small in the browser, and the sign-off log of the records that are printed.
+   */
+  const prepareReport = async (heavy = true) => {
+    const raw = await buildPeriodReportSnapshot(client, projectId, period.start, period.end);
+    const widened = openFromBefore
+      ? addOpenFromBefore(raw, { findings: data.findings, hse_events: data.hseEvents, register_entries: data.registerEntries, inspections: data.inspections } as unknown as Record<string, Array<Record<string, unknown>>>, period.start)
+      : raw;
+    const snapshot = filterPeriodSnapshot(widened, periodFilter);
+    const extra: Partial<PeriodReportOptions> = { signatures: withSignatures };
+    if (heavy && photoMode !== "none" && activeTopics.includes("photos")) {
+      const { loadReportPhotos } = await import("@/lib/reports/report-photos");
+      const loaded = await loadReportPhotos(client, snapshot.visual_captures, photoMode);
+      Object.assign(extra, { photoMode, photos: loaded.photos, photosOmitted: loaded.omitted });
+    }
+    const printed = [...snapshot.findings, ...snapshot.inspections, ...snapshot.register_entries, ...snapshot.hse_events] as Array<Record<string, unknown>>;
+    const codeOf = (row: Record<string, unknown>) => String(row.entry_number ?? row.finding_number ?? row.inspection_number ?? row.event_number ?? row.id);
+    const history = heavy && (withSignoffLog || withResponses)
+      ? await loadSignoffHistory(client, projectId, printed.map((row) => String(row.id ?? "")))
+      : new Map<string, SignoffEvent[]>();
+    if (heavy && withSignoffLog) {
+      extra.signoffLog = printed.flatMap((row) => {
+        const events = history.get(String(row.id ?? ""));
+        if (!events?.length) return [];
+        return [{ code: codeOf(row), title: String(row.title ?? ""), history: signoffHistoryEntries(events, "nl") }];
+      });
+    }
+    // Group by, summary versus full, and the contractors' responses: one structure for the PDF, the Word file and the Excel workbook.
+    const effectiveGroupBy = detail === "summary" && groupBy === "none" ? "form" : groupBy;
+    const lines = reportRecordLines(snapshot, snapshotLookup(snapshot, "nl"));
+    extra.structure = {
+      groupBy: effectiveGroupBy,
+      groupLabel: effectiveGroupBy === "none" ? "" : reportGroupingLabels[effectiveGroupBy as keyof typeof reportGroupingLabels]?.nl ?? "",
+      detail,
+      groups: groupReportLines(lines, effectiveGroupBy),
+      responses: withResponses && heavy ? contractorResponses(printed.map((row) => ({ id: String(row.id ?? ""), code: codeOf(row), title: String(row.title ?? "") })), history as unknown as Map<string, Array<Record<string, unknown>>>) : undefined,
+    };
+    // The same photos as pictures for the Excel workbook.
+    const { dataUrlBytes } = await import("@/lib/reports/report-photos");
+    const buildingNames = new Map((snapshot.buildings ?? []).map((building) => [String(building.id), String(building.name ?? "")]));
+    const excelPhotos = Object.keys(extra.photos ?? {}).length
+      ? (snapshot.visual_captures as Array<Record<string, unknown>>).flatMap((capture) => {
+        const photo = extra.photos?.[String(capture.id)];
+        if (!photo) return [];
+        return [{ code: String(capture.capture_number ?? capture.title ?? capture.id), caption: [capture.title, capture.location_label].filter(Boolean).join(" · "), building: buildingNames.get(String(capture.building_id ?? "")) ?? "", date: String(capture.captured_at ?? "").slice(0, 10), bytes: dataUrlBytes(photo.dataUrl), width: photo.width, height: photo.height }];
+      })
+      : [];
+    return { snapshot, extra, excelPhotos };
+  };
+  const applyTemplate = (settings: ReportBuilderSettings) => {
+    if (settings.reportChoice) setReportChoice(settings.reportChoice);
+    if (Array.isArray(settings.forms)) setIncludedClientOptions(settings.forms);
+    if (settings.label) setPeriodLabel(settings.label);
+    if (settings.filter) setPeriodFilter(settings.filter as SpecFacetFilter);
+    if (settings.photoMode) setPhotoMode(settings.photoMode as ReportPhotoMode);
+    if (typeof settings.signatures === "boolean") setWithSignatures(settings.signatures);
+    if (typeof settings.signoffLog === "boolean") setWithSignoffLog(settings.signoffLog);
+    if (typeof settings.openFromBefore === "boolean") setOpenFromBefore(settings.openFromBefore);
+    if (settings.groupBy && reportGroupings.includes(settings.groupBy)) setGroupBy(settings.groupBy);
+    if (settings.detail === "full" || settings.detail === "summary") setDetail(settings.detail);
+    if (typeof settings.contractorResponses === "boolean") setWithResponses(settings.contractorResponses);
   };
   const canReview = reportStatus === "ready_for_review" || reportStatus === "in_review";
   const canSign = reportStatus === "approved" || reportStatus === "signed";
@@ -6380,11 +6696,41 @@ function ReportOperations({ focusRecordId, data, reportId, reportNumber, reportS
       {reportView === "create" ? (
         <section className="period-report-card ui-panel">
           <div className="period-report-copy"><h2>{text("Choose what the client needs", "Kies wat de klant nodig heeft")}</h2></div>
-          <div className="period-report-types" role="radiogroup" aria-label={text("Report type", "Rapporttype")}>{reportChoices.map((choice) => <button className={reportChoice === choice.id ? "active" : ""} type="button" role="radio" aria-checked={reportChoice === choice.id} onClick={() => setReportChoice(choice.id)} key={choice.id}><strong>{choice.title}</strong><span>{choice.sections.length} {text("automatic sections", "automatische onderdelen")}</span></button>)}</div>
+          <div className="period-report-types" role="radiogroup" aria-label={text("Report type", "Rapporttype")}>{reportChoices.map((choice) => <button className={reportChoice === choice.id ? "active" : ""} type="button" role="radio" aria-checked={reportChoice === choice.id} onClick={() => chooseReportType(choice.id)} key={choice.id}><strong>{choice.title}</strong><span>{choice.sections.length} {text("automatic sections", "automatische onderdelen")}</span></button>)}</div>
           <fieldset className="report-source-checklist">
             <legend>{text("Include in this report", "Opnemen in dit rapport")}</legend>
             {clientReportOptions.map((option) => <label key={option.id}><input type="checkbox" checked={includedClientOptions.includes(option.id)} onChange={() => toggleReportSection(option.id)} /><span>{option.label}</span></label>)}
+            <div className="report-source-bulk">
+              <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => setIncludedClientOptions(clientReportOptions.map((option) => option.id))}>{text("Select all", "Alles selecteren")}</button>
+              <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => setIncludedClientOptions([])}>{text("Clear", "Wissen")}</button>
+            </div>
           </fieldset>
+          <fieldset className="report-source-checklist report-options" data-report-options>
+            <legend>{text("Report options", "Rapportopties")}</legend>
+            <label className="form-field"><span>{text("Photos", "Foto's")}</span>
+              <select value={photoMode} onChange={(event) => setPhotoMode(event.target.value as ReportPhotoMode)} disabled={!includedClientOptions.includes("photos")}>
+                <option value="none">{text("None (list only)", "Geen (alleen lijst)")}</option>
+                <option value="thumbnails">{text("Thumbnails", "Miniaturen")}</option>
+                <option value="large">{text("Large", "Groot")}</option>
+              </select>
+            </label>
+            <label><input type="checkbox" checked={withSignatures} onChange={(event) => setWithSignatures(event.target.checked)} /><span>{text("Signatures", "Handtekeningen")}</span></label>
+            <label><input type="checkbox" checked={withSignoffLog} onChange={(event) => setWithSignoffLog(event.target.checked)} /><span>{text("Sign-off log", "Ondertekeningslog")}</span></label>
+            <label><input type="checkbox" checked={openFromBefore} onChange={(event) => setOpenFromBefore(event.target.checked)} /><span>{text("Include records still open from before the period", "Ook records die nog open staan van vóór de periode")}</span></label>
+            <label><input type="checkbox" checked={withResponses} onChange={(event) => setWithResponses(event.target.checked)} /><span>{text("Contractor responses", "Reacties van aannemers")}</span></label>
+            <label className="form-field"><span>{text("Group by", "Groeperen op")}</span>
+              <select value={groupBy} onChange={(event) => setGroupBy(event.target.value)} data-report-group-by>
+                {reportGroupings.map((option) => <option value={option} key={option}>{reportGroupingLabels[option as keyof typeof reportGroupingLabels][language === "nl" ? "nl" : "en"]}</option>)}
+              </select>
+            </label>
+            <label className="form-field"><span>{text("Detail", "Detailniveau")}</span>
+              <select value={detail} onChange={(event) => setDetail(event.target.value as "full" | "summary")} data-report-detail>
+                <option value="full">{text("Full report", "Volledig rapport")}</option>
+                <option value="summary">{text("Summary", "Samenvatting")}</option>
+              </select>
+            </label>
+          </fieldset>
+          <ReportPresets today={today} onPick={pickPreset} />
           {/* The full library is a view of its own now; this points at it instead of
               hiding ten prompts behind a summary nobody opened. */}
           <button className="report-prompt-link" type="button" onClick={() => setReportView("prompts")}>
@@ -6402,10 +6748,12 @@ function ReportOperations({ focusRecordId, data, reportId, reportNumber, reportS
             variant="prominent"
             className="report-create-button"
             disabled={busy || !activeSections.length || !period.start || !period.end || period.end < period.start}
-            onDownloadPdf={() => run(async () => { const snapshot = filterPeriodSnapshot(await buildPeriodReportSnapshot(client, projectId, period.start, period.end), periodFilter); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded.`, `${periodLabel} voor ${projectName} gedownload.`))}
-            onDownloadWord={() => run(async () => { const snapshot = filterPeriodSnapshot(await buildPeriodReportSnapshot(client, projectId, period.start, period.end), periodFilter); const { downloadPeriodReportDocx } = await import("@/lib/reports/period-report-docx"); await downloadPeriodReportDocx(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }, text(`${periodLabel} for ${projectName} downloaded as Word.`, `${periodLabel} voor ${projectName} als Word gedownload.`))}
-            onDownloadExcel={() => run(async () => { const snapshot = filterPeriodSnapshot(await buildPeriodReportSnapshot(client, projectId, period.start, period.end), periodFilter); const { periodReportWorkbook } = await import("@/lib/reports/period-report-xlsx.mjs"); const title = `${periodLabel} · ${selectedReport.title}`; const blob = await periodReportWorkbook(snapshot, { title, language, filters: Object.entries(periodFilter ?? {}).filter(([, chosen]) => Array.isArray(chosen) ? chosen.length : Boolean(chosen)).map(([key, chosen]) => `${key}: ${Array.isArray(chosen) ? chosen.join(', ') : String(chosen)}`).join('; ') }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `${title.replace(/[^\p{L}\p{N} ._-]+/gu, '-')} ${period.start} ${period.end}.xlsx`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }, text("Excel workbook downloaded.", "Excel-werkmap gedownload."))}
+            onDownloadPdf={() => run(async () => { const { snapshot, extra } = await prepareReport(); const { downloadPeriodReportPdf } = await import("@/lib/reports/period-report-pdf"); await downloadPeriodReportPdf(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer, ...extra }); }, text(`${periodLabel} for ${projectName} downloaded.`, `${periodLabel} voor ${projectName} gedownload.`))}
+            onDownloadWord={() => run(async () => { const { snapshot, extra } = await prepareReport(); const { downloadPeriodReportDocx } = await import("@/lib/reports/period-report-docx"); await downloadPeriodReportDocx(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer, ...extra }); }, text(`${periodLabel} for ${projectName} downloaded as Word.`, `${periodLabel} voor ${projectName} als Word gedownload.`))}
+            onDownloadExcel={() => run(async () => { const { snapshot, extra, excelPhotos } = await prepareReport(); const { periodReportWorkbook } = await import("@/lib/reports/period-report-xlsx.mjs"); const title = `${periodLabel} · ${selectedReport.title}`; const blob = await periodReportWorkbook(snapshot, { title, language, groupBy, detail, responses: extra.structure?.responses ?? [], signoffLog: extra.signoffLog ?? [], photos: excelPhotos, filters: Object.entries(periodFilter ?? {}).filter(([, chosen]) => Array.isArray(chosen) ? chosen.length : Boolean(chosen)).map(([key, chosen]) => `${key}: ${Array.isArray(chosen) ? chosen.join(', ') : String(chosen)}`).join('; ') }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `${title.replace(/[^\p{L}\p{N} ._-]+/gu, '-')} ${period.start} ${period.end}.xlsx`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }, text("Excel workbook downloaded.", "Excel-werkmap gedownload."))}
           />
+          <ReportTemplates client={client} projectId={projectId} current={builderSettings} canEdit={reportPermissions.can("reports.edit")} onApply={applyTemplate} onChanged={setSavedTemplates} />
+          <ReportSchedules client={client} projectId={projectId} templates={savedTemplates} people={reportPeople} canEdit={reportPermissions.can("reports.edit")} canPublish={reportPermissions.can("reports.distribute")} />
           <PublishToClient
             client={client}
             projectId={projectId}
@@ -6415,7 +6763,7 @@ function ReportOperations({ focusRecordId, data, reportId, reportNumber, reportS
             periodEnd={period.end}
             defaultType={reportChoice === "quality" ? "quality" : reportChoice === "visual" ? "progress" : period.start === period.end ? "daily" : "weekly"}
             disabled={busy || !activeSections.length || !period.start || !period.end || period.end < period.start}
-            buildPdf={async () => { const snapshot = filterPeriodSnapshot(await buildPeriodReportSnapshot(client, projectId, period.start, period.end), periodFilter); const { periodReportPdfFile } = await import("@/lib/reports/period-report-pdf"); return periodReportPdfFile(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer }); }}
+            buildPdf={async () => { const { snapshot, extra } = await prepareReport(); const { periodReportPdfFile } = await import("@/lib/reports/period-report-pdf"); return periodReportPdfFile(snapshot, { sections: activeSections, topics: activeTopics, reportTitle: `${periodLabel} · ${selectedReport.title}`, headerText: data.settings?.report_header, footerText: data.settings?.report_footer, ...extra }); }}
           />
         </section>
       ) : null}
@@ -6476,6 +6824,7 @@ function AdminOperations({ focusRecordId, data, client, organizationId, projectI
   const [section, setSection] = useState<"overview" | "information" | "settings" | "specification" | "portals" | "documents" | "structure" | "templates" | "backup">(focusRecordId && permissions.can("portal.share") ? "portals" : "overview");
   const [structureBuildingId, setStructureBuildingId] = useState(() => resolveDefaultBuildingId(buildings, buildingId));
   const [template, setTemplate] = useState({ module: "inspection", code: "", name: "", prompts: "" });
+  const [upload, setUpload] = useState<{ module: string; code: string; name: string; fileName: string; items: Record<string, unknown>[]; errors: string[] }>({ module: "inspection", code: "", name: "", fileName: "", items: [], errors: [] });
   const [settings, setSettings] = useState(() => ({
     maxFileSizeMb: data.settings?.max_file_size_mb ?? 100,
     leadHours: data.settings?.notification_lead_hours ?? 24,
@@ -6585,7 +6934,7 @@ function AdminOperations({ focusRecordId, data, client, organizationId, projectI
           <ControlledDocumentList projectId={projectId} entries={externalSubmissions} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={text("Company / owner reviewer", "Reviewer bedrijf / eigenaar")} client={client} run={run} />
         <div className="management-context"><div><span>{text("Current report", "Huidig rapport")}</span><strong>{statusText(reportStatus, text)}</strong></div><div><span>{text("Rooms and areas", "Ruimtes en zones")}</span><strong>{data.locationNodes.length}</strong></div><div><span>{text("Published checklists", "Gepubliceerde checklists")}</span><strong>{data.templates.filter((item) => item.status === "published").length}</strong></div><div><span>{text("Controlled files", "Beheerde bestanden")}</span><strong>{data.files.length}</strong></div></div>
       </section> : null}
-      {section === "information" ? <ProjectInformationPanel key={projectId} client={client} projectId={projectId} canEdit={permissions.can("project.configure")} /> : null}
+      {section === "information" ? <><ProjectInformationPanel key={projectId} client={client} projectId={projectId} canEdit={permissions.can("project.configure")} /><CompanyRegister key={`companies-${projectId}`} client={client} projectId={projectId} canEdit={permissions.can("project.configure")} /></> : null}
       {section === "specification" && permissions.can("project.configure") ? (
         <SpecConfigurationPanel client={client} projectId={projectId} configuration={data.settings?.spec_configuration} busy={busy} run={run} />
       ) : null}
@@ -6684,6 +7033,7 @@ function AdminOperations({ focusRecordId, data, client, organizationId, projectI
               return <article className="checklist-library-card" key={item.code}><span>{item.code} · {item.category}</span><h3>{item.name}</h3><small>{item.prompts.length} {text("mandatory checkpoints", "verplichte controlepunten")}</small><button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={busy || installed} onClick={() => void run(() => installChecklistLibraryTemplate(client, projectId, item.code), text(`${item.name} installed as a project checklist.`, `${item.name} als projectchecklist geïnstalleerd.`))}>{installed ? <CheckCircle2 size={15} /> : <Plus size={15} />} {installed ? text("Installed", "Geïnstalleerd") : text("Install checklist", "Installeer checklist")}</button></article>;
             })}
           </div>
+          <details className="custom-checklist-details"><summary>{text("Upload a checklist (xlsx or csv)", "Upload een checklist (xlsx of csv)")}</summary><div className="operation-form"><h2>{text("Upload a project checklist", "Projectchecklist uploaden")}</h2><p>{text("Columns: section, prompt, type, required, guidance, unit. Only prompt is required. A code that exists gets the next version; inspections already started keep their version.", "Kolommen: sectie, controlepunt, type, verplicht, toelichting, eenheid. Alleen het controlepunt is verplicht. Een bestaande code krijgt de volgende versie; gestarte inspecties behouden hun versie.")}</p><div className="form-grid-2"><label className="form-field"><span>{text("Module", "Module")}</span><select value={upload.module} onChange={(event) => setUpload({ ...upload, module: event.target.value })}><option value="inspection">{text("Inspection", "Inspectie")}</option><option value="hse">HSE</option><option value="delivery">{text("Delivery", "Levering")}</option><option value="test">{text("Test / measurement", "Test / meting")}</option></select></label><label className="form-field"><span>Code</span><input value={upload.code} onChange={(event) => setUpload({ ...upload, code: event.target.value })} placeholder={text("For example CONC-01", "Bijv. BETON-01")} /></label></div><label className="form-field"><span>{text("Name", "Naam")}</span><input value={upload.name} onChange={(event) => setUpload({ ...upload, name: event.target.value })} /></label><label className="form-field"><span>{text("File", "Bestand")}</span><input type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; void readChecklistFile(file).then((result) => setUpload((current) => ({ ...current, fileName: file.name, items: result.items, errors: result.errors }))).catch(() => setUpload((current) => ({ ...current, fileName: file.name, items: [], errors: [text("The file could not be read.", "Het bestand kon niet worden gelezen.")] }))); }} /></label>{upload.fileName ? <p role="status">{upload.errors.length ? upload.errors.slice(0, 5).join(" ") : text(`${upload.items.length} checkpoints read from ${upload.fileName}.`, `${upload.items.length} controlepunten gelezen uit ${upload.fileName}.`)}</p> : null}<button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || upload.errors.length > 0 || upload.items.length === 0 || upload.code.trim().length < 2 || upload.name.trim().length < 2} onClick={() => void run(() => uploadChecklist(client, { projectId, module: upload.module, code: upload.code, name: upload.name, items: upload.items }), text("Checklist uploaded and published as the next version.", "Checklist geüpload en als volgende versie gepubliceerd.")).then((okay) => { if (okay) setUpload({ module: "inspection", code: "", name: "", fileName: "", items: [], errors: [] }); })}><Plus size={15} /> {text("Upload and publish", "Uploaden en publiceren")}</button></div></details>
           <details className="custom-checklist-details"><summary>{text("Create a custom project checklist", "Maak een eigen projectchecklist")}</summary><div className="operation-form"><h2>{text("Publish new project checklist", "Nieuwe projectchecklist publiceren")}</h2><div className="form-grid-2"><label className="form-field"><span>{text("Module", "Module")}</span><select value={template.module} onChange={(event) => setTemplate({ ...template, module: event.target.value })}><option value="inspection">{text("Inspection", "Inspectie")}</option><option value="hse">HSE</option><option value="delivery">{text("Delivery", "Levering")}</option><option value="test">{text("Test / measurement", "Test / meting")}</option></select></label><label className="form-field"><span>Code</span><input value={template.code} onChange={(event) => setTemplate({ ...template, code: event.target.value })} placeholder={text("For example CONC-01", "Bijv. BETON-01")} /></label></div><label className="form-field"><span>{text("Name", "Naam")}</span><input value={template.name} onChange={(event) => setTemplate({ ...template, name: event.target.value })} /></label><label className="form-field"><span>{text("Checkpoints · one per line", "Controlepunten · één per regel")}</span><textarea rows={6} value={template.prompts} onChange={(event) => setTemplate({ ...template, prompts: event.target.value })} /><DictateButton onText={(transcript) => setTemplate((current) => ({ ...current, prompts: appendDictation(current.prompts, transcript) }))} /></label><button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy} onClick={addTemplate}><Plus size={15} /> {text("Publish checklist", "Checklist publiceren")}</button></div></details>
           <div className="template-grid">{data.templates.map((item) => <article className="template-card" key={item.id}><span>{item.module.toUpperCase()} · {item.code} · v{item.version_number}</span><h3>{item.name}</h3><p>{item.items.length} {text("checkpoints", "controlepunten")} · {statusText(item.status, text)}</p></article>)}</div>
         </section>

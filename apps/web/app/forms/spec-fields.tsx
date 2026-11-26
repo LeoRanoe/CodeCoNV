@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Check, Plus, X } from "lucide-react";
 import {
   activityGuide,
   canChooseDecision,
   fieldOptions,
+  isEventDateField,
   isOtherOption,
   isRequired,
   isVisible,
@@ -13,7 +14,10 @@ import {
   needsOtherExplanation,
   isSheetRow,
   isSheetSlot,
+  sheetItemName,
+  sheetSections,
   otherKey,
+  projectNowLocal,
   sheetLayouts,
   refKey,
   refsKey,
@@ -29,6 +33,8 @@ import {
   withInitial,
 } from "@/lib/forms/spec-forms";
 import { ChoiceIcon } from "@/lib/forms/choice-icons";
+import { candidatesNotYetCompleted, linkFirstFields, linkPrefillPatch } from "@/lib/forms/link-prefill.mjs";
+import { validationLimits } from "@/lib/forms/record-defaults.mjs";
 import { recordMatchesKinds, useSpecDirectory, type SpecDirectoryValue } from "@/app/forms/spec-directory";
 import { revisionRefId, revisionReferenceText, revisionStanding, statusMeta } from "@/lib/documents/document-register.mjs";
 
@@ -111,15 +117,26 @@ export function SpecFields({
   const wide = (field: SpecField) => ["textarea", "multi", "completion", "rows", "people", "record"].includes(field.kind);
   const short = fields.filter((field) => !wide(field));
   const long = fields.filter(wide);
-  const render = (field: SpecField) => (
-    <SpecInput key={field.key} id={`${idBase}-${field.key}`} form={form} field={field} values={values} set={set} setMany={setMany} text={text} language={language} disabled={disabled} directory={directory} />
-  );
+  const render = (field: SpecField) => {
+    const warning = field.warn?.(values) ?? null;
+    return warning ? (
+      <div className="spec-field-with-warning" key={field.key}>
+        <SpecInput id={`${idBase}-${field.key}`} form={form} field={field} values={values} set={set} setMany={setMany} text={text} language={language} disabled={disabled} directory={directory} />
+        <p className="field-warning" role="status">{warning[language]}</p>
+      </div>
+    ) : (
+      <SpecInput key={field.key} id={`${idBase}-${field.key}`} form={form} field={field} values={values} set={set} setMany={setMany} text={text} language={language} disabled={disabled} directory={directory} />
+    );
+  };
   if (layout && slots) {
     // One row per line of the sheet, in the sheet's order.
     return (
       <section className="record-section spec-section sheet-form" aria-label={heading ?? text("Form", "Formulier")} data-spec-form={form} data-sheet-form={form}>
         {heading ? <h3>{heading}</h3> : null}
         {layout.map((item) => {
+          const sectionIndex = (sheetSections[form] ?? []).findIndex((candidate) => candidate.from === sheetItemName(item));
+          const section = sectionIndex >= 0 ? sheetSections[form]![sectionIndex] : null;
+          const body = ((): React.ReactNode => {
           if (isSheetRow(item)) {
             // One sheet row, several controls: they stand together under the sheet's label. A
             // row without its own label is headed by its first control's label (the sheet's);
@@ -157,6 +174,14 @@ export function SpecFields({
           }
           const field = fields.find((candidate) => candidate.key === item);
           return field ? render(field) : null;
+          })();
+          if (!section) return body;
+          return (
+            <Fragment key={`block-${section.from}`}>
+              <h3 className="sheet-section-title" data-sheet-section={sectionIndex + 1}><span className="sheet-section-number" aria-hidden="true">{sectionIndex + 1}</span>{section.title[language]}</h3>
+              {body}
+            </Fragment>
+          );
         })}
       </section>
     );
@@ -207,7 +232,7 @@ function SpecInput({ id, form, field, values, set, setMany, text, language, disa
 
   // The workbook Status and the decisions the database records are shown, never typed.
   if (field.derived || field.auto) {
-    const shown = field.derived ? show(single || "Open") : single;
+    const shown = field.derived ? show(single || (typeof field.initial === "string" ? field.initial : "") || "Open") : single;
     return (
       <div className="form-field spec-field spec-readonly" data-spec-readonly={field.key}>
         <span>{label}</span>
@@ -287,8 +312,12 @@ function SpecInput({ id, form, field, values, set, setMany, text, language, disa
 
   if (field.kind === "record") {
     return (
-      <RecordPicker id={id} field={field} label={caption} hint={hint} number={single} reference={String(values[refKey(field)] ?? "")}
-        onChange={(number, reference) => setMany({ [field.key]: number, [refKey(field)]: reference })} text={text} disabled={disabled} directory={directory} />
+      <RecordPicker id={id} field={field} label={caption} hint={hint} number={single} reference={String(values[refKey(field)] ?? "")} activity={form === "works_completed" ? String(values.activity ?? "") : undefined}
+        onChange={(number, reference) => {
+          // Link first, then fill: the record that is linked gives its discipline, activity and location.
+          const source = number && linkFirstFields.includes(field.key) ? directory.records.find((record) => `${record.kind}:${record.id}` === reference) : undefined;
+          setMany({ [field.key]: number, [refKey(field)]: reference, ...(source ? linkPrefillPatch(source, specForms[form].map((item) => item.key), values) : {}) });
+        }} text={text} disabled={disabled} directory={directory} />
     );
   }
 
@@ -376,11 +405,11 @@ function SpecInput({ id, form, field, values, set, setMany, text, language, disa
         inputMode={field.kind === "number" ? "decimal" : undefined}
         step={field.kind === "number" ? "any" : undefined}
         min={field.min}
-        max={field.max}
+        max={field.max ?? (isEventDateField(field) ? (field.kind === "date" ? projectNowLocal().slice(0, 10) : projectNowLocal()) : undefined)}
         value={single}
         required={required}
         disabled={disabled}
-        maxLength={field.kind === "text" ? 240 : undefined}
+        maxLength={field.kind === "text" ? validationLimits.shortText : undefined}
         onChange={(event) => set(field.key, event.target.value)}
       />
     );
@@ -522,13 +551,15 @@ function PeoplePicker({ id, field, label, hint, names, refs, onChange, text, dis
  * A searchable selector over the project's own records. It stores the record's number in the
  * field and its id beside it; the link can be left empty and added later.
  */
-function RecordPicker({ id, field, label, hint, number, reference, onChange, text, disabled, directory }: {
+function RecordPicker({ id, field, label, hint, number, reference, activity, onChange, text, disabled, directory }: {
   id: string;
   field: SpecField;
   label: React.ReactNode;
   hint?: string;
   number: string;
   reference: string;
+  /** Works Completed: the activity entered so far, so the records for it come first. */
+  activity?: string;
   onChange: (number: string, reference: string) => void;
   text: Text;
   disabled?: boolean;
@@ -538,11 +569,12 @@ function RecordPicker({ id, field, label, hint, number, reference, onChange, tex
   const candidates = useMemo(() => {
     const bare = query.toUpperCase().replace(/[^A-Z0-9]/g, "");
     const words = query.trim().toLowerCase();
-    return directory.records
-      .filter((record) => record.code && recordMatchesKinds(record, field.recordKinds))
+    const listed = directory.records.filter((record) => record.code && recordMatchesKinds(record, field.recordKinds));
+    // Row 3.1: only work that is not completed yet, the same activity first.
+    return (field.key === "based_on" ? candidatesNotYetCompleted(listed, { activity, keep: reference }) : listed)
       .filter((record) => !words || record.code.toUpperCase().replace(/[^A-Z0-9]/g, "").includes(bare) || record.title.toLowerCase().includes(words))
       .slice(0, 60);
-  }, [directory.records, field.recordKinds, query]);
+  }, [directory.records, field.key, field.recordKinds, query, activity, reference]);
   const linked = directory.records.find((record) => `${record.kind}:${record.id}` === reference);
   return (
     <div className="form-field spec-field spec-record" data-spec-field={field.key}>

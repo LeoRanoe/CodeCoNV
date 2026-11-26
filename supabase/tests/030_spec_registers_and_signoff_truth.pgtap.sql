@@ -179,7 +179,7 @@ set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000030a1","r
 set local role authenticated;
 select is(
   (select new_status from public.record_signoff_action((select project_id from ids), 'register_entry',
-    (select id from public.project_register_entries where idempotency_key = 'sp30-co-3'), 'CHANGE-APPROVAL', 3, 'approve', 'Approver')),
+    (select id from public.project_register_entries where idempotency_key = 'sp30-co-3'), 'CHANGE-APPROVAL', 3, 'approve', 'Approver', 'account', null, null, null, null, null, null, null, null, null, '{"approved_amount":"900","approved_days":"2"}'::jsonb)),
   'Partially Approved (1/2)',
   'a stage that needs two approvals waits for the second'
 );
@@ -250,19 +250,19 @@ reset role;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000030a1","role":"authenticated"}';
 insert into public.project_register_entries (organization_id, project_id, building_id, register_type, entry_number, title, occurred_at, details, idempotency_key, created_by)
 select organization_id, project_id, building_id, 'lessons_learned', 'LL-0001', 'Order sleeves early', now(),
-  '{"spec":{"review_status":"Approved for Sharing"}}'::jsonb, 'sp30-lesson-1', '00000000-0000-0000-0000-0000000030a1'
+  '{"spec":{"review_status":"Submitted (shared)"}}'::jsonb, 'sp30-lesson-1', '00000000-0000-0000-0000-0000000030a1'
 from ids;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000030b1","role":"authenticated"}';
 set local role authenticated;
 select is(
   (select count(*) from public.list_shared_lessons((select organization_id from ids))),
   1::bigint,
-  'a lesson approved for sharing is listed for the organisation'
+  'a submitted lesson is shared with the organisation at once'
 );
 select throws_ok(
-  $$update public.project_register_entries set details = jsonb_set(details, '{spec,review_status}', '"Approved for Sharing"') where idempotency_key = 'sp30-co-2'$$,
+  $$update public.project_register_entries set details = jsonb_set(details, '{spec,review_status}', '"Approved for Sharing"') where idempotency_key = 'sp30-lesson-1'$$,
   '42501', null,
-  'only a reviewer approves a lesson for sharing'
+  'v5.0: submitting shares a lesson; the retired Approved for Sharing status is still a reviewer''s decision'
 );
 reset role;
 

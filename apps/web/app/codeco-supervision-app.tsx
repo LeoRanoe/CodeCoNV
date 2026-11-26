@@ -8,6 +8,7 @@ import {
   ArrowRight,
   Bell,
   Building2,
+  HardHat,
   Camera,
   Check,
   CheckCircle2,
@@ -33,16 +34,17 @@ import {
   Share,
   ShieldCheck,
   Trash2,
-  HardHat,
   Users,
   UserPlus,
   X,
   type LucideIcon,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { autoActionRows } from "@/lib/actions/auto-list.mjs";
+import { loadProjectOperations } from "@/lib/supabase/operations";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import NextImage from "next/image";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { TimeField } from "@/app/time-field";
 import { ALL_BUILDINGS, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
@@ -53,6 +55,7 @@ import { DictateButton, appendDictation } from "@/app/dictate-button";
 import { photoTitle, photoUploadDescription, samePhotoFile, toPhotoEvidence, type PhotoEvidence, photoSpecFromDetails } from "@/app/photo-evidence";
 import { ClientDashboard } from "@/app/client-dashboard";
 import { PortalApp } from "@/app/portal-app";
+import { ViewAsPortal } from "@/app/view-as-portal";
 import { PortalSharePanel } from "@/app/portal-share-panel";
 import { ActionCategoryField, RecordVerifications } from "@/app/verification-queue";
 import { OverviewPanels } from "@/app/overview-panels";
@@ -65,7 +68,7 @@ import { OperationalWorkspace, type DailyFormRenderers } from "@/app/operational
 import type { ActionCenterView } from "@/app/project-action-center";
 import { ReportDownloadButtons } from "@/app/report-download-buttons";
 import { ensureDailyBackup } from "@/lib/backups/client";
-import { constructionDisciplines } from "@/lib/forms/disciplines";
+import { constructionDisciplines, workerDisciplines } from "@/lib/forms/disciplines";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 import { ProjectPermissionsProvider, useProjectPermissionsQuery } from "@/lib/permissions/project-permissions";
 import { photoAccept, photoRefusalMessage, prepareCameraPhotos } from "@/lib/images/normalize-image";
@@ -242,9 +245,9 @@ const navigation: { id: NavKey; label: string; icon: LucideIcon; badge?: string 
   { id: "projectdocs", label: "Project Documents", icon: FolderOpen },
   { id: "records", label: "Records & Photos", icon: Images },
   { id: "rapporten", label: "Rapporten", icon: FileText },
-  /* Supervision sees what each portal shows (menu areas 8 and 9 of the client's mind map), read-only. */
+  /* Supervision sees every portal of its projects, read-only ("View as"; Word v2.0, section 3). */
   { id: "contractorportal", label: "Contractor Portal", icon: HardHat },
-  { id: "clientportal", label: "Client Portal", icon: Users },
+  { id: "clientportal", label: "Client Portal", icon: Building2 },
   { id: "meer", label: "Beheer", icon: Settings },
 ];
 
@@ -562,7 +565,7 @@ export function CodecoSupervisionApp() {
       && session
       && activeOrganizationId
       && canManageMembers
-      && (modal === "user_admin" || modal === "action_create" || activeNav === "meer"),
+      && (modal === "user_admin" || modal === "action_create" || activeNav === "meer" || activeNav === "rapporten"),
     ),
   });
   const companyEmployees = useMemo(() => {
@@ -624,6 +627,8 @@ export function CodecoSupervisionApp() {
   const configuredDisciplines = projectConfigurationQuery.data?.disciplines?.length
     ? projectConfigurationQuery.data.disciplines
     : [...constructionDisciplines];
+  // Workforce (v5.0): the 72 predefined worker disciplines, then the ones this project added itself.
+  const workforceDisciplines = [...workerDisciplines, ...configuredDisciplines.filter((item) => !(constructionDisciplines as readonly string[]).includes(item) && !(workerDisciplines as readonly string[]).includes(item))];
   const configuredShiftStart = projectConfigurationQuery.data?.default_shift_start?.slice(0, 5) ?? "07:00";
   const configuredShiftEnd = projectConfigurationQuery.data?.default_shift_end?.slice(0, 5) ?? "16:00";
   const projectLocationsQuery = useQuery({
@@ -668,6 +673,19 @@ export function CodecoSupervisionApp() {
       : syncState === "saved"
         ? text("Saved centrally", "Centraal opgeslagen")
         : text("Live workspace · synchronized", "Live werkruimte · gesynchroniseerd");
+  // Word 9: "Counts per form are shown as badges in the left menu." The Actions item carries the number of
+  // submitted records that still need follow-up. It shares the cache of the workspace, so nothing loads twice.
+  const badgeReportId = dayQuery.data?.report?.id ? String(dayQuery.data.report.id) : null;
+  const followUpBadgeQuery = useQuery({
+    queryKey: ["project-operations", selectedProject?.id, badgeReportId],
+    // Only after the day has loaded: the key then holds the final report id (one fetch, not two) and the
+    // overview paints its own data first instead of competing with this one.
+    enabled: Boolean(supabase && session && selectedProject && activeOrganizationId && dayQuery.isFetched && permissions.canAny("actions.read", "actions.create")),
+    staleTime: 30_000,
+    queryFn: () => loadProjectOperations(supabase!, selectedProject!.id, activeOrganizationId!, badgeReportId),
+    select: (snapshot) => (autoActionRows(snapshot as unknown as Record<string, unknown>, { now: new Date().toISOString() }) as unknown[]).length,
+  });
+  const followUpBadge = followUpBadgeQuery.data ?? 0;
   // A module whose records the user may not read would only ever be an empty page.
   const navAllowed = (id: NavKey) => id === "acties" ? permissions.canAny("actions.read", "actions.create")
     : id === "projectdocs" ? permissions.canAny("documents.read", "files.read")
@@ -676,9 +694,10 @@ export function CodecoSupervisionApp() {
       : id === "punchlist" ? permissions.can("findings.read")
         : id === "rapporten" ? permissions.canAny("reports.read", "reports.readapproved")
           : id === "contractorportal" || id === "clientportal" ? permissions.can("records.read")
-            : true;
+          : true;
   const localizedNavigation = navigation.filter((item) => navAllowed(item.id)).map((item) => ({
     ...item,
+    badge: item.id === "acties" && followUpBadge > 0 ? String(followUpBadge) : undefined,
     label: ({
       vandaag: text("Overview", "Overzicht"),
       project: text("Workspace", "Werkruimte"),
@@ -1011,6 +1030,17 @@ export function CodecoSupervisionApp() {
     setModal(null);
   };
 
+  const navigateRef = useRef<((next: NavKey) => void) | null>(null);
+  // The Workspace asks for another main menu item (for example "Open log" → Records & Photos).
+  useEffect(() => {
+    const listener = (event: Event) => {
+      const target = (event as CustomEvent<string>).detail;
+      if (navKeys.includes(target as NavKey)) navigateRef.current?.(target as NavKey);
+    };
+    window.addEventListener("codeco:open-nav", listener);
+    return () => window.removeEventListener("codeco:open-nav", listener);
+  }, []);
+
   const navigate = (next: NavKey) => {
     if (next === "project") setInitialProjectTab("home");
     // Project Docs and Punchlist are the workspace with one module already open.
@@ -1028,6 +1058,7 @@ export function CodecoSupervisionApp() {
     setActiveNav(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+  useEffect(() => { navigateRef.current = navigate; });
 
   /**
    * Every route into a workspace module runs through here. Setting the tab and the
@@ -1626,7 +1657,7 @@ export function CodecoSupervisionApp() {
           ? attendanceRowsForBuilding(dayQuery.data, nextBuildingId, text("Unknown party", "Onbekende partij"), configuredShiftStart, configuredShiftEnd)
           : []}
         parties={dayQuery.data?.parties ?? []}
-        disciplines={configuredDisciplines}
+        disciplines={workforceDisciplines}
         defaultShiftStart={configuredShiftStart}
         defaultShiftEnd={configuredShiftEnd}
         buildings={selectedProject.buildings}
@@ -1854,16 +1885,20 @@ export function CodecoSupervisionApp() {
           {localizedNavigation.map((item) => {
             const Icon = item.icon;
             return (
-              <button
-                className={`nav-button ${activeNav === item.id ? "active" : ""}`}
-                type="button"
-                onClick={() => navigate(item.id)}
-                key={item.id}
-              >
-                <Icon size={18} strokeWidth={1.8} />
-                {item.label}
-                {item.badge ? <span className="nav-badge">{item.badge}</span> : null}
-              </button>
+              <Fragment key={item.id}>
+                <button
+                  className={`nav-button ${activeNav === item.id ? "active" : ""}`}
+                  type="button"
+                  onClick={() => navigate(item.id)}
+                  aria-describedby={item.badge ? `nav-badge-${item.id}` : undefined}
+                >
+                  <Icon size={18} strokeWidth={1.8} />
+                  {item.label}
+                  {item.badge ? <span className="nav-badge" aria-hidden="true">{item.badge}</span> : null}
+                </button>
+                {/* Outside the button so the button keeps its name; it is the button's description. */}
+                {item.badge ? <span className="sr-only" id={`nav-badge-${item.id}`}>{text(`${item.badge} open follow-ups`, `${item.badge} openstaande acties`)}</span> : null}
+              </Fragment>
             );
           })}
         </nav>
@@ -1953,9 +1988,10 @@ export function CodecoSupervisionApp() {
             instead of carrying the previous project's selection, filters and drafts. */}
         <main id="main-content" tabIndex={-1} className={`main-content${unsavedPhotos ? " has-resume-bar" : ""}`} key={selectedProject?.id ?? "no-project"}>
           {activeNav === "contractorportal" || activeNav === "clientportal" ? (
-            <PortalApp
+            <ViewAsPortal
               preview
-              client={supabase}
+              key={`${activeNav}:${selectedProject!.id}`}
+              client={supabase!}
               focusShareId=""
               clearFocus={() => undefined}
               mode={activeNav === "contractorportal" ? "contractor" : "client"}
@@ -1966,7 +2002,7 @@ export function CodecoSupervisionApp() {
               userName={currentUserName}
               brand={null}
               onSwitchProject={() => undefined}
-              onSignOut={() => undefined}
+              onClose={() => navigate("vandaag")}
             />
           ) : activeNav === "vandaag" ? (
             <>

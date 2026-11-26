@@ -1,6 +1,7 @@
 import { openSavedRecords } from "./section-nav";
 import { expect, type Page, test } from "@playwright/test";
 import { fillSpecFields } from "./spec-fill";
+import { finishSigning } from "./sign-popup";
 
 /**
  * Two taps on a save button that land before React has disabled it must still create one
@@ -50,6 +51,8 @@ test("two taps on 'Create controlled document' create one document", async ({ pa
   const create = page.getByRole("button", { name: "Create controlled document" });
   await expect(create).toBeEnabled();
   await create.evaluate((button: HTMLButtonElement) => { button.click(); button.click(); });
+  // A form with a signature field opens the signing popup first; the second tap must not open a second record.
+  await finishSigning(page);
   await expect(page.getByText("Technical instruction (TI) saved.")).toBeVisible();
 
   await page.reload();

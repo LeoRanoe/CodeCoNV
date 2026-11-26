@@ -68,9 +68,9 @@ from public.projects project
 join public.buildings building on building.project_id = project.id
 where project.code = 'PDR-TEST-001';
 
-select is(
+select matches(
   (select entry_number from delay_scenario where label = 'delay'),
-  'PDR-0001',
+  '^PDR-TEST-001-PDR-[0-9]{4}-0001$',
   'a delay report carries the number the client writes on their own form'
 );
 
@@ -86,9 +86,9 @@ from public.projects project
 join public.buildings building on building.project_id = project.id
 where project.code = 'PDR-TEST-001';
 
-select is(
+select matches(
   (select entry_number from delay_scenario where label = 'lesson'),
-  'LL-0001',
+  '^PDR-TEST-001-LL-[0-9]{4}-0001$',
   'a lesson learned is accepted by the database and numbered LL, not LESS'
 );
 

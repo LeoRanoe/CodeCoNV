@@ -10,6 +10,7 @@ import { photoFiles, photoTitle, photoUploadDescription, PhotoEvidenceList, same
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { useLanguage } from "@/lib/i18n";
 import { photoPurposes } from "@/lib/forms/spec-catalogue";
+import { photoPurposeCategories } from "@/lib/forms/spec-forms";
 import { specLabel } from "@/lib/forms/spec-labels-nl";
 import { photoAccept, normalizeImageFile, photoRefusalMessage, prepareCameraPhotos, untouchedSourceOf } from "@/lib/images/normalize-image";
 import { clearFormDraft, formDraftKey, loadFormDraft, saveFormDraft } from "@/lib/offline/form-drafts";
@@ -489,6 +490,7 @@ export function MediaLibraryWorkspace({
     if (!pendingCapture.length) return;
     if (!assetsMode && (!libraryBuildingId || pendingCapture.some(({ details }) =>
       !photoPurposes.includes(details.purpose ?? "") || (details.purpose === "Other" && !details.purposeOther?.trim())
+        || !(photoPurposeCategories[details.purpose ?? ""] ?? []).some((option) => option.value === details.photoCategory)
     ))) {
       setFieldError(text(
         "Select a work location and a purpose for every photo. If you choose Other, explain it in the photo details.",
@@ -860,11 +862,25 @@ export function MediaLibraryWorkspace({
                   onChange={(event) => {
                     const purpose = event.target.value;
                     setPendingCapture((photos) => photos.map((photo) => photo.details.purpose === purpose ? photo : {
-                      ...photo, details: { ...photo.details, purpose, purposeOther: undefined },
+                      ...photo, details: { ...photo.details, purpose, purposeOther: undefined, photoCategory: undefined },
                     }));
                   }}>
                   <option value="">{text("Choose for all photos…", "Kies voor alle foto's…")}</option>
                   {photoPurposes.map((purpose) => <option key={purpose} value={purpose}>{specLabel(purpose, language)}</option>)}
+                </select>
+              </label>
+            ) : null}
+            {/* Developer package v5: the category follows the purpose and is chosen for all photos at once. */}
+            {!assetsMode && pendingCapture[0]?.details.purpose && pendingCapture.every(({ details }) => details.purpose === pendingCapture[0]!.details.purpose) ? (
+              <label className="form-field">
+                <span>{text("Photo category", "Fotocategorie")} *</span>
+                <select value={pendingCapture.every(({ details }) => details.photoCategory === pendingCapture[0]!.details.photoCategory) ? pendingCapture[0]!.details.photoCategory ?? "" : ""}
+                  onChange={(event) => {
+                    const photoCategory = event.target.value;
+                    setPendingCapture((photos) => photos.map((photo) => ({ ...photo, details: { ...photo.details, photoCategory } })));
+                  }}>
+                  <option value="">{text("Choose for all photos…", "Kies voor alle foto's…")}</option>
+                  {(photoPurposeCategories[pendingCapture[0].details.purpose] ?? []).map((option) => <option key={option.value} value={option.value}>{specLabel(option.value, language)}</option>)}
                 </select>
               </label>
             ) : null}
@@ -993,7 +1009,7 @@ export function MediaLibraryWorkspace({
               title: capture?.title ?? "",
               kindLabel: capture?.capture_type === "panorama" ? "360°" : file.mime_type.startsWith("image/") ? text("Photo", "Foto") : text("File", "Bestand"),
               formatDate: (value: string) => value ? new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "America/Paramaribo" }).format(new Date(value)) : "",
-            })}</strong><span>{[capture?.location_label || libraryBuildingName, assetsMode ? folder?.name ?? text("Unfiled", "Zonder map") : "", stack.files.length > 1 ? text(`${stack.files.length} frames`, `${stack.files.length} beelden`) : humanSize(file.size_bytes)].filter(Boolean).join(" · ")}</span><span className="media-origin-chips">{origins.length ? origins.map((origin) => <em className="media-origin-chip" title={origin.title} key={`${origin.kind}:${origin.recordId}`}>{origin.number || origin.kind}</em>) : <em className="media-origin-chip">{text("Not linked to a record yet", "Nog niet aan een record gekoppeld")}</em>}</span></div><span className="media-file-actions"><button type="button" onClick={() => void openProjectFile(client, file.id, file.original_name)} aria-label={text("Open file", "Bestand openen")}><ExternalLink size={15} /></button><button type="button" onClick={() => void downloadProjectFile(client, file.id, file.original_name)} aria-label={text("Download file", "Bestand downloaden")}><Download size={15} /></button>{assetsMode ? <button type="button" onClick={() => void renameFile(file)} aria-label={text("Rename file", "Bestand hernoemen")}><Pencil size={15} /></button> : null}<button type="button" onClick={() => void softDeleteFiles(stack.files)} aria-label={text("Delete", "Verwijderen")}><Trash2 size={15} /></button></span></article>;
+            })}</strong><span>{[capture?.capture_number, capture?.location_label || libraryBuildingName, assetsMode ? folder?.name ?? text("Unfiled", "Zonder map") : "", stack.files.length > 1 ? text(`${stack.files.length} frames`, `${stack.files.length} beelden`) : humanSize(file.size_bytes)].filter(Boolean).join(" · ")}</span><span className="media-origin-chips">{origins.length ? origins.map((origin) => <em className="media-origin-chip" title={origin.title} key={`${origin.kind}:${origin.recordId}`}>{origin.number || origin.kind}</em>) : <em className="media-origin-chip">{text("Not linked to a record yet", "Nog niet aan een record gekoppeld")}</em>}</span></div><span className="media-file-actions"><button type="button" onClick={() => void openProjectFile(client, file.id, file.original_name)} aria-label={text("Open file", "Bestand openen")}><ExternalLink size={15} /></button><button type="button" onClick={() => void downloadProjectFile(client, file.id, file.original_name)} aria-label={text("Download file", "Bestand downloaden")}><Download size={15} /></button>{assetsMode ? <button type="button" onClick={() => void renameFile(file)} aria-label={text("Rename file", "Bestand hernoemen")}><Pencil size={15} /></button> : null}<button type="button" onClick={() => void softDeleteFiles(stack.files)} aria-label={text("Delete", "Verwijderen")}><Trash2 size={15} /></button></span></article>;
         })}
       </div>
         </section>

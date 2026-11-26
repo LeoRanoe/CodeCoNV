@@ -2,17 +2,16 @@
 
 import { AlertTriangle, Copy, Loader2, Minus, Plus, Sigma, UserCheck, Users, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { specLabel } from "@/lib/forms/spec-labels-nl";
-import { isOtherOption } from "@/lib/forms/spec-forms";
-import { attendanceStatuses as specAttendanceStatuses, competencyStatuses as specCompetencyStatuses, shifts as specShifts } from "@/lib/forms/spec-catalogue";
 import { resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { type HandwrittenSignature } from "@/app/signature-pad";
 import { RecordFormSection, RecordFormShell, RecordSignatureField } from "@/app/forms/record-form-shell";
+import { useSignedSubmit } from "@/app/forms/sign-submit";
 import { formIcons } from "@/app/forms/form-icons";
 import { DictateButton, appendDictation, inputWithMicStyle, micInputStyle } from "@/app/dictate-button";
 import { useProjectPermissions } from "@/lib/permissions/project-permissions";
 import { TimeField } from "@/app/time-field";
 import { useLanguage } from "@/lib/i18n";
+import { FormAutoBar, autoBarItems } from "@/app/forms/form-auto-bar";
 import { clearFormDraft, loadFormDraft, saveFormDraft } from "@/lib/offline/form-drafts";
 import {
   workforceByDiscipline,
@@ -97,7 +96,6 @@ export function WorkforceRegister({
   disciplines,
   defaultShiftStart = "07:00",
   defaultShiftEnd = "16:00",
-  editShifts = false,
 }: {
   rows: WorkforceRow[];
   setRows: (rows: WorkforceRow[]) => void;
@@ -105,10 +103,8 @@ export function WorkforceRegister({
   disciplines: string[];
   defaultShiftStart?: string;
   defaultShiftEnd?: string;
-  /** The standalone screen can correct a shift; inside the daily log that is one field too many. */
-  editShifts?: boolean;
 }) {
-  const { language, text } = useLanguage();
+  const { text } = useLanguage();
   const [draft, setDraft] = useState(() => ({ partyId: parties[0]?.id ?? "", discipline: disciplines[0] ?? "", crew: "" }));
 
   const add = () => {
@@ -118,11 +114,7 @@ export function WorkforceRegister({
   };
   const setCount = (index: number, delta: number) => setRows(rows.map((row, rowIndex) =>
     rowIndex === index ? { ...row, count: Math.max(0, row.count + delta) } : row));
-  const setShift = (index: number, part: "shiftStart" | "shiftEnd", value: string) => setRows(rows.map((row, rowIndex) =>
-    rowIndex === index ? { ...row, [part]: value } : row));
   const remove = (index: number) => setRows(rows.filter((_, rowIndex) => rowIndex !== index));
-  const setRowSpec = (index: number, key: string, value: string) => setRows(rows.map((row, rowIndex) =>
-    rowIndex === index ? { ...row, spec: { ...(row.spec ?? {}), [key]: value } } : row));
 
   if (!parties.length || !disciplines.length) {
     return (
@@ -173,34 +165,6 @@ export function WorkforceRegister({
             <span className="workforce-row-name">
               <strong>{row.discipline}</strong>
               <small>{row.crew ? `${row.party} · ${row.crew}` : row.party}</small>
-            </span>
-            {editShifts ? (
-              <span className="workforce-shift">
-                <label>
-                  <TimeField label={text(`Shift start for ${row.discipline}`, `Aanvang dienst voor ${row.discipline}`)} value={row.shiftStart} onChange={(value) => setShift(index, "shiftStart", value)} />
-                </label>
-                <em>–</em>
-                <label>
-                  <TimeField label={text(`Shift end for ${row.discipline}`, `Einde dienst voor ${row.discipline}`)} value={row.shiftEnd} onChange={(value) => setShift(index, "shiftEnd", value)} />
-                </label>
-              </span>
-            ) : <small className="workforce-shift-static">{row.shiftStart}–{row.shiftEnd}</small>}
-            <span className="workforce-row-spec">
-              <select aria-label={text(`Shift of ${row.discipline}`, `Dienst van ${row.discipline}`)} value={row.spec?.shift ?? ""} onChange={(event) => setRowSpec(index, "shift", event.target.value)}>
-                <option value="">{text("Shift", "Dienst")}</option>
-                {specShifts.map((value) => <option key={value} value={value}>{specLabel(value, language)}</option>)}
-              </select>
-              {isOtherOption(row.spec?.shift ?? "") ? (
-                <input className="workforce-shift-other" aria-label={text(`Shift description for ${row.discipline}`, `Omschrijving dienst voor ${row.discipline}`)} placeholder={text("Describe the shift", "Omschrijf de dienst")} value={row.spec?.shift_other ?? ""} maxLength={240} required onChange={(event) => setRowSpec(index, "shift_other", event.target.value)} />
-              ) : null}
-              <select aria-label={text(`Attendance status of ${row.discipline}`, `Aanwezigheidsstatus van ${row.discipline}`)} value={row.spec?.attendance_status ?? ""} onChange={(event) => setRowSpec(index, "attendance_status", event.target.value)}>
-                <option value="">{text("Attendance", "Aanwezigheid")}</option>
-                {specAttendanceStatuses.map((value) => <option key={value} value={value}>{specLabel(value, language)}</option>)}
-              </select>
-              <select aria-label={text(`Competency status of ${row.discipline}`, `Bevoegdheidsstatus van ${row.discipline}`)} value={row.spec?.competency_status ?? ""} onChange={(event) => setRowSpec(index, "competency_status", event.target.value)}>
-                <option value="">{text("Competency", "Bevoegdheid")}</option>
-                {specCompetencyStatuses.map((value) => <option key={value} value={value}>{specLabel(value, language)}</option>)}
-              </select>
             </span>
             <span className="counter-control">
               <button type="button" onClick={() => setCount(index, -1)} aria-label={text(`One fewer ${row.discipline}`, `Eén ${row.discipline} minder`)}><Minus size={14} /></button>
@@ -308,7 +272,7 @@ export function WorkforceForm({
     signature: HandwrittenSignature | null,
   ) => boolean | void | Promise<boolean | void>;
 }) {
-  const { text } = useLanguage();
+  const { locale, text } = useLanguage();
   // Counting the crew is attendance.manage; everyone else may look but not change.
   const readOnly = !useProjectPermissions().can("attendance.manage");
   const firstBuildingId = resolveDefaultBuildingId(buildings, defaultBuildingId);
@@ -490,6 +454,16 @@ export function WorkforceForm({
     setSaving(false);
   };
 
+  const signing = useSignedSubmit({
+    value: signature,
+    onChange: setSignature,
+    submit: () => void confirm(),
+    title: text("Sign and confirm the attendance", "Onderteken en bevestig de aanwezigheid"),
+    declaration: text("I confirm that this attendance reflects the crew I counted on site.", "Ik bevestig dat deze aanwezigheid de bezetting weergeeft die ik op de bouwplaats heb geteld."),
+    nameSuggestion: currentUserName,
+    enabled: !readOnly,
+  });
+
   return (
     <RecordFormShell
       title={text("Who is on site today?", "Wie is er vandaag op de bouwplaats?")}
@@ -502,7 +476,8 @@ export function WorkforceForm({
       saveLabel={filledBuildings.length > 1
         ? text(`Confirm attendance · ${filledBuildings.length} buildings`, `Aanwezigheid bevestigen · ${filledBuildings.length} gebouwen`)
         : text("Confirm attendance", "Aanwezigheid bevestigen")}
-      onSave={readOnly ? undefined : () => void confirm()}
+      onSave={readOnly ? undefined : signing.request}
+      overlay={signing.dialog}
       onCancel={close}
       className="wide sectioned-record-form workforce-form"
       headerAside={draftState === "restored" ? (
@@ -513,6 +488,17 @@ export function WorkforceForm({
       ) : null}
     >
         <div className="workforce-body">
+          {/* Every form opens with the same system-filled head (Excel v5.0, START HERE "Record header"). */}
+          <FormAutoBar items={autoBarItems({
+            idLabel: text("Record ID", "Registratienummer"),
+            idValue: text("On confirm", "Bij bevestigen"),
+            dateLabel: text("Date/time", "Datum/tijd"),
+            dateValue: new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Paramaribo" }).format(new Date()),
+            byLabel: text("Counted by", "Geteld door"),
+            byValue: currentUserName || "—",
+            statusValue: text("Submitted (final)", "Ingediend (definitief)"),
+            text,
+          })} />
           <fieldset className="workforce-fieldset" disabled={readOnly}>
           {/* The location and weather tiles that used to stand here were struck through on
               the client's own screenshot. What is left is the number they left standing. */}
@@ -563,7 +549,6 @@ export function WorkforceForm({
               disciplines={disciplines}
               defaultShiftStart={defaultShiftStart}
               defaultShiftEnd={defaultShiftEnd}
-              editShifts
             />
           </WorkforceSection>
 

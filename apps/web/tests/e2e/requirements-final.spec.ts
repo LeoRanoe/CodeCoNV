@@ -86,7 +86,8 @@ test("the main menu follows the client's mind map and the overview shows every p
   test.skip(testInfo.project.name !== "desktop-office", "The menu order and panels do not depend on the viewport.");
   test.setTimeout(120_000);
   await signIn(page, supervisor);
-  const labels = (await page.locator(".sidebar .nav-button").allInnerTexts()).map((label) => label.trim());
+  // The follow-up number beside "Actions" is a badge, not part of the name.
+  const labels = await page.locator(".sidebar .nav-button").evaluateAll((buttons) => buttons.map((button) => [...button.childNodes].filter((node) => !(node instanceof Element && node.classList.contains("nav-badge"))).map((node) => node.textContent).join("").trim()));
   expect(labels).toEqual(["Overview", "Workspace", "Actions", "Rapid Verify", "Project Documents", "Records & Photos", "Reports", "Contractor Portal", "Client Portal", "Management"]);
   const panels = page.locator(".overview-panels");
   await expect(panels).toBeVisible();

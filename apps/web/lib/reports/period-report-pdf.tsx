@@ -13,6 +13,9 @@ import {
 import type { PeriodReportSnapshot } from "@/lib/supabase/operations";
 import { periodDetailKeys, periodDetailsLine, periodHours, periodProjectHead, periodSignatureRoles, periodToken } from "@/lib/reports/period-report-text";
 import { reportDelayCause, reportWeather, reportWind } from "@/lib/reports/report-vocabulary";
+import type { ReportPhoto, ReportPhotoMode } from "@/lib/reports/report-photos";
+import type { SignoffHistoryEntry } from "@/lib/forms/signoff";
+import { SignoffHistoryPdf } from "@/lib/reports/signoff-history-pdf";
 
 /** The day closeout's HSE answer in words: the stored value is a code such as near_miss. */
 const closeoutHseEvents: Record<string, string> = { none: "geen", near_miss: "bijna-ongeval", incident: "incident", observation: "observatie", unsafe_act: "onveilige handeling", unsafe_condition: "onveilige situatie" };
@@ -37,7 +40,66 @@ export const allPeriodReportTopics: PeriodReportTopic[] = ["photos", "works_ongo
 /** HSE event types that count as an incident rather than a routine observation. */
 export const hseIncidentTypes = ["incident", "near_miss", "stop_work"];
 
-export type PeriodReportOptions = { sections?: PeriodReportSection[]; topics?: PeriodReportTopic[]; reportTitle?: string; headerText?: string | null; footerText?: string | null };
+/** A record of the period with the sign-off steps it went through (Word 11.1, "signatures and sign-off log"). */
+export type PeriodSignoffLogEntry = { code: string; title: string; history: SignoffHistoryEntry[] };
+
+/** One printed record in the grouped overview (lib/reports/report-structure.mjs). */
+export type PeriodReportLine = { id: string; kind: string; form: string; code: string; title: string; status: string; date: string; building: string; contractor: string; carriedOver: boolean };
+export type PeriodReportGroup = { label: string; lines: PeriodReportLine[] };
+export type PeriodContractorResponses = Array<{ code: string; title: string; responses: Array<{ action: string; by: string; organization: string; at: string; comments: string }> }>;
+
+/**
+ * Word 11.1 "group by", "summary versus full" and "contractor responses": the records in groups, how much of the report is
+ * printed, and what the contractors answered. Prepared once (report-structure.mjs) so the PDF, the Word file and the Excel
+ * workbook group and count the same records.
+ */
+export type PeriodReportStructure = {
+  groupBy: string;
+  groupLabel: string;
+  detail: "full" | "summary";
+  groups: PeriodReportGroup[];
+  responses?: PeriodContractorResponses;
+};
+
+/** The words of the overview and the responses sections, shared by the PDF and the Word file. */
+export const structureText = {
+  overview: (summary: boolean, groupLabel: string) => `${summary ? "Samenvatting" : "Overzicht"}${groupLabel ? ` per ${groupLabel.toLowerCase()}` : ""}`,
+  responses: "Reacties van aannemers",
+  noResponses: "Geen reacties van aannemers op de afgedrukte records.",
+  action: (action: string) => ({ acknowledge: "Bevestigd", respond: "Gereageerd", resubmit: "Opnieuw ingediend", witness: "Getuige" })[action] ?? action,
+};
+
+export const groupLineText = (line: PeriodReportLine) => [line.code, line.title, line.status && periodToken(line.status), line.date, line.building, line.contractor, line.carriedOver ? "Eerder geopend" : ""].filter(Boolean).join(" · ");
+
+/**
+ * Word 11.1 options of the builder beyond the period and the forms: how photos are printed (none, small or large;
+ * `photos` holds the pictures made in the browser by report-photos.ts and `photosOmitted` how many were left out),
+ * whether signatures are printed, and the sign-off log of the records in the report.
+ */
+export type PeriodReportOptions = {
+  sections?: PeriodReportSection[]; topics?: PeriodReportTopic[]; reportTitle?: string; headerText?: string | null; footerText?: string | null;
+  photoMode?: ReportPhotoMode; photos?: Record<string, ReportPhoto>; photosOmitted?: number;
+  signatures?: boolean; signoffLog?: PeriodSignoffLogEntry[];
+  structure?: PeriodReportStructure;
+};
+
+/**
+ * The snapshot for a report built with signatures switched off: no ink and no signed-by line on the records, and no
+ * ink on the day closeouts (their contractor attestation keeps its words).
+ */
+export function withoutSignatures(snapshot: PeriodReportSnapshot): PeriodReportSnapshot {
+  const without = (rows: Array<Record<string, unknown>> | undefined, keys: string[]) => (rows ?? []).map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => !keys.includes(key))));
+  const record = ["signature_image", "signed_by", "signed_at"];
+  return {
+    ...snapshot,
+    day_closeouts: without(snapshot.day_closeouts, ["contractor_signature_image", "signature_image"]),
+    inspections: without(snapshot.inspections, record),
+    findings: without(snapshot.findings, record),
+    hse_events: without(snapshot.hse_events, record),
+    register_entries: without(snapshot.register_entries, record),
+    registrations: without(snapshot.registrations, record),
+  };
+}
 
 const styles = StyleSheet.create({
   page: { backgroundColor: "#ffffff", color: "#20252b", fontFamily: "Helvetica", fontSize: 9, paddingBottom: 42, paddingHorizontal: 34, paddingTop: 88 },
@@ -69,6 +131,10 @@ const styles = StyleSheet.create({
   callout: { backgroundColor: "#fff9db", borderColor: "#e2bd25", borderWidth: 1, marginBottom: 8, padding: 8 },
   calloutTitle: { color: "#5b4a00", fontSize: 9, fontWeight: 700 },
   calloutText: { color: "#5e583d", fontSize: 7.5, lineHeight: 1.35, marginTop: 3 },
+  photoGrid: { display: "flex", flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 6 },
+  photoCard: { borderColor: "#dce4e7", borderWidth: 1, padding: 4 },
+  photoImage: { objectFit: "contain" },
+  photoCaption: { color: "#44525a", fontSize: 7, lineHeight: 1.3, marginTop: 3 },
   footer: { bottom: 18, color: "#7a8991", fontSize: 7, left: 34, position: "absolute", right: 34 },
 });
 
@@ -109,7 +175,7 @@ function RecordRows({ rows, empty = "Geen registraties in deze periode." }: { ro
   if (!rows.length) return <Text style={styles.empty}>{empty}</Text>;
   return <View>{rows.map((row, index) => (
     <View style={styles.row} wrap={false} key={`${value(row, "id", String(index))}:${index}`}>
-      <Text style={styles.rowNumber}>{value(row, "entry_number", value(row, "finding_number", value(row, "inspection_number", value(row, "event_number", `#${index + 1}`))))}</Text>
+      <Text style={styles.rowNumber}>{value(row, "entry_number", value(row, "finding_number", value(row, "inspection_number", value(row, "event_number", value(row, "capture_number", `#${index + 1}`)))))}</Text>
       <View style={styles.rowBody}>
         <Text style={styles.rowTitle}>{value(row, "title", value(row, "day_summary", "Registratie"))}</Text>
         <Text style={styles.rowMeta}>{[humanizeToken(value(row, "status")), humanizeToken(value(row, "severity")), value(row, "occurred_at") ? formatDate(value(row, "occurred_at")) : "", detailsText(row), value(row, "signed_by") ? `Ondertekend door ${value(row, "signed_by")} · ${formatDate(value(row, "signed_at"))}` : ""].filter(Boolean).join(" | ")}</Text>
@@ -119,6 +185,24 @@ function RecordRows({ rows, empty = "Geen registraties in deze periode." }: { ro
   ))}</View>;
 }
 
+/** Pictures of the visual captures: small ones four across, large ones one per row. Captures without a picture stay a row. */
+function CapturePhotos({ captures, photos, mode }: { captures: Array<Record<string, unknown>>; photos: Record<string, ReportPhoto>; mode: ReportPhotoMode }) {
+  const shown = captures.filter((capture) => photos[value(capture, "id")]);
+  const rest = captures.filter((capture) => !photos[value(capture, "id")]);
+  const frame = mode === "large" ? { width: 500, height: 330 } : { width: 118, height: 90 };
+  return <View>
+    <View style={styles.photoGrid}>{shown.map((capture) => {
+      const photo = photos[value(capture, "id")];
+      const fit = Math.min(frame.width / photo.width, frame.height / photo.height);
+      return <View style={[styles.photoCard, { width: frame.width + 10 }]} wrap={false} key={value(capture, "id")}>
+        <Image src={photo.dataUrl} style={[styles.photoImage, { height: Math.round(photo.height * fit), width: Math.round(photo.width * fit) }]} />
+        <Text style={styles.photoCaption}>{[value(capture, "capture_number"), value(capture, "title"), value(capture, "captured_at") ? formatDate(value(capture, "captured_at")) : "", value(capture, "location_label")].filter(Boolean).join(" · ")}</Text>
+      </View>;
+    })}</View>
+    {rest.length ? <RecordRows rows={rest} /> : null}
+  </View>;
+}
+
 function ReportBrand({ label, logoSource }: { label: string; logoSource: string }) {
   return <View style={styles.brand} fixed>
     <View style={styles.brandLogoPlate}><Image src={logoSource} style={styles.brandLogo} /></View>
@@ -126,10 +210,14 @@ function ReportBrand({ label, logoSource }: { label: string; logoSource: string 
   </View>;
 }
 
-export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/codeco-logo-pdf.png" }: { snapshot: PeriodReportSnapshot; options?: PeriodReportOptions; logoSource?: string }) {
+export function PeriodReportDocument({ snapshot: source, options = {}, logoSource = "/codeco-logo-pdf.png" }: { snapshot: PeriodReportSnapshot; options?: PeriodReportOptions; logoSource?: string }) {
+  const snapshot = options.signatures === false ? withoutSignatures(source) : source;
   const projectName = value(snapshot.project, "name", "CODECO-project");
   const sections = new Set(options.sections?.length ? options.sections : allPeriodReportSections);
   const topics = new Set(options.topics?.length ? options.topics : allPeriodReportTopics);
+  const structure = options.structure;
+  /** A summary prints the management page, the counts per group and the open actions; the record pages are left out. */
+  const summary = structure?.detail === "summary";
   const buildings = snapshot.buildings ?? [];
   const locationNodes = snapshot.location_nodes ?? [];
   const buildingById = new Map(buildings.map((building) => [value(building, "id"), value(building, "name")]));
@@ -282,7 +370,21 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
         <Text style={styles.footer} fixed>{options.footerText || "CODECO Supervisie | bron: centraal, rechten-gefilterd periodsnapshot"}</Text>
       </Page>
 
-      {sections.has("work") ? <Page size="A4" style={styles.page}>
+      {structure && (summary || structure.groupBy !== "none") ? <Page size="A4" style={styles.page}>
+        <ReportBrand label="OVERZICHT" logoSource={logoSource} />
+        <Text style={styles.heading}>{structureText.overview(summary, structure.groupLabel)}</Text>
+        {structure.groups.map((group, groupIndex) => <View key={`${group.label}-${groupIndex}`} wrap={summary ? false : true}>
+          {group.label ? <Text style={[styles.rowTitle, { marginTop: 10 }]} minPresenceAhead={40}>{group.label} ({group.lines.length})</Text> : null}
+          {summary
+            ? Object.entries(group.lines.reduce<Record<string, number>>((counts, line) => ({ ...counts, [line.form]: (counts[line.form] ?? 0) + 1 }), {})).map(([form, count]) => <View style={styles.row} key={form}><Text style={styles.rowNumber}>{count}</Text><Text style={styles.rowTitle}>{form}</Text></View>)
+            : group.lines.map((line) => <Text style={styles.dailyDetail} key={line.id}>{groupLineText(line)}</Text>)}
+        </View>)}
+        {structure.groups.every((group) => group.lines.length === 0) ? <Text style={styles.empty}>Geen records in deze periode.</Text> : null}
+        {summary && sections.has("actions") && topics.has("deadlines") ? <><Text style={styles.heading}>Open deadlines en acties</Text><RecordRows rows={snapshot.open_actions} /></> : null}
+        <Text style={styles.footer} fixed>CODECO Supervisie | overzicht</Text>
+      </Page> : null}
+
+      {sections.has("work") && !summary ? <Page size="A4" style={styles.page}>
         <ReportBrand label="DAGVERLOOP EN WERKZAAMHEDEN" logoSource={logoSource} />
         <Text style={styles.heading}>Dagverloop, werkzaamheden en voortgang</Text>
         {snapshot.day_reports.length ? snapshot.day_reports.map((report, index) => {
@@ -306,7 +408,7 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
         <Text style={styles.footer} fixed>CODECO Supervisie | dagverloop</Text>
       </Page> : null}
 
-      <Page size="A4" style={styles.page}>
+      {!summary ? <Page size="A4" style={styles.page}>
         <ReportBrand label="KWALITEIT EN VEILIGHEID" logoSource={logoSource} />
         {sections.has("quality") ? <>
           {topics.has("issues") || topics.has("ncr") ? <><Text style={styles.heading}>Lessons learned / corrigerende standaard</Text><RecordRows rows={lessonsLearned} empty="Nog geen issuegebonden lessons learned in deze periode." /></> : null}
@@ -319,9 +421,9 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
         {sections.has("environment") ? <><Text style={styles.heading}>Milieu, social en housekeeping</Text><RecordRows rows={register("environmental_report")} empty="Geen milieurapport of housekeepingobservatie in deze periode." /></> : null}
         {sections.has("actions") && topics.has("deadlines") ? <><Text style={styles.heading}>Open deadlines en acties</Text><RecordRows rows={snapshot.open_actions} /></> : null}
         <Text style={styles.footer} fixed>CODECO Supervisie | kwaliteit en HSE</Text>
-      </Page>
+      </Page> : null}
 
-      <Page size="A4" style={styles.page}>
+      {!summary ? <Page size="A4" style={styles.page}>
         <ReportBrand label="PROJECTLOGS" logoSource={logoSource} />
         {sections.has("logistics") && topics.has("materials_delivery") ? <><Text style={styles.heading}>Materialen en leveringen</Text><RecordRows rows={register("delivery")} /></> : null}
         {sections.has("logistics") && topics.has("delays") ? <><Text style={styles.heading}>Vertragingen</Text><RecordRows rows={register("delay")} /></> : null}
@@ -332,16 +434,19 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
         {sections.has("documents") ? <><Text style={styles.heading}>Document control matrix</Text><RecordRows rows={controlledDocuments} empty="Geen beheerde klantdocumenten in deze periode." /></> : null}
         {sections.has("boq") ? <><Text style={styles.heading}>BOQ, voortgang en declaraties</Text><RecordRows rows={[...register("boq"), ...register("declaration"), ...register("cost")]} /></> : null}
         <Text style={styles.footer} fixed>CODECO Supervisie | projectlogs</Text>
-      </Page>
+      </Page> : null}
 
-      {sections.has("visual") && topics.has("photos") ? <Page size="A4" style={styles.page}>
+      {sections.has("visual") && topics.has("photos") && !summary ? <Page size="A4" style={styles.page}>
         <ReportBrand label="VISUEEL PROJECTDOSSIER" logoSource={logoSource} />
         <Text style={styles.heading}>Foto&apos;s en 360°-camerabeelden</Text>
-        <RecordRows rows={snapshot.visual_captures} />
+        {options.photoMode && options.photoMode !== "none" && options.photos
+          ? <CapturePhotos captures={snapshot.visual_captures} photos={options.photos} mode={options.photoMode} />
+          : <RecordRows rows={snapshot.visual_captures} />}
+        {options.photoMode && options.photoMode !== "none" && options.photosOmitted ? <Text style={styles.empty}>{options.photosOmitted} foto&apos;s zijn niet afgedrukt (limiet of niet leesbaar); ze staan wel in het register.</Text> : null}
         <Text style={styles.footer} fixed>CODECO Supervisie | visueel bewijs</Text>
       </Page> : null}
 
-      {sections.has("buildings") ? buildings.map((building, buildingIndex) => {
+      {sections.has("buildings") && !summary ? buildings.map((building, buildingIndex) => {
         const buildingId = value(building, "id");
         const buildingFindings = findings.filter((item) => value(item, "building_id") === buildingId);
         const buildingInspections = inspections.filter((item) => value(item, "building_id") === buildingId);
@@ -363,6 +468,26 @@ export function PeriodReportDocument({ snapshot, options = {}, logoSource = "/co
           <Text style={styles.footer} fixed>CODECO Supervisie | gebouwstatus</Text>
         </Page>;
       }) : null}
+
+      {structure?.responses && !summary ? <Page size="A4" style={styles.page}>
+        <ReportBrand label="REACTIES AANNEMERS" logoSource={logoSource} />
+        <Text style={styles.heading}>{structureText.responses}</Text>
+        {structure.responses.length ? structure.responses.map((record) => <View key={record.code} wrap={false}>
+          <Text style={styles.rowTitle}>{record.code} · {record.title}</Text>
+          {record.responses.map((item, index) => <Text style={styles.dailyDetail} key={index}>{[item.at, structureText.action(item.action), item.by, item.organization].filter(Boolean).join(" · ")}{item.comments ? `\n${item.comments}` : ""}</Text>)}
+        </View>) : <Text style={styles.empty}>{structureText.noResponses}</Text>}
+        <Text style={styles.footer} fixed>CODECO Supervisie | reacties van aannemers</Text>
+      </Page> : null}
+
+      {options.signoffLog?.length && !summary ? <Page size="A4" style={styles.page}>
+        <ReportBrand label="ONDERTEKENINGSLOG" logoSource={logoSource} />
+        <Text style={styles.heading}>Ondertekeningslog</Text>
+        {options.signoffLog.map((entry) => <View key={entry.code} wrap={false}>
+          <Text style={styles.rowTitle}>{entry.code} · {entry.title}</Text>
+          <SignoffHistoryPdf history={options.signatures === false ? entry.history.map((item) => ({ ...item, signature: null })) : entry.history} title="Stappen" />
+        </View>)}
+        <Text style={styles.footer} fixed>CODECO Supervisie | ondertekeningslog</Text>
+      </Page> : null}
 
       <Page size="A4" style={styles.page}>
         <ReportBrand label="ONDERTEKENING" logoSource={logoSource} />

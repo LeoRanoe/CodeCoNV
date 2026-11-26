@@ -445,6 +445,8 @@ export type VisualCapture = {
   id: string;
   /** Photo purpose, discipline and related record of the client's specification. */
   spec?: Record<string, unknown> | null;
+  /** Record ID of the photo, <PROJECT>-PH-<YYYY>-<NNNN> (assigned by the database). */
+  capture_number?: string | null;
   building_id: string;
   file_id: string;
   location_node_id: string | null;
@@ -577,6 +579,8 @@ export type OperationSnapshot = {
   dailyWork?: DailyWorkRecord[];
   // Optional only for offline snapshots cached before the workforce became a workspace page.
   attendance?: AttendanceRecord[];
+  // Signed Rapid Verify compliance checks; Actions lists the ones that still need follow-up.
+  specComplianceChecks?: Array<Record<string, unknown>>;
   _offlineCached?: boolean;
   _offlineSavedAt?: string;
 };
@@ -691,7 +695,7 @@ export async function loadProjectOperations(
     pageAll((from, to) => client.from("backup_runs").select("id,project_id,run_type,status,schema_version,size_bytes,sha256,verified_at,created_at,retention_tier,record_counts,error_summary").eq("organization_id", organizationId).order("created_at", { ascending: false }).order("id").range(from, to), 200),
     pageAll((from, to) => client.from("location_nodes").select("id,building_id,parent_id,node_type,code,name,description,status").eq("project_id", projectId).order("sort_order").order("id").range(from, to), 5000),
     client.from("production_readiness_items").select("id,code,category,title,description,owner_hint,blocking,status,evidence,completed_at,sort_order").eq("organization_id", organizationId).order("sort_order"),
-    pageAll((from, to) => client.from("visual_captures").select("id,building_id,file_id,location_node_id,day_report_id,capture_type,title,description,location_label,tour_name,tour_order,stack_id,spec,captured_at,status,created_at").eq("project_id", projectId).order("captured_at", { ascending: false }).order("id").range(from, to), 10000),
+    pageAll((from, to) => client.from("visual_captures").select("id,building_id,file_id,location_node_id,day_report_id,capture_type,title,description,location_label,tour_name,tour_order,stack_id,spec,capture_number,captured_at,status,created_at").eq("project_id", projectId).order("captured_at", { ascending: false }).order("id").range(from, to), 10000),
     pageAll((from, to) => client.from("visual_annotations").select("id,capture_id,finding_id,coordinate_mode,x_ratio,y_ratio,yaw,pitch,title,description,severity,disposition,status,created_at").eq("project_id", projectId).order("created_at").order("id").range(from, to), 20000),
     pageAll((from, to) => client.from("drawing_pins").select("id,drawing_file_id,page_number,x_ratio,y_ratio,linked_record_type,linked_record_id,linked_record_number,linked_record_title,note,status,created_at,updated_at,version").eq("project_id", projectId).order("created_at").order("id").range(from, to), 20000),
     pageAll((from, to) => client.from("drawing_markups").select("id,drawing_file_id,page_number,markup_type,geometry,color,stroke_width,text_content,status,created_at").eq("project_id", projectId).order("created_at").order("id").range(from, to), 20000),
@@ -758,7 +762,7 @@ export async function loadProjectOperations(
   const compatibleFileResult = schemaFeatureMissing(fileResult.error, ["document_code"])
     ? await client.from("files").select("id,building_id,folder_id,original_name,mime_type,size_bytes,category,status,created_at").eq("project_id", projectId).neq("status", "deleted").order("created_at", { ascending: false }).limit(500)
     : fileResult;
-  const compatibleVisualCaptureResult = schemaFeatureMissing(visualCaptureResult.error, ["stack_id", "spec"])
+  const compatibleVisualCaptureResult = schemaFeatureMissing(visualCaptureResult.error, ["stack_id", "spec", "capture_number"])
     ? await client.from("visual_captures").select("id,building_id,file_id,location_node_id,day_report_id,capture_type,title,description,location_label,tour_name,tour_order,captured_at,status,created_at").eq("project_id", projectId).order("captured_at", { ascending: false }).limit(250)
     : visualCaptureResult;
   const compatibleBoqProgressResult = schemaFeatureMissing(boqProgressResult.error, ["boq_progress_updates"])
@@ -906,7 +910,17 @@ export async function loadProjectOperations(
     fileLinks: (compatibleFileLinkResult.data ?? []) as FileLink[],
     dailyWork: dailyWorkRows.map((record) => ({ ...record, building_ids: buildingsForRecord(recordBuildings, "daily_work", record.id, record.building_id) })),
     attendance: (compatibleAttendanceResult.data ?? []) as AttendanceRecord[],
+    specComplianceChecks: await loadComplianceChecksForActions(client, projectId),
   };
+}
+
+/** The signed spec compliance checks that can still need follow-up (Word chapter 9, last row of the table). */
+async function loadComplianceChecksForActions(client: SupabaseClient, projectId: string) {
+  const result = await client.from("spec_compliance_checks")
+    .select("id,check_number,subject_kind,subject_file_id,subject_record_id,subject_label,requirement_label,clause,overall_result,signed_by,signed_at,follow_up_finding_id")
+    .eq("project_id", projectId).order("signed_at", { ascending: false }).limit(200);
+  // A role that may not read the checks simply has none in its list.
+  return result.error ? [] : ((result.data ?? []) as Array<Record<string, unknown>>);
 }
 
 export async function createMediaFolder(client: SupabaseClient, input: {
@@ -1925,6 +1939,19 @@ export async function createChecklist(client: SupabaseClient, input: { organizat
   fail(result.error);
   if (!result.data) throw new Error("De checklist kon niet worden aangemaakt.");
   return (result.data as ChecklistTemplate).id;
+}
+
+export async function uploadChecklist(client: SupabaseClient, input: { projectId: string; module: string; code: string; name: string; items: Record<string, unknown>[] }) {
+  const result = await client.rpc("upload_project_checklist", {
+    p_project_id: input.projectId,
+    p_module: input.module,
+    p_code: input.code,
+    p_name: input.name,
+    p_items: input.items,
+  });
+  fail(result.error);
+  if (!result.data) throw new Error("De checklist kon niet worden geüpload.");
+  return result.data as ChecklistTemplate;
 }
 
 export async function installChecklistLibraryTemplate(client: SupabaseClient, projectId: string, libraryCode: string) {

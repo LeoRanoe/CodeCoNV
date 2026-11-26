@@ -58,7 +58,7 @@
 .sidebar .nav-button.active { background: var(--signal-soft); color: var(--ink-950); font-weight: var(--weight-bold); }
 .sidebar .nav-button.active svg { color: var(--signal-dark); }
 .sidebar .nav-button.active::before { background: var(--signal); }
-.sidebar .nav-badge { background: var(--signal); color: var(--ink-950); }
+.sidebar .nav-badge { background: var(--ink-100); border-radius: var(--radius-pill); color: var(--ink-900); font-size: var(--text-xs); font-variant-numeric: tabular-nums; font-weight: var(--weight-semibold); margin-left: auto; min-width: 1.5rem; padding: 0 var(--space-2); text-align: center; }
 
 .sidebar .quick-add-side:not(.has-page-primary) {
   background: var(--signal);
@@ -341,7 +341,7 @@
 /* ---------- Management: the same rhythm as the overview ---------- */
 
 .secondary-header + .section-nav { margin-bottom: var(--space-5); }
-.management-overview { display: grid; gap: var(--space-5); }
+.management-overview { display: grid; gap: var(--space-5); grid-template-columns: minmax(0, 1fr); }
 .management-kpis {
   background: transparent;
   border: 0;
@@ -372,7 +372,11 @@
 .external-submission-center .external-access-summary > *:first-child,
 .company-task-assignment .employee-workload-strip > *:first-child { border-left: 0; }
 .management-context { gap: var(--space-3); }
+/* The queue fills in when the project's own records arrive; its room is kept so the panels below do not jump. */
+.overview-priority-list.is-loading { min-height: 17rem; }
 @media (max-width: 1024px) { .management-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* A 320 px window cannot hold two of these cards side by side: their padding and label would push the row past the screen. */
+@media (max-width: 640px) { .management-kpis { grid-template-columns: minmax(0, 1fr); } }
 
 /* ---------- Document preview: drawn in the app, not in a frame ---------- */
 
@@ -740,6 +744,14 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
 .signoff-meta { color: var(--muted); font-size: var(--text-sm); }
 .signoff-signature { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); display: block; margin-top: var(--space-2); max-height: 72px; max-width: 220px; }
 .signoff-action { border-top: 1px solid var(--border); display: grid; gap: var(--space-4); margin-top: var(--space-4); padding-top: var(--space-4); }
+/* Close / Verify / Approve: the fields the action carries, and the log line that records them. */
+.signoff-outcome { display: grid; gap: var(--space-3); }
+.signoff-outcome .signoff-outcome-wide { grid-column: 1 / -1; }
+.signoff-outcome-log { display: grid; gap: var(--space-1); margin: var(--space-2) 0 0; }
+.signoff-outcome-log > div { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.signoff-outcome-log dt { color: var(--muted); }
+.signoff-outcome-log dt::after { content: ":"; }
+.signoff-outcome-log dd { margin: 0; overflow-wrap: anywhere; }
 .workforce-row-spec { display: flex; flex-direction: column; gap: var(--space-2); grid-column: 1 / -1; order: 10; }
 .workforce-row-spec select { min-height: 44px; min-width: 0; width: 100%; }
 .record-spec-facts { display: grid; gap: var(--space-2) var(--space-4); grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); margin: var(--space-3) 0; }
@@ -799,13 +811,13 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
   .spec-people-add, .spec-record-search, .spec-row-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* ---- One field per row (client, 20-11-2026) ---------------------------------------------
-   "The forms are inconsistent: fields beside each other must be under each other." Every
-   form reads as one column at every width: fields, specification details, the numbered
-   sections of the Issue, HSE and NCR forms, and the signature blocks. Choice tiles and tick
-   boxes keep their grid, and the two named photo boxes stay a pair. */
-.form-grid-2:not(.named-photo-pair):not(.delay-choice-columns),
-.form-grid.two-columns,
+/* ---- Layout of the forms (client mockups v6, 25-11-2026, over 20-11-2026) --------------
+   The 20-11 rule "fields beside each other must be under each other" made every form one
+   column. The mockups of the 25-11 developer package put short fields two to a row (Type |
+   Category, Date | Time) with the drawing and its pin beside the location fields; the package
+   says the mockups lead for layout, so short fields sit two to a row again at container widths
+   from 760 px (rule above) and stay one column below. The numbered sections, the specification
+   details, long fields, choice tiles, tick boxes and the signature blocks keep one column. */
 .form-grid.three-columns,
 .spec-row-grid,
 .spec-stage-grid,
@@ -878,7 +890,116 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
 .inspection-plan-details { border-top: 1px solid var(--border); display: grid; gap: var(--space-2); margin-top: var(--space-3); padding-top: var(--space-3); }
 .inspection-plan-details > summary { cursor: pointer; font-weight: var(--weight-semibold); }
 
+/* Developer specification v5.0 (25-11-2026): the auto bar at the top of every form and the two attachment buttons. */
+.form-auto-bar { background: var(--paper); border: 1px solid var(--ink-300); border-radius: var(--radius-md); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.form-auto-bar-item { border-left: 1px solid var(--ink-300); display: grid; gap: 2px; min-width: 0; padding: var(--space-3) var(--space-4); }
+.form-auto-bar-item:first-child { border-left: 0; }
+.form-auto-bar-item small { align-items: center; color: var(--ink-700); display: flex; font-size: var(--text-xs); gap: var(--space-2); }
+.form-auto-bar-item strong { color: var(--ink-950); font-size: var(--text-md); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.form-auto-tag { background: var(--green-soft); border-radius: var(--radius-pill); color: var(--green); font-size: var(--text-xs); font-weight: var(--weight-bold); padding: 0 var(--space-2); }
+.form-auto-note { color: var(--ink-700); font-weight: var(--weight-normal); }
+@media (max-width: 640px) {
+  .form-auto-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .form-auto-bar-item:nth-child(odd) { border-left: 0; }
+  .form-auto-bar-item:nth-child(n + 3) { border-top: 1px solid var(--ink-300); }
+}
+.attachment-buttons { display: grid; gap: var(--space-2); }
+.attachment-buttons-thumbs { align-items: center; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.attachment-buttons-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.attachment-button { align-items: center; background: var(--paper); border: 1px dashed var(--ink-500); border-radius: var(--radius-control); color: var(--ink-900); cursor: pointer; display: inline-flex; font-weight: var(--weight-semibold); gap: var(--space-2); min-height: var(--control-h-lg); padding: 0 var(--space-4); position: relative; }
+.attachment-button svg { color: var(--signal-dark); }
+.attachment-button:hover { background: var(--signal-soft); border-color: var(--signal); }
+.attachment-button:focus-within { outline: 2px solid var(--signal); outline-offset: 2px; }
+.attachment-button.is-disabled { cursor: not-allowed; opacity: 0.55; }
+.attachment-button input { height: 1px; opacity: 0; overflow: hidden; position: absolute; width: 1px; }
+.attachment-buttons-hint { color: var(--ink-700); }
+
+/* Developer specification v5.0: Records & Photos → Form Logs (one logbook per form). */
+.form-logs { display: grid; gap: var(--space-4); }
+.form-log-types { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.form-log-type { align-items: center; background: var(--paper); border: 1px solid var(--ink-300); border-radius: var(--radius-control); color: var(--ink-900); cursor: pointer; display: inline-flex; font-weight: var(--weight-semibold); gap: var(--space-2); min-height: var(--control-h-lg); padding: 0 var(--space-3); }
+.form-log-type span { color: var(--ink-700); font-variant-numeric: tabular-nums; font-weight: var(--weight-normal); }
+.form-log-type.is-selected { background: var(--signal-soft); border-color: var(--signal); }
+.form-log-filters { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); }
+.form-log-bar { align-items: flex-start; display: flex; flex-wrap: wrap; gap: var(--space-3); justify-content: space-between; }
+.form-log-totals { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); list-style: none; margin: 0; padding: 0; }
+.form-log-totals li { display: grid; gap: 2px; }
+.form-log-totals span { color: var(--ink-700); font-size: var(--text-xs); }
+.form-log-totals strong { font-size: var(--text-md); font-variant-numeric: tabular-nums; }
+.form-log-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.form-log-columns { border: 1px solid var(--ink-300); border-radius: var(--radius-md); display: grid; gap: var(--space-1) var(--space-4); grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); list-style: none; margin: 0; padding: var(--space-3); }
+.form-log-columns li { align-items: center; display: flex; gap: var(--space-1); justify-content: space-between; }
+.form-log-columns label { align-items: center; display: inline-flex; gap: var(--space-2); min-height: var(--control-h-md); }
+.form-log-scroll { border: 1px solid var(--ink-300); border-radius: var(--radius-md); overflow-x: auto; }
+.form-log-table { border-collapse: collapse; min-width: 100%; }
+.form-log-table th, .form-log-table td { border-bottom: 1px solid var(--ink-300); padding: var(--space-2) var(--space-3); text-align: left; vertical-align: top; white-space: nowrap; }
+.form-log-table th button { background: none; border: 0; color: var(--ink-900); cursor: pointer; font: inherit; font-weight: var(--weight-semibold); min-height: var(--control-h-md); padding: 0; }
+.form-log-table tbody tr:last-child td { border-bottom: 0; }
+
+/* Supervision "View as" (Word v2.0, section 3): the read-only strip above a contractor or client portal. */
+.portal-view-as { align-items: end; background: var(--paper); border: 1px solid var(--ink-300); border-radius: var(--radius-md); display: flex; flex-wrap: wrap; gap: var(--space-4); padding: var(--space-3) var(--space-4); }
+.portal-view-as .form-field { min-width: 14rem; }
+.portal-view-as p { color: var(--ink-700); flex: 1 1 18rem; margin: 0; }
+
+/* Developer specification v5.0: report builder tools, company register, Rapid Verify compliance check. */
+.report-presets { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.report-templates, .report-schedules { border: 1px solid var(--ink-300); border-radius: var(--radius-md); display: grid; gap: var(--space-3); grid-column: 1 / -1; margin: 0; min-width: 0; padding: var(--space-3) var(--space-4); width: 100%; }
+.report-templates legend, .report-schedules legend { color: var(--ink-900); font-weight: var(--weight-semibold); padding: 0 var(--space-2); }
+.report-templates ul, .report-schedules ul { display: grid; gap: var(--space-2); list-style: none; margin: 0; padding: 0; }
+.report-templates li, .report-schedules li { align-items: center; display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: space-between; }
+.report-template-save { align-items: center; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.report-template-save input { flex: 1 1 14rem; min-height: var(--control-h-md); }
+.report-schedule-form { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); }
+.report-recipients { border: 1px solid var(--ink-300); border-radius: var(--radius-md); display: grid; gap: var(--space-2); grid-column: 1 / -1; margin: 0; padding: var(--space-3); }
+.report-recipients legend { color: var(--ink-800); font-size: var(--text-sm); padding: 0 var(--space-2); }
+.check-field { align-items: center; display: flex; gap: var(--space-2); min-height: var(--control-h-md); }
+
+.company-register-list { display: grid; gap: var(--space-4); list-style: none; margin: 0; padding: 0; }
+.company-register-list > li { border-top: 1px solid var(--ink-200); display: grid; gap: var(--space-2); padding-top: var(--space-3); }
+.company-register-list header { align-items: baseline; display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); }
+.company-register-list header span { color: var(--ink-700); font-size: var(--text-sm); }
+.company-register-list ul { display: grid; gap: var(--space-1); list-style: none; margin: 0; padding: 0; }
+.company-register-list ul li { align-items: center; display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); }
+.company-register-list small { color: var(--ink-700); }
+.company-contact-form { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); }
+.company-contact-form input { min-height: var(--control-h-md); }
+
+.sheet-drawing-location { align-items: center; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.sheet-drawing-location-summary { align-items: center; color: var(--ink-900); display: inline-flex; gap: var(--space-1); }
+
+.rapid-verify-switch { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3); }
+.spec-compliance { display: grid; gap: var(--space-4); }
+.spec-compliance-form { display: grid; gap: var(--space-4); }
+.spec-compliance-table { display: grid; gap: var(--space-2); min-width: 0; overflow-x: auto; }
+.spec-compliance-head, .spec-compliance-row { align-items: center; display: grid; gap: var(--space-2); grid-template-columns: minmax(8rem, 1.2fr) minmax(7rem, 1fr) minmax(7rem, 1fr) minmax(9rem, 1fr) minmax(8rem, 1.2fr) minmax(5rem, 0.6fr) var(--control-h-md); min-width: 56rem; }
+.spec-compliance-head { color: var(--ink-700); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.spec-compliance-row input, .spec-compliance-row select { min-height: var(--control-h-md); min-width: 0; width: 100%; }
+.spec-compliance-table > button { justify-self: start; }
+.spec-compliance-verdict { border-left: 4px solid var(--ink-400); margin: 0; padding: var(--space-2) var(--space-3); }
+.spec-compliance-verdict.complies { background: var(--green-soft); border-color: var(--green); }
+.spec-compliance-verdict.complies_with_comments { background: var(--yellow-soft); border-color: var(--yellow); }
+.spec-compliance-verdict.does_not_comply { background: var(--red-soft); border-color: var(--red); }
+.spec-compliance-list { display: grid; gap: var(--space-2); list-style: none; margin: 0; padding: 0; }
+.spec-compliance-list li { border-top: 1px solid var(--ink-200); display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); padding-top: var(--space-2); }
+.spec-compliance-superseded { color: var(--ink-800); font-style: normal; font-weight: var(--weight-semibold); }
+.workspace-open-log { margin-left: auto; }
+
+/* Numbered sections of a sheet form: plain headings that group the rows, the order of the rows is the workbook's. */
+.sheet-section-title { align-items: baseline; border-top: 1px solid var(--line); color: var(--text); display: flex; font-size: var(--text-lg); font-weight: var(--weight-semibold); gap: var(--space-2); margin: var(--space-5) 0 var(--space-2); padding-top: var(--space-4); }
+.sheet-section-title:first-of-type { border-top: 0; margin-top: 0; padding-top: 0; }
+.sheet-section-number { color: var(--ink-700); font-variant-numeric: tabular-nums; }
+.sheet-section-number::after { content: "."; }
+
+/* Rapid Verify compliance check: the bestek and the submittal side by side (Word 10.1). */
+.compliance-viewer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin-block: var(--space-3); }
+.compliance-pane { margin: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--space-2); min-width: 0; }
+.compliance-pane figcaption { display: grid; gap: var(--space-1); font-size: var(--text-sm); }
+.compliance-pane figcaption span { color: var(--ink-700); overflow-wrap: anywhere; }
+.compliance-pane iframe, .compliance-pane img { width: 100%; height: min(70vh, 640px); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); object-fit: contain; }
+.compliance-pane-note { margin: 0; color: var(--ink-700); }
+.compliance-assistant { display: grid; gap: var(--space-2); justify-items: start; margin-block: var(--space-2); }
+@media (max-width: 1024px) { .compliance-viewer { grid-template-columns: 1fr; } .compliance-pane iframe, .compliance-pane img { height: 60vh; } }
 /* Records & Photos folders: the Workspace tiles, then a way back from an open folder. */
 .records-folders { display: grid; gap: 16px; }
 .records-folder-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-.records-folder-head h2 { margin: 0; font-size: 1.125rem; }
+.records-folder-head h2 { margin: 0; font-size: var(--text-lg); }

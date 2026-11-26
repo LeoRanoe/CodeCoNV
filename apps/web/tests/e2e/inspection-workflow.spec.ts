@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { finishSigning } from "./sign-popup";
 
 /**
  * An inspection from start to signed completion, the way a supervisor really works it:
@@ -31,19 +32,6 @@ async function signIn(page: Page) {
   await form.locator("button[type='submit']").click();
   await page.getByRole("button", { name: new RegExp(projectName) }).first().click();
   await expect(page.getByRole("region", { name: "Project command center" })).toBeVisible();
-}
-
-async function drawSignature(page: Page) {
-  const canvas = page.locator(".signature-canvas");
-  const box = (await canvas.boundingBox())!;
-  await page.mouse.move(box.x + 30, box.y + box.height * 0.7);
-  await page.mouse.down();
-  for (let step = 1; step <= 12; step += 1) {
-    await page.mouse.move(box.x + 30 + step * 22, box.y + box.height * (0.7 - Math.sin(step / 2) * 0.3));
-  }
-  await page.mouse.up();
-  await page.getByRole("button", { name: "Sign the document" }).click();
-  await expect(page.locator(".signature-modal")).toHaveCount(0);
 }
 
 async function openInspections(page: Page) {
@@ -97,10 +85,7 @@ test("inspection: failed point, approve section, NCR detour, resume, sign and co
     if (await approve.count()) await approve.click();
   }
   await expect(page.locator(".checklist-progress")).toContainText(`${total} / ${total}`);
-  await expect(complete).toBeDisabled(); // still unsigned
-  await page.getByRole("button", { name: "Sign now" }).click();
-  await expect(page.locator(".signature-modal input").first()).toHaveAttribute("readonly", "");
-  await drawSignature(page);
+  // v5: nothing is signed in the form; completing opens the signing popup and the signature cannot be skipped.
   await expect(complete).toBeEnabled();
   // QA L25: completing sends the answers in one request, not one per checklist point.
   const answerRequests: string[] = [];
@@ -109,6 +94,10 @@ test("inspection: failed point, approve section, NCR detour, resume, sign and co
     if (match) answerRequests.push(match[1]);
   });
   await complete.click();
+  await expect(page.locator(".signature-modal")).toBeVisible();
+  await expect(page.locator(".signature-modal").getByRole("button", { name: "Submit without signature" })).toHaveCount(0);
+  await expect(page.locator(".signature-modal input").first()).toHaveAttribute("readonly", "");
+  await finishSigning(page, { skip: false });
   await expect(page.getByText("Inspection completed and signed.")).toBeVisible({ timeout: 30_000 });
   expect(answerRequests).toEqual(["save_inspection_responses"]);
 

@@ -99,6 +99,7 @@ export function PortalApp({
   focusShareId = "",
   preview = false,
   clearFocus,
+  viewAs,
 }: {
   client: SupabaseClient;
   mode: PortalAudience;
@@ -113,9 +114,15 @@ export function PortalApp({
   /** The existing controlled-submission form (RFI, RFA, WCR, inspection request), when the role may originate one. */
   submissionWorkspace?: ReactNode;
   focusShareId?: string;
-  /** Supervision's read-only view of this portal: no replies, no read receipts, no notifications, no top bar. */
-  preview?: boolean;
   clearFocus: () => void;
+  /**
+   * Supervision's "View as" (Word v2.0, section 3): the portal of one contractor or client as that
+   * organisation sees it. Read-only: no answer, evidence or sign-off is possible, nothing is logged as the
+   * organisation, and Supervision's own notifications are not shown.
+   */
+  viewAs?: { parties: Array<{ id: string; name: string }>; partyId: string; onChange: (partyId: string) => void; onClose: () => void };
+  /** Supervision's read-only view inside the workspace: no top bar, no replies, no read receipts. */
+  preview?: boolean;
 }) {
   const { language, locale, text } = useLanguage();
   const queryClient = useQueryClient();
@@ -123,10 +130,14 @@ export function PortalApp({
   const [openShareId, setOpenShareId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  /** Supervision looking at a portal is read-only and is not the organisation viewing it. */
+  const readOnly = preview || Boolean(viewAs);
+
   const contextQuery = useQuery({
     queryKey: ["portal-context", projectId],
     queryFn: () => loadPortalContext(client, projectId),
     staleTime: 5 * 60_000,
+    enabled: !viewAs,
   });
   const snapshotQuery = useQuery({
     queryKey: ["portal-snapshot", projectId],
@@ -135,7 +146,7 @@ export function PortalApp({
   });
   const notificationsQuery = useQuery({
     queryKey: ["portal-notifications", projectId],
-    enabled: !preview,
+    enabled: !readOnly,
     queryFn: async () => {
       const result = await client.from("notifications").select("id,title,body,source_id,created_at,read_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(30);
       if (result.error) throw result.error;
@@ -145,9 +156,12 @@ export function PortalApp({
   });
 
   const snapshot = snapshotQuery.data;
-  const shares = useMemo(() => snapshot?.shares ?? [], [snapshot]);
-  const context = contextQuery.data;
-  const rights = preview ? { respond: false, review: false, approve: false } : { respond: Boolean(context?.can_respond), review: Boolean(context?.can_review), approve: Boolean(context?.can_approve) };
+  const viewAsPartyId = viewAs?.partyId ?? "";
+  // The same rows the organisation's own account is allowed to read: its own shares (a contractor) or the
+  // shares published to the client side. Without a chosen organisation every share of the audience shows.
+  const shares = useMemo(() => (snapshot?.shares ?? []).filter((share) => !viewAsPartyId || (share.audience === mode && (mode === "client" || share.party_id === viewAsPartyId))), [snapshot, viewAsPartyId, mode]);
+  const context = viewAs ? undefined : contextQuery.data;
+  const rights = readOnly ? { respond: false, review: false, approve: false } : { respond: Boolean(context?.can_respond), review: Boolean(context?.can_review), approve: Boolean(context?.can_approve) };
   const buildingName = (id: string | null) => buildings.find((building) => building.id === id)?.name ?? "";
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["portal-snapshot", projectId] });
@@ -157,7 +171,7 @@ export function PortalApp({
   const contractor = useMemo(() => contractorSections(shares) as Record<"assigned" | "pendingActions" | "sharedDocuments" | "history" | "awaiting" | "overdue" | "returned" | "upcoming", PortalShare[]>, [shares]);
   const clientView = useMemo(() => clientSections(shares) as Record<"publications" | "currentPublications" | "progress" | "photos" | "documents" | "review" | "openReview" | "overdueReview" | "issues" | "correspondence", PortalShare[]>, [shares]);
   const openShare = shares.find((share) => share.id === (openShareId ?? focusShareId)) ?? null;
-  const unread = (notificationsQuery.data ?? []).filter((item) => !item.read_at).length;
+  const unread = readOnly ? 0 : (notificationsQuery.data ?? []).filter((item) => !item.read_at).length;
   /** Inside the supervisor workspace the page already has its own main landmark. */
   const Main = (preview ? "div" : "main") as "main";
 
@@ -281,7 +295,7 @@ export function PortalApp({
         <div className="portal-brand">{brand}</div>
         <div className="portal-identity">
           <strong>{mode === "contractor" ? text("Contractor portal", "Aannemersportaal") : text("Client portal", "Opdrachtgeversportaal")}</strong>
-          <small>{context?.party_name ?? text("Organisation not linked", "Organisatie niet gekoppeld")} · {userName}</small>
+          <small>{viewAs ? viewAs.parties.find((party) => party.id === viewAs.partyId)?.name ?? "" : context?.party_name ?? text("Organisation not linked", "Organisatie niet gekoppeld")} · {userName}</small>
         </div>
         <div className="portal-top-actions">
           {projects.length > 1 ? (
@@ -292,15 +306,27 @@ export function PortalApp({
               </select>
             </label>
           ) : <span className="portal-project-name">{projectName}</span>}
-          <button className="icon-button" type="button" aria-label={`${text("Notifications", "Meldingen")}${unread ? `, ${unread} ${text("unread", "ongelezen")}` : ""}`} onClick={() => setSection("history")}>
+          {viewAs ? null : <button className="icon-button" type="button" aria-label={`${text("Notifications", "Meldingen")}${unread ? `, ${unread} ${text("unread", "ongelezen")}` : ""}`} onClick={() => setSection("history")}>
             <Bell size={17} />{unread ? <span className="notification-dot" /> : null}
-          </button>
+          </button>}
           <PortalGuide audience={mode === "contractor" ? "contractor" : "client"} onNavigate={(target) => setSection(target.area)} />
           <LanguageSwitcher compact />
-          <button className="ui-button ui-button--quiet ui-button--sm" type="button" onClick={onSignOut}><LogOut size={15} /> {text("Sign out", "Afmelden")}</button>
+          {viewAs
+            ? <button className="ui-button ui-button--secondary ui-button--sm" type="button" onClick={viewAs.onClose}><X size={15} /> {text("Close preview", "Voorbeeld sluiten")}</button>
+            : <button className="ui-button ui-button--quiet ui-button--sm" type="button" onClick={onSignOut}><LogOut size={15} /> {text("Sign out", "Afmelden")}</button>}
         </div>
       </header>}
       <Main id={preview ? undefined : "main-content"} tabIndex={preview ? undefined : -1} className="portal-main">
+        {viewAs ? (
+          <div className="portal-view-as" role="status">
+            <label className="form-field"><span>{text("View as", "Bekijk als")}</span>
+              <select value={viewAs.partyId} onChange={(event) => viewAs.onChange(event.target.value)}>
+                {viewAs.parties.map((party) => <option key={party.id} value={party.id}>{party.name}</option>)}
+              </select>
+            </label>
+            <p>{text("Read-only. This is what this organisation sees. Actions are taken from the Workspace and are logged as Supervision.", "Alleen lezen. Dit ziet deze organisatie. Acties doe je vanuit de Werkruimte en worden vastgelegd als Supervisie.")}</p>
+          </div>
+        ) : null}
         {preview ? (
           <p className="portal-note portal-preview-note" role="note">
             {mode === "contractor"
@@ -308,7 +334,7 @@ export function PortalApp({
               : text("Preview of the Client Portal: every item shared with the client on this project. Read-only: nothing here is sent, answered or counted as viewed.", "Voorbeeld van het Opdrachtgeversportaal: alles wat met de opdrachtgever in dit project is gedeeld. Alleen lezen: er wordt niets verstuurd, beantwoord of als gezien geteld.")}
           </p>
         ) : null}
-        {!preview && !contextQuery.isLoading && !context ? (
+        {!viewAs && !preview && !contextQuery.isLoading && !context ? (
           <p className="field-warning" role="alert">{text("Your account is not linked to a contractor or client organisation on this project yet. Ask CODECO to link it.", "Je account is in dit project nog niet aan een aannemer of opdrachtgever gekoppeld. Vraag CODECO dit te doen.")}</p>
         ) : null}
         <SectionNav
@@ -323,11 +349,11 @@ export function PortalApp({
           share={openShare}
           snapshot={snapshot}
           rights={rights}
-          preview={preview}
           buildingName={buildingName(openShare.building_id)}
           defaultBuildingId={openShare.building_id ?? buildings[0]?.id ?? ""}
           close={() => { setOpenShareId(null); clearFocus(); }}
           changed={refresh}
+          readOnly={readOnly}
         />
       ) : null}
     </div>
@@ -645,9 +671,10 @@ function responseFields(share: PortalShare, text: (en: string, nl: string) => st
   return [];
 }
 
-function ShareDetail({ client, share, snapshot, rights, preview = false, buildingName, defaultBuildingId, close, changed }: {
+function ShareDetail({ client, share, snapshot, rights, buildingName, defaultBuildingId, close, changed, readOnly = false }: {
+  readOnly?: boolean;
   client: SupabaseClient; share: PortalShare; snapshot: PortalSnapshot; rights: { respond: boolean; review: boolean; approve: boolean };
-  preview?: boolean; buildingName: string; defaultBuildingId: string; close: () => void; changed: () => void;
+  buildingName: string; defaultBuildingId: string; close: () => void; changed: () => void;
 }) {
   const { language, locale, text } = useLanguage();
   useBackToClose(true, close);
@@ -660,8 +687,7 @@ function ShareDetail({ client, share, snapshot, rights, preview = false, buildin
   const [error, setError] = useState("");
   const fileInput = useRef<HTMLInputElement | null>(null);
 
-  // Supervision looking at a portal is not the contractor or client viewing it.
-  useEffect(() => { if (!preview) void recordPortalAccess(client, share.id, "view"); }, [client, preview, share.id]);
+  useEffect(() => { if (!readOnly) void recordPortalAccess(client, share.id, "view"); }, [client, share.id, readOnly]);
 
   const steps = portalStepsFor(share, rights) as string[];
   const files = snapshot.shareFiles.filter((item) => item.share_id === share.id);
@@ -679,7 +705,7 @@ function ShareDetail({ client, share, snapshot, rights, preview = false, buildin
     const file = snapshot.files.get(fileId);
     try {
       await downloadProjectFile(client, fileId, file?.original_name ?? "file");
-      if (!preview) void recordPortalAccess(client, share.id, "download", fileId);
+      if (!readOnly) void recordPortalAccess(client, share.id, "download", fileId);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : text("The file could not be downloaded.", "Het bestand kon niet worden gedownload."));
     }

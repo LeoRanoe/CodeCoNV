@@ -90,7 +90,7 @@ select lives_ok(
   'published checklist starts a central inspection'
 );
 
-select matches((select inspection_number from public.inspections), '^INS-[0-9]{4}-[0-9]{4}$', 'inspection receives a traceable number');
+select matches((select inspection_number from public.inspections), '^OPS-001-INS-[0-9]{4}-[0-9]{4}$', 'inspection receives a traceable number');
 select is((select status::text from public.inspections), 'in_progress', 'inspection starts in progress');
 
 select lives_ok(
@@ -120,7 +120,7 @@ select lives_ok(
 );
 select is((select status::text from public.inspections), 'failed', 'inspection fails when one answer is nonconforming');
 select is((select count(*) from public.findings), 1::bigint, 'failed answer creates exactly one finding');
-select matches((select finding_number from public.findings), '^Q-[0-9]{4}-[0-9]{4}$', 'automatic finding receives a traceable number');
+select matches((select finding_number from public.findings), '^OPS-001-ISS-[0-9]{4}-[0-9]{4}$', 'automatic finding receives a traceable number');
 select ok((select due_at > now() from public.findings), 'severity rule assigns a future deadline');
 select is((select count(*) from public.finding_updates where update_type = 'created'), 1::bigint, 'finding creation is retained in immutable history');
 
@@ -148,7 +148,7 @@ select lives_ok(
   ),
   'critical HSE event is centrally registered'
 );
-select matches((select event_number from public.hse_events), '^HSE-[0-9]{4}-[0-9]{4}$', 'HSE event receives a traceable number');
+select matches((select event_number from public.hse_events), '^OPS-001-HSE-[0-9]{4}-[0-9]{4}$', 'HSE event receives a traceable number');
 select is((select status::text from public.hse_events), 'action_required', 'critical HSE event requires action');
 select is((select count(*) from public.notifications where notification_type = 'hse_critical'), 1::bigint, 'urgent HSE notification is deduplicated per recipient');
 

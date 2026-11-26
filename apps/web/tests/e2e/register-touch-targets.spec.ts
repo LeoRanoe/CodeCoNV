@@ -42,7 +42,7 @@ async function sizes(page: Page, selector: string) {
   }));
 }
 
-test("a Workforce draft restores attendance and counts only the crew on site", async ({ page }) => {
+test("a Workforce draft restores its lines and counts every line on site", async ({ page }) => {
   await signIn(page);
   await page.locator(".sidebar:visible, .mobile-bottom-nav:visible").getByRole("button", { name: "Workspace", exact: true }).click();
   await page.locator('[data-workspace-destination="workforce"]').click();
@@ -51,16 +51,9 @@ test("a Workforce draft restores attendance and counts only the crew on site", a
   const crew = `Attendance check ${Date.now()}`;
   await page.getByLabel("Crew · optional").fill(crew);
   await page.getByRole("button", { name: "Add person", exact: true }).click();
-  const status = page.locator(".workforce-row", { hasText: crew }).getByLabel(/^Attendance status of/);
+  // v5.0 removed attendance, competency and shift per line: a line is contractor, discipline and number.
+  await expect(page.locator(".workforce-row", { hasText: crew }).getByLabel(/^Attendance status of/)).toHaveCount(0);
   await expect(total).toHaveText(String(baseline + 1));
-  for (const offSite of ["Absent", "On Leave", "Off Shift", "Demobilized"]) {
-    await status.selectOption(offSite);
-    await expect(total).toHaveText(String(baseline));
-  }
-  await status.selectOption("Late");
-  await expect(total).toHaveText(String(baseline + 1));
-  await status.selectOption("Absent");
-  await expect(total).toHaveText(String(baseline));
   await expect.poll(() => page.evaluate((value) => new Promise<boolean>((resolve) => {
     const request = indexedDB.open("codeco-field-v1");
     request.onerror = () => resolve(false);
@@ -76,8 +69,8 @@ test("a Workforce draft restores attendance and counts only the crew on site", a
     };
   }), crew)).toBe(true);
   await page.reload();
-  await expect(status).toHaveValue("Absent");
-  await expect(total).toHaveText(String(baseline));
+  await expect(page.locator(".workforce-row", { hasText: crew })).toHaveCount(1);
+  await expect(total).toHaveText(String(baseline + 1));
 });
 
 test("the register steppers, remove buttons and sync chip are 44 px on a phone and a tablet", async ({ page }, testInfo) => {
@@ -88,7 +81,7 @@ test("the register steppers, remove buttons and sync chip are 44 px on a phone a
   await openDestination(page, "workforce");
   await page.getByRole("button", { name: "Add person" }).first().click();
   await expect(page.locator(".workforce-row").first()).toBeVisible();
-  for (const selector of [".workforce-row .counter-control button", ".workforce-row-remove", ".workforce-shift select"]) {
+  for (const selector of [".workforce-row .counter-control button", ".workforce-row-remove"]) {
     const found = await sizes(page, selector);
     expect(found.length, `${selector} exists`).toBeGreaterThan(0);
     for (const size of found) {

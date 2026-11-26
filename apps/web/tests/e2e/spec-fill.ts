@@ -7,6 +7,18 @@ import type { Locator } from "@playwright/test";
  * category list and "Other" reveals an explanation box.
  */
 export async function fillSpecFields(scope: Locator) {
+  await fillVisibleSpecFields(scope);
+  // Developer package v5, Materials Delivery: traceable material (cement, steel, precast, piles) needs its
+  // certificate. The upload sits beside the form fields, so it is attached here when the form shows it.
+  const certificate = scope.locator("[data-sheet-slot='certificate'] input[type='file']");
+  // The upload needs the private Blob store, which only the fake Blob stack provides (the CI job has none).
+  if (process.env.CODECO_E2E_FAKE_BLOB && (await certificate.count())) {
+    const attached = await scope.locator("[data-sheet-slot='certificate'] .boq-preview").count();
+    if (!attached) await certificate.first().setInputFiles({ name: "certificate.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 certificate") });
+  }
+}
+
+async function fillVisibleSpecFields(scope: Locator) {
   for (let pass = 0; pass < 8; pass += 1) {
     let changed = false;
     const fields = scope.locator("[data-spec-form] [data-spec-field]");
@@ -78,7 +90,7 @@ export async function fillSpecFields(scope: Locator) {
           const input = field.locator("input, textarea").first();
           if (await input.count() && !(await input.inputValue())) {
             const type = await input.getAttribute("type");
-            const value = type === "number" ? "1" : type === "date" ? "2026-12-01" : type === "datetime-local" ? "2026-12-01T09:00" : type === "time" ? "08:00" : "E2E";
+            const value = type === "number" ? "1" : type === "date" ? "2026-11-20" : type === "datetime-local" ? "2026-11-20T09:00" : type === "time" ? "08:00" : "E2E";
             await input.fill(value);
             changed = true;
           }

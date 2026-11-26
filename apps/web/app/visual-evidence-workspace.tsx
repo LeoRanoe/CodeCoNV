@@ -2,6 +2,7 @@
 
 import { photoSpecFromDetails } from "@/app/photo-evidence";
 import { photoPurposes, workDisciplines } from "@/lib/forms/spec-catalogue";
+import { photoPurposeCategories as purposeCategories } from "@/lib/forms/spec-forms";
 import { specLabel } from "@/lib/forms/spec-labels-nl";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
@@ -184,6 +185,8 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     /** Workbook Photos sheet: purpose and, for work photos, the discipline — asked at upload. */
     purpose: "",
     purposeOther: "",
+    /** Workbook v5.0 Photos row 4: the category of the purpose. */
+    photoCategory: "",
     discipline: "",
   });
   const [drawingLocation, setDrawingLocation] = useState<DrawingLocation | null>(null);
@@ -304,7 +307,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
     };
   }, [filePreviewUrl]);
 
-  const emptyCaptureForm = { type: "photo" as VisualCapture["capture_type"], description: "", locationNodeId: "", direction: "", directionAutomatic: true, tourName: "", tourOrder: "", purpose: "", purposeOther: "", discipline: "" };
+  const emptyCaptureForm = { type: "photo" as VisualCapture["capture_type"], description: "", locationNodeId: "", direction: "", directionAutomatic: true, tourName: "", tourOrder: "", purpose: "", purposeOther: "", photoCategory: "", discipline: "" };
 
   const discardCapture = () => {
     // Thrown away on purpose, so the camera photo's safety copy goes with it.
@@ -477,7 +480,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           } : null,
           tourName: captureForm.tourName || null,
           tourOrder: captureForm.tourName ? Number(captureForm.tourOrder) : null,
-          spec: photoSpecFromDetails({ title: "", description: "", category: "", buildingId: "", locationNodeId: "", direction: "", purpose: captureForm.purpose, purposeOther: captureForm.purposeOther, discipline: captureForm.discipline }),
+          spec: photoSpecFromDetails({ title: "", description: "", category: "", buildingId: "", locationNodeId: "", direction: "", purpose: captureForm.purpose, purposeOther: captureForm.purposeOther, photoCategory: captureForm.photoCategory, discipline: captureForm.discipline }),
           capturedAt: new Date(file.lastModified || Date.now()).toISOString(),
           originalSize: originalFile?.size ?? file.size,
           original,
@@ -686,14 +689,23 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           <div className="form-grid-2">
             <label className="form-field">
               <span>{text("Photo purpose", "Doel van de foto")}</span>
-              <select value={captureForm.purpose} onChange={(event) => setCaptureForm({ ...captureForm, purpose: event.target.value })}>
+              <select value={captureForm.purpose} onChange={(event) => setCaptureForm({ ...captureForm, purpose: event.target.value, photoCategory: "" })}>
                 <option value="">{text("Choose…", "Kies…")}</option>
                 {photoPurposes.map((purpose) => <option key={purpose} value={purpose}>{specLabel(purpose, language)}</option>)}
               </select>
             </label>
             {captureForm.purpose ? (
               <label className="form-field">
-                <span>{text("Photo category / work discipline", "Fotocategorie / werkdiscipline")}</span>
+                <span>{text("Photo category", "Fotocategorie")}</span>
+                <select value={captureForm.photoCategory} onChange={(event) => setCaptureForm({ ...captureForm, photoCategory: event.target.value })}>
+                  <option value="">{text("Choose…", "Kies…")}</option>
+                  {(purposeCategories[captureForm.purpose] ?? []).map((option) => <option key={option.value} value={option.value}>{specLabel(option.value, language)}</option>)}
+                </select>
+              </label>
+            ) : null}
+            {captureForm.purpose ? (
+              <label className="form-field">
+                <span>{text("Work discipline · when the photo shows construction work", "Werkdiscipline · als de foto bouwwerk toont")}</span>
                 <select value={captureForm.discipline} onChange={(event) => setCaptureForm({ ...captureForm, discipline: event.target.value })}>
                   <option value="">{text("Choose…", "Kies…")}</option>
                   {workDisciplines.map((discipline) => <option key={discipline} value={discipline}>{specLabel(discipline, language)}</option>)}
@@ -769,7 +781,7 @@ export function VisualEvidenceWorkspace({ data, projectId, buildingId, buildingN
           <section className="visual-capture-list" aria-label={text("Visual evidence list", "Lijst visueel bewijs")}>
             {captures.map((capture) => {
               const count = data.visualAnnotations.filter((annotation) => annotation.capture_id === capture.id && annotation.status === "active").length;
-              return <button type="button" className={activeCapture?.id === capture.id ? "active" : ""} onClick={() => { setPendingSelectionFileId(""); setActiveCaptureId(capture.id); setPoint(null); setSelectedAnnotationId(null); }} key={capture.id}><span className="visual-list-icon">{capture.capture_type === "panorama" ? <ScanLine size={17} /> : <ImageIcon size={17} />}</span><span><strong>{capture.title}</strong><small>{capture.location_label} · {count} {text(count === 1 ? "issue" : "issues", count === 1 ? "probleem" : "problemen")}</small></span>{capture.capture_type === "panorama" ? <em>360°</em> : null}</button>;
+              return <button type="button" className={activeCapture?.id === capture.id ? "active" : ""} onClick={() => { setPendingSelectionFileId(""); setActiveCaptureId(capture.id); setPoint(null); setSelectedAnnotationId(null); }} key={capture.id}><span className="visual-list-icon">{capture.capture_type === "panorama" ? <ScanLine size={17} /> : <ImageIcon size={17} />}</span><span><strong>{capture.title}</strong><small>{capture.capture_number ? `${capture.capture_number} · ` : ""}{capture.location_label} · {count} {text(count === 1 ? "issue" : "issues", count === 1 ? "probleem" : "problemen")}</small></span>{capture.capture_type === "panorama" ? <em>360°</em> : null}</button>;
             })}
           </section>
           <div className="visual-stage-column">

@@ -1,7 +1,9 @@
 // Dutch labels for the workbook's dropdown values (client decision of 20-11-2026: store the
 // English value, show the Dutch label). Written by hand; review with the client's terms.
 
-export const specValueNl: Record<string, string> = {
+import { specValueNlV5 } from "./spec-catalogue-nl-v5.ts";
+
+const specValueNlBase: Record<string, string> = {
   // Change Order row 8, Reason for change.
   "Client Request": "Verzoek opdrachtgever",
   "Consultant Instruction": "Instructie adviseur",
@@ -1098,3 +1100,5 @@ export const specValueNl: Record<string, string> = {
   "Estimated": "Geschat",
   "Footing": "Poer"
 };
+
+export const specValueNl: Record<string, string> = { ...specValueNlBase, ...specValueNlV5 };

@@ -1,6 +1,7 @@
 import { openSavedRecords } from "./section-nav";
 import { expect, type Page, test } from "@playwright/test";
 import { fillSpecFields } from "./spec-fill";
+import { finishSigning } from "./sign-popup";
 
 /**
  * A controlled document from request to formal response, through the screens a project
@@ -71,6 +72,7 @@ test("an RFI is recorded, answered by a named respondent and keeps its response"
   await addressee.selectOption({ label: "Hoofdaannemer E2E · Contractor" });
   await fillSpecFields(page.locator(".record-form-shell").first());
   await page.getByRole("button", { name: "Create controlled document" }).click();
+  await finishSigning(page);
 
   // It is in the register with a number and a status in words.
   const card = page.locator(".controlled-document-card").filter({ hasText: title }).first();

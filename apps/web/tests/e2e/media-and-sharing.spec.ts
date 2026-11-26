@@ -1,7 +1,9 @@
+import { choosePhotoPurpose } from "./photo-purpose";
 import { openSavedRecords } from "./section-nav";
 import { expect, type Browser, type Page, test } from "@playwright/test";
 import { basename, extname } from "node:path";
 import { fillSpecFields } from "./spec-fill";
+import { finishSigning } from "./sign-popup";
 
 const email = process.env.CODECO_E2E_EMAIL;
 const password = process.env.CODECO_E2E_PASSWORD;
@@ -69,7 +71,7 @@ async function createStackedFinding(page: Page, title: string) {
   // Required on the Issue sheet since PR #22.
   await page.getByRole("combobox", { name: /^Responsible party/ }).selectOption({ index: 1 });
   await page.getByRole("textbox", { name: /^Corrective action required/ }).fill("Remove and replace the affected section.");
-  const photoInput = page.getByLabel("Add photo").first();
+  const photoInput = page.getByLabel("Take a picture").first();
   await photoInput.setInputFiles(photoOne!);
   await photoInput.setInputFiles(photoTwo!);
   await photoInput.setInputFiles(photoThree!);
@@ -77,6 +79,7 @@ async function createStackedFinding(page: Page, title: string) {
   await page.getByPlaceholder("First and last name").fill("Demo Hoofdaannemer");
   await fillSpecFields(page.locator(".record-form-shell").first());
   await page.getByRole("button", { name: "Submit issue" }).click();
+  await finishSigning(page);
   await expect(page.locator(".operation-alert.success")).toContainText(/Issue|saved|secured/i, { timeout: 90_000 });
   await openWorkspaceHome(page);
   await page.locator('[data-workspace-destination="issues"]').click();
@@ -105,7 +108,7 @@ async function testDirectPointAndShoot(page: Page) {
   await chooser.setFiles(photoOne!);
   await expect(page.getByRole("heading", { name: "Project photos" })).toBeVisible();
   // A photo taken or chosen waits on the form until it is saved with its date.
-  await page.locator(".media-capture-review").getByLabel(/Photo purpose/).selectOption("Progress Documentation");
+  await choosePhotoPurpose(page.locator(".media-capture-review"), "Progress Documentation");
   await page.getByRole("button", { name: "Save with date" }).click();
   await expect(page.locator(".media-capture-review")).toHaveCount(0, { timeout: 60_000 });
   await expect(page.locator(".offline-queue")).toHaveCount(0);
@@ -309,7 +312,7 @@ async function testExternalShareAndRevocation(page: Page, browser: Browser, find
   await outside.getByRole("button", { name: "Markeer gereed voor controle" }).click();
   await expect(outside.getByRole("heading", { name: "Bedankt" })).toBeVisible({ timeout: 60_000 });
   // LQA-013: the status badge above the reply follows the new state without a reload.
-  await expect(outside.locator(".external-share-status")).toHaveText("Gereed voor verificatie", { timeout: 15_000 });
+  await expect(outside.locator(".external-share-status")).toHaveText("Wacht op verificatie", { timeout: 15_000 });
 
   const activeLinks = finding.locator(".active-external-shares");
   await expect(activeLinks).toBeVisible({ timeout: 30_000 });
@@ -407,7 +410,7 @@ test("saving photos twice in one day files them in one folder", async ({ page, r
     await page.locator(".quick-add-side").click();
     (await chooserPromise).setFiles(file);
     await expect(page.getByRole("heading", { name: "Project photos" })).toBeVisible();
-    await page.locator(".media-capture-review").getByLabel(/Photo purpose/).selectOption("Progress Documentation");
+    await choosePhotoPurpose(page.locator(".media-capture-review"), "Progress Documentation");
     await page.getByRole("button", { name: "Save with date" }).click();
     await expect(page.locator(".media-capture-review")).toHaveCount(0, { timeout: 60_000 });
   };

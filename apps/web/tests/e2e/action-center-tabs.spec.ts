@@ -1,3 +1,4 @@
+import { createClient } from "@supabase/supabase-js";
 import { expect, type Page, test } from "@playwright/test";
 
 /**
@@ -39,32 +40,39 @@ async function openActions(page: Page) {
 
 const widths = [320, 360, 375, 390, 414, 600, 768, 1024];
 
-test("the Action center tabs are three equal, tall, horizontal tabs on every width", async ({ page }, testInfo) => {
+test("the Action center views are tall, horizontal and inside the window on every width", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-office", "The widths are set by the test itself.");
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1280, height: 800 });
   await signIn(page);
   await openActions(page);
-  const tabs = page.locator(".action-center-views [role='tab']");
-  await expect(tabs).toHaveCount(3);
+  // v5: four views (my work, all work, deadlines and the automatic follow-up list per form). With more
+  // than three, the navigation is a bar on a wide window and one menu button on a narrow one.
+  await expect(page.locator(".action-center-views [role='tab']")).toHaveCount(4);
 
   for (const width of widths) {
     await page.setViewportSize({ width, height: 900 });
     await page.waitForTimeout(150);
-    const boxes = await tabs.evaluateAll((elements) => elements.map((element) => {
-      const box = element.getBoundingClientRect();
-      const label = element.querySelector(".section-nav__label")!.getBoundingClientRect();
-      return { width: box.width, height: box.height, labelWidth: label.width, labelHeight: label.height };
-    }));
-    const where = `at ${width} px: ${JSON.stringify(boxes)}`;
-    for (const box of boxes) {
-      expect(box.height, `tab height ${where}`).toBeGreaterThanOrEqual(44);
-      // A word written downwards is taller than it is wide.
-      expect(box.labelWidth, `label is a horizontal word ${where}`).toBeGreaterThan(box.labelHeight);
-      expect(Math.abs(box.width - boxes[0].width), `equal tabs ${where}`).toBeLessThanOrEqual(2);
+    const trigger = page.locator(".action-center-views .section-nav__trigger");
+    if (await trigger.isVisible()) {
+      const box = (await trigger.boundingBox())!;
+      expect(box.height, `menu button height at ${width} px`).toBeGreaterThanOrEqual(44);
+      expect(box.x + box.width, `menu button inside the window at ${width} px`).toBeLessThanOrEqual(width);
+    } else {
+      const boxes = await page.locator(".action-center-views [role='tab']").evaluateAll((elements) => elements.map((element) => {
+        const box = element.getBoundingClientRect();
+        const label = element.querySelector(".section-nav__label")!.getBoundingClientRect();
+        return { width: box.width, height: box.height, labelWidth: label.width, labelHeight: label.height };
+      }));
+      const where = `at ${width} px: ${JSON.stringify(boxes)}`;
+      expect(boxes.length, `all four views are shown ${where}`).toBe(4);
+      for (const box of boxes) {
+        expect(box.height, `tab height ${where}`).toBeGreaterThanOrEqual(44);
+        // A word written downwards is taller than it is wide.
+        expect(box.labelWidth, `label is a horizontal word ${where}`).toBeGreaterThan(box.labelHeight);
+      }
     }
-    expect(boxes.reduce((total, box) => total + box.width, 0), `the three tabs share one row ${where}`).toBeLessThanOrEqual(width);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `no sideways scroll ${where}`).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `no sideways scroll at ${width} px`).toBe(true);
   }
 });
 
@@ -108,7 +116,7 @@ test("the Action center tabs are not coloured like a late record and show no 'n/
   await signIn(page);
   await openActions(page);
   const labels = page.locator(".action-center-views .section-nav__label");
-  await expect(labels).toHaveCount(3);
+  await expect(labels).toHaveCount(4);
   const colours = await labels.evaluateAll((elements) => elements.map((element) => {
     const style = getComputedStyle(element);
     return { colour: style.color, background: style.backgroundColor };
@@ -119,4 +127,73 @@ test("the Action center tabs are not coloured like a late record and show no 'n/
     expect(background, "the label has no pill of its own").toBe("rgba(0, 0, 0, 0)");
   }
   await expect(page.locator(".section-nav__position")).toHaveCount(0);
+});
+
+/**
+ * Developer package v5, Word 4: Actions can be narrowed to one contractor. The list, the tiles and the tabs follow the
+ * chosen contractor; the option counts are the rows it leaves in the state "All records"; the filter resets.
+ */
+test("the Action center can be filtered to one contractor and reset", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-office", "Layout is not under test.");
+  const supabaseUrl = process.env.CODECO_E2E_SUPABASE_URL;
+  const publishableKey = process.env.CODECO_E2E_PUBLISHABLE_KEY;
+  test.skip(!supabaseUrl || !publishableKey, "The local Supabase keys are required to seed the contractor's issues.");
+  // The follow-up of a contractor is seeded here: a freshly reset project has none until other specs have run.
+  const api = createClient(supabaseUrl!, publishableKey!, { auth: { persistSession: false } });
+  expect((await api.auth.signInWithPassword({ email: email!, password: password! })).error).toBeNull();
+  const project = (await api.from("projects").select("id").eq("name", projectName).single()).data!;
+  const building = (await api.from("buildings").select("id").eq("project_id", project.id).limit(1).single()).data!;
+  const contractor = (await api.from("parties").select("id").eq("project_id", project.id).eq("party_type", "contractor").limit(1).single()).data!;
+  const today = new Date().toISOString().slice(0, 10);
+  const report = await api.rpc("create_day_report", { p_project_id: project.id, p_report_date: today, p_idempotency_key: `report:${project.id}:${today}` });
+  expect(report.error).toBeNull();
+  const stamp = Date.now();
+  for (const index of [1, 2]) {
+    const created = await api.rpc("create_project_finding", {
+      p_project_id: project.id, p_building_id: building.id, p_day_report_id: report.data?.id ?? report.data, p_inspection_id: null,
+      p_inspection_response_id: null, p_finding_type: "deficiency", p_title: `Contractor filter ${stamp} ${index}`, p_description: "Contractor filter fixture.",
+      p_severity: "medium", p_responsible_party_id: contractor.id, p_assigned_user_id: null,
+      p_idempotency_key: `finding:contractor-filter:${stamp}:${index}`, p_issue_management: { issue_type: "quality", disposition: "to_be_corrected" },
+    });
+    expect(created.error).toBeNull();
+  }
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await signIn(page);
+  await openActions(page);
+  await page.getByRole("tab", { name: /All project work/ }).click();
+  await page.locator(".action-center-summary button", { hasText: "All records" }).click();
+  const rows = page.locator(".unified-action-list > button");
+  const select = page.locator("[data-action-contractor]");
+  await expect(select, "a project with contractor follow-up offers the filter").toBeVisible();
+  const everything = await rows.count();
+
+  const options = await select.locator("option").evaluateAll((items) => items.map((item) => ({ value: (item as HTMLOptionElement).value, label: item.textContent ?? "" })));
+  expect(options[0].value).toBe("");
+  const contractors = options.filter((option) => option.value);
+  expect(contractors.length).toBeGreaterThan(0);
+  let counted = 0;
+  for (const option of contractors) {
+    await select.selectOption(option.value);
+    const expected = Number(option.label.match(/\((\d+)\)\s*$/)?.[1] ?? "NaN");
+    await expect(rows, `${option.label} leaves exactly its own items`).toHaveCount(expected);
+    await expect(page.locator(".action-center-summary button", { hasText: "All records" }).locator("strong")).toHaveText(String(expected));
+    counted += expected;
+  }
+  expect(counted, "no item belongs to two contractors").toBeLessThanOrEqual(everything);
+
+  // Combined with a type: the list is the intersection, and an empty result offers a reset.
+  await select.selectOption(contractors[0].value);
+  const typeTabs = page.locator(".action-type-tabs [role='tab']");
+  for (let index = 1; index < await typeTabs.count(); index += 1) {
+    if (Number((await typeTabs.nth(index).innerText()).match(/(\d+)\s*$/m)?.[1] ?? "0") === 0) {
+      await typeTabs.nth(index).click();
+      await expect(rows).toHaveCount(0);
+      await page.getByRole("button", { name: "Clear filters" }).click();
+      await expect(select).toHaveValue("");
+      await expect(rows).toHaveCount(everything);
+      return;
+    }
+  }
+  await select.selectOption("");
+  await expect(rows).toHaveCount(everything);
 });

@@ -16,6 +16,7 @@
  * records keep reading a plain name.
  */
 import * as catalogue from "./spec-catalogue.ts";
+import { dueDateFromRiskRating, eventDateInFuture, targetDateFromPriority } from "./record-defaults.mjs";
 import type { SpecActivity, SpecOption } from "./spec-catalogue.ts";
 
 export type SpecRow = Record<string, string>;
@@ -176,6 +177,8 @@ export type SpecField = {
   defaultsToCurrentUser?: boolean;
   /** "Date default" / "Date/time default": starts with today or now, the user may correct it. */
   defaultsToNow?: boolean;
+  /** A warning shown under the field while it holds; it never blocks saving ("Supervision decides acceptance"). */
+  warn?: (values: SpecValues) => Words | null;
 };
 
 const w = (en: string, nl: string): Words => ({ en, nl });
@@ -233,6 +236,9 @@ export const specRows = (values: SpecValues, key: string): SpecRow[] => {
   const value = values[key];
   return Array.isArray(value) ? value.filter((item): item is SpecRow => Boolean(item) && typeof item === "object") : [];
 };
+
+/** The photo category lists by photo purpose (workbook Photo Log). */
+export const photoPurposeCategories = catalogue.photoCategories;
 
 export const isOtherOption = (option: string) => /^other\b/i.test(option.trim());
 
@@ -318,7 +324,17 @@ const deliveryException = when({ any: [
   is("inspection_result", "Rejected", "Quarantined"),
   { differ: ["ordered_quantity", "delivered_quantity"] },
 ] });
+/** Inspections 12 to 16 (v5.0): a result other than Accepted (or Cancelled) asks for the findings. */
+const needsFindings = when(is("inspection_result", "Accepted with Comments", "Rejected", "Re-inspection Required", "Not Ready for Inspection"));
 const deliveryAccepted = when(is("inspection_result", "Accepted", "Accepted with Comments"));
+/** Materials Delivery 9.1 / 9.2 (v5.0): cement, reinforcement, structural steel, precast and piles are traced by batch and certificate. */
+export const traceableMaterialGroups = ["Cement & Binders", "Concrete & Precast", "Reinforcement & Structural Steel", "Piles & Foundation Products"];
+export const traceableMaterial = when(is("material_group", ...traceableMaterialGroups));
+/** Materials Delivery 9.3: the ticket of a ready-mix concrete delivery. */
+const readyMixConcrete = when(is("material_category", "Ready-mix concrete"));
+const minutesOf = (value: string) => { const [h, m] = value.split(":").map(Number); return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : NaN; };
+/** The project limit for a truck's time from batching to arrival is typically 90 minutes; concrete above 32 °C is flagged. */
+export const readyMixLimits = { minutes: 90, celsius: 32 };
 
 /** F07: one answer per Activity Detail Guide prompt, stored with the prompt it answers. */
 const activityAnswers: SpecField = {
@@ -331,6 +347,9 @@ const activityAnswers: SpecField = {
 };
 
 const concretePouring = when(is("activity", "Concrete Pouring"));
+
+/** Works Ongoing row 4.1 (v5.0): rain asks for the rainfall and the working time lost. */
+const rainyWeather = when(is("weather", "Light rain", "Heavy rain", "Thunderstorm"));
 
 /** Change Order row 8 "Reason for change", the sheet's own values. */
 const changeReasons = [
@@ -356,7 +375,6 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     { key: "target_date", label: w("Target completion date", "Streefdatum gereed"), kind: "date", required: true },
     relatedRecord(),
     recordStatus,
-    closureNote(),
   ],
   ncr: [
     { key: "raised_at", label: w("Date raised", "Datum gemeld"), kind: "datetime", required: true, defaultsToNow: true },
@@ -389,13 +407,6 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     actionOwner,
     { key: "target_date", label: w("Target completion date", "Streefdatum gereed"), kind: "date", required: true },
     recordStatus,
-    {
-      key: "verification_result", label: w("Verification result", "Resultaat verificatie"), kind: "select", options: catalogue.verificationResults, decision: "any",
-      required: when(is("workflow_status", "Closed")), visible: when({ any: [is("workflow_status", "Pending Verification", "Closed"), filled("verification_result")] }),
-      hint: w("Not Effective or Rework Required reopens the corrective action.", "Niet effectief of Herstel vereist heropent de corrigerende maatregel."),
-    },
-    { key: "verified_by", label: w("Verified by", "Geverifieerd door"), kind: "text", auto: true, visible: when(filled("verified_by")) },
-    { key: "verified_on", label: w("Verified on", "Geverifieerd op"), kind: "date", auto: true, visible: when(filled("verified_on")) },
   ],
   hse: [
     { key: "observed_at", label: w("Date/time observed", "Datum/tijd waargenomen"), kind: "datetime", required: true, defaultsToNow: true },
@@ -465,18 +476,35 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     { key: "delivery_note_number", label: w("Delivery note number", "Pakbonnummer"), kind: "text" },
     { key: "material_group", label: w("Material group", "Materiaalgroep"), kind: "select", options: catalogue.materialGroups, required: true, dropdown: true },
     { key: "material_category", label: w("Material category", "Materiaalcategorie"), kind: "dependent", groups: catalogue.materialCategories, parent: "material_group", required: true, otherExplanation: true },
+    { key: "batch_number", label: w("Batch / lot / heat number", "Batch- / partij- / smeltnummer"), kind: "text", visible: traceableMaterial, required: traceableMaterial, hint: w("Required for cement, reinforcement, structural steel, precast and piles (traceability)", "Verplicht voor cement, wapening, constructiestaal, prefab en palen (traceerbaarheid)") },
+    { key: "ticket_number", label: w("Delivery ticket no.", "Leverbonnummer"), kind: "text", visible: readyMixConcrete, required: readyMixConcrete },
+    { key: "truck_number", label: w("Truck no.", "Truck nr."), kind: "text", visible: readyMixConcrete },
+    { key: "concrete_class", label: w("Concrete class", "Betonklasse"), kind: "text", visible: readyMixConcrete, required: readyMixConcrete },
+    { key: "batching_time", label: w("Batching time", "Tijdstip van mengen"), kind: "time", visible: readyMixConcrete, required: readyMixConcrete },
+    { key: "arrival_time", label: w("Arrival time", "Aankomsttijd"), kind: "time", visible: readyMixConcrete, required: readyMixConcrete,
+      warn: (values) => {
+        const batched = minutesOf(one(values, "batching_time")); const arrived = minutesOf(one(values, "arrival_time"));
+        const gap = arrived >= batched ? arrived - batched : arrived + 1440 - batched;
+        return Number.isFinite(gap) && gap > readyMixLimits.minutes ? w(`${gap} minutes between batching and arrival; the project limit is ${readyMixLimits.minutes}. Supervision decides acceptance.`, `${gap} minuten tussen mengen en aankomst; de limiet van het project is ${readyMixLimits.minutes}. Toezicht beslist over acceptatie.`) : null;
+      } },
+    { key: "discharge_end_time", label: w("Discharge end time", "Eindtijd lossen"), kind: "time", visible: readyMixConcrete },
+    { key: "slump_mm", label: w("Slump at site (mm)", "Zetmaat op de bouwplaats (mm)"), kind: "number", min: 0, max: 300, visible: readyMixConcrete },
+    { key: "concrete_temperature", label: w("Concrete temperature (°C)", "Betontemperatuur (°C)"), kind: "number", min: 0, max: 60, visible: readyMixConcrete,
+      warn: (values) => Number(one(values, "concrete_temperature")) > readyMixLimits.celsius ? w(`Above ${readyMixLimits.celsius} °C. Supervision decides acceptance.`, `Boven ${readyMixLimits.celsius} °C. Toezicht beslist over acceptatie.`) : null },
+    { key: "water_added", label: w("Water added on site", "Water toegevoegd op de bouwplaats"), kind: "select", options: ["Yes", "No"], visible: readyMixConcrete },
+    { key: "cubes_taken", label: w("Cubes / cylinders taken (pcs)", "Kubussen / cilinders genomen (stuks)"), kind: "number", min: 0, max: 99, visible: readyMixConcrete },
     { key: "material_specification", label: w("Material description / specification", "Materiaalomschrijving / specificatie"), kind: "text", required: true },
     { key: "ordered_quantity", label: w("Ordered quantity", "Bestelde hoeveelheid"), kind: "number", required: true, min: 0 },
     { key: "delivered_quantity", label: w("Delivered quantity", "Geleverde hoeveelheid"), kind: "number", required: true, min: 0, hint: w("Zero when nothing was delivered", "Nul als niets is geleverd") },
     { key: "unit", label: w("Unit", "Eenheid"), kind: "select", options: catalogue.sharedUnits, required: true, otherExplanation: true },
-    { key: "delivery_status", label: w("Delivery status", "Leveringsstatus"), kind: "dependent", groups: { all: catalogue.deliveryStatuses.map((value) => ({ value, description: catalogue.materialCategories["Delivery Status"]?.find((option) => option.value === value)?.description ?? "" })) }, parent: "__all", required: true },
+    { key: "delivery_status", label: w("Delivery status", "Leveringsstatus"), kind: "select", options: catalogue.deliveryStatuses, required: true },
     { key: "revised_delivery_date", label: w("Revised delivery date", "Nieuwe leverdatum"), kind: "date", visible: when(is("delivery_status", "Delayed", "Partial Delivery")), required: when(is("delivery_status", "Delayed", "Partial Delivery")) },
     { key: "arrival_condition", label: w("Condition on arrival", "Staat bij aankomst"), kind: "select", options: catalogue.arrivalConditions, required: true, otherExplanation: true },
     { key: "inspection_result", label: w("Inspection result", "Resultaat keuring"), kind: "select", options: catalogue.deliveryInspectionResults, required: true, decision: ["Accepted", "Accepted with Comments", "Rejected"], hint: w("Accepted only after the required checks; QA / supervision decides.", "Pas geaccepteerd na de vereiste controles; QA / supervisie beslist.") },
     { key: "accepted_by", label: w("Inspection decided by", "Keuring besloten door"), kind: "text", auto: true, visible: when(filled("accepted_by")) },
     { key: "storage_location", label: w("Storage location", "Opslaglocatie"), kind: "select", listKey: "storage_locations", otherExplanation: true, visible: deliveryAccepted, required: when(is("stored_on_site", "yes")) },
     { key: "stored_on_site", label: w("Stored on site", "Op locatie opgeslagen"), kind: "toggle", visible: deliveryAccepted },
-    { key: "discrepancy_type", label: w("Discrepancy", "Afwijking"), kind: "dependent", groups: { all: catalogue.materialCategories["Delivery Discrepancy"] ?? [] }, parent: "__all", visible: deliveryException, otherExplanation: true },
+    { key: "discrepancy_type", label: w("Discrepancy type", "Soort afwijking"), kind: "multi", options: catalogue.deliveryDiscrepancies, visible: deliveryException, otherExplanation: true },
     { key: "discrepancy_remarks", label: w("Discrepancy / remarks", "Afwijking / opmerkingen"), kind: "text", required: deliveryException, visible: deliveryException },
     person("received_by", w("Received by", "Ontvangen door"), { required: true, defaultsToCurrentUser: true, people: { users: true, partyTypes: [] }, hint: w("Filled with your name; a supervisor confirms receipt in the sign-off.", "Ingevuld met uw naam; een supervisor bevestigt de ontvangst in de ondertekening.") }),
   ],
@@ -513,8 +541,6 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     { key: "time_impact_unit", label: w("Time unit", "Tijdseenheid"), kind: "select", options: catalogue.durationUnits, required: true },
     { key: "assessment", label: w("Cost / schedule assessment", "Kosten- / planningsbeoordeling"), kind: "textarea" },
     { key: "approval_status", label: w("Approval status", "Goedkeuringsstatus"), kind: "select", options: catalogue.changeApprovalStatuses, required: true, initial: "Draft", decision: decisionStatuses },
-    { key: "approved_amount", label: w("Approved amount", "Goedgekeurd bedrag"), kind: "number", visible: when(is("approval_status", "Approved", "Implemented", "Closed")), required: when(is("approval_status", "Approved")) },
-    { key: "approved_days", label: w("Approved days", "Goedgekeurde dagen"), kind: "number", visible: when(is("approval_status", "Approved", "Implemented", "Closed")), required: when(is("approval_status", "Approved")) },
     { key: "approved_by", label: w("Approved by", "Goedgekeurd door"), kind: "text", auto: true },
     { key: "approved_on", label: w("Approval date", "Datum goedkeuring"), kind: "date", auto: true, visible: when(filled("approved_on")) },
     { key: "instruction_to_proceed", label: w("Instruction to proceed", "Opdracht tot uitvoering"), kind: "select", options: catalogue.instructionToProceed, required: true, initial: "Not Issued" },
@@ -555,7 +581,7 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     { key: "applicability", label: w("Applicability", "Toepasbaarheid"), kind: "select", options: catalogue.lessonApplicability, required: true },
     discipline("discipline", false, w("Discipline", "Discipline")),
     person("action_owner", w("Action owner", "Actiehouder")),
-    { key: "review_status", label: w("Review status", "Beoordelingsstatus"), kind: "select", options: catalogue.lessonReviewStatuses, required: true, initial: "Draft", decision: ["Approved for Sharing"], hint: w("Approved for Sharing makes the lesson visible to every project of the organisation.", "Goedgekeurd voor delen maakt de les zichtbaar voor alle projecten van de organisatie.") },
+    { key: "review_status", label: w("Review status", "Beoordelingsstatus"), kind: "select", options: catalogue.lessonReviewStatuses, initial: "Draft", derived: true, hint: w("Set by the workflow: submitting the lesson shares it with every project of the organisation; there is no review step.", "Volgt uit de werkstroom: een ingediende les wordt direct gedeeld met alle projecten van de organisatie; er is geen beoordelingsstap.") },
     { key: "reviewed_by", label: w("Reviewed by", "Beoordeeld door"), kind: "text", auto: true },
   ],
   agreement: [
@@ -572,14 +598,13 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     { key: "related_location", label: w("Related location", "Gerelateerde locatie"), kind: "location" },
     relatedRecord(),
     recordStatus,
-    { ...closureNote(w("Confirmation / closure note", "Bevestiging / afsluitnotitie")), kind: "text", required: false },
   ],
   photo: [
     { key: "photo_purpose", label: w("Photo purpose", "Doel van de foto"), kind: "select", options: catalogue.photoPurposes, required: true, otherExplanation: true },
-    // D05 decision (21-11-2026): workbook rows 4 and 5 are one field. F6, F7 and H6 all name the 17
-    // Work discipline values (E7 repeats the purposes by mistake); F6 and D7 make it optional and G6
-    // shows it after the purpose. No purpose-to-category mapping exists, so the purpose does not filter it.
-    { ...discipline("discipline", false, w("Photo category / work discipline", "Fotocategorie / werkdiscipline")), visible: when(filled("photo_purpose")) },
+    // v5.0 (25-11-2026) separates what D05 (21-11-2026) had joined: row 4 is the Photo category, filtered by the
+    // purpose; row 5 is the optional Work discipline, for photos of construction work.
+    { key: "photo_category", label: w("Photo category", "Fotocategorie"), kind: "dependent", groups: catalogue.photoCategories, parent: "photo_purpose", required: true },
+    { ...discipline("discipline", false, w("Work discipline", "Werkdiscipline")), visible: when(filled("photo_purpose")), hint: w("When the photo shows construction work", "Als de foto bouwwerk toont") },
     { key: "building_area", label: w("Work location", "Werklocatie"), kind: "location" },
     { key: "location_detail", label: w("Location detail", "Locatiedetail"), kind: "text" },
     relatedRecord(),
@@ -587,6 +612,9 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
   works_ongoing: [
     { key: "report_date", label: w("Report date", "Rapportdatum"), kind: "date", required: true, defaultsToNow: true },
     { key: "shift", label: w("Shift", "Dienst"), kind: "select", listKey: "shifts", otherExplanation: true },
+    { key: "weather", label: w("Weather", "Weer"), kind: "select", options: catalogue.weatherConditions, required: true, hint: w("One value per shift; the first record of the day sets it for the others", "Eén waarde per dienst; het eerste record van de dag vult de andere in") },
+    { key: "rainfall", label: w("Rainfall (mm)", "Neerslag (mm)"), kind: "number", min: 0, max: 500, visible: rainyWeather, hint: w("From the site rain gauge, if there is one", "Van de regenmeter op de bouwplaats, als die er is") },
+    { key: "weather_hours_lost", label: w("Working time lost due to weather (hours)", "Werktijd verloren door weer (uren)"), kind: "number", min: 0, max: 24, visible: rainyWeather, hint: w("Hours this crew could not work; supports a delay report", "Uren dat deze ploeg niet kon werken; ondersteunt een vertragingsrapport") },
     discipline("discipline", true),
     discipline("secondary_discipline", false, w("Secondary discipline", "Tweede discipline")),
     { key: "activity", label: w("Activity", "Activiteit"), kind: "activity", parent: "discipline", required: true },
@@ -615,13 +643,22 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     { ...recordStatus, label: w("Workflow status", "Workflowstatus") },
   ],
   works_completed: [
+    // Row 3.1 (v5.0): the Works Ongoing record this completion closes; it fills the fields below so nothing is typed twice.
+    { key: "based_on", label: w("Based on Works Ongoing record", "Gebaseerd op Werkzaamheden-gaande-record"), kind: "record", recordKinds: ["register:works_ongoing"], required: true, hint: w("Fills discipline, activity, location, unit and crew; you can still change them", "Vult discipline, activiteit, locatie, eenheid en ploeg in; u kunt ze nog aanpassen") },
     { key: "completion_date", label: w("Completion date", "Datum gereed"), kind: "date", required: true, defaultsToNow: true },
     discipline("discipline", true),
     discipline("secondary_discipline", false, w("Secondary discipline", "Tweede discipline")),
     { key: "activity", label: w("Activity", "Activiteit"), kind: "activity", parent: "discipline", required: true },
     ...locationFields(w("The exact completed section, e.g. Level 1, grids A-D/1-4", "Het exacte gereedgekomen deel, bv. Niveau 1, stramien A-D/1-4")),
     { key: "completed_items", label: w("What was completed?", "Wat is gereed?"), kind: "completion", parent: "activity", required: true, otherExplanation: true, hint: w("Photo evidence is recommended: add before/after or completion photos to this record.", "Fotobewijs wordt aanbevolen: voeg voor/na- of opleverfoto's toe aan deze registratie.") },
-    { ...activityAnswers, visible: when(filled("activity")) },
+    // Row 8.1 (v5.0): the technical details of the selected activity; concrete pouring asks for its own set.
+    { key: "element_type", label: w("Element", "Element"), kind: "select", options: ["Slab", "Beam", "Column", "Footing", "Wall", "Other"], visible: concretePouring, otherExplanation: true },
+    { key: "element_id", label: w("Element ID", "Element-ID"), kind: "text", visible: concretePouring },
+    { key: "concrete_grade", label: w("Concrete grade / mix", "Betonsterkte / mengsel"), kind: "text", visible: concretePouring },
+    { key: "concrete_volume", label: w("Volume (m³)", "Volume (m³)"), kind: "number", visible: concretePouring, min: 0 },
+    { key: "delivery_tickets", label: w("Delivery ticket / batch references", "Leverbon- / batchreferenties"), kind: "text", visible: concretePouring },
+    { key: "slump_cube_refs", label: w("Slump and cube sample references", "Referenties zetmaat en kubussen"), kind: "text", visible: concretePouring },
+    { ...activityAnswers, visible: when(all(filled("activity"), not(concretePouring.rule!))) },
     ...quantityFields(w("Quantity completed", "Hoeveelheid gereed")),
     { key: "inspection_status", label: w("Completion / inspection status", "Status gereed / keuring"), kind: "select", options: catalogue.completionInspectionStatuses, required: true, decision: ["Inspected - Accepted", "Inspected - Rejected"], hint: w("Completed is not the same as accepted; a reviewer records the inspection.", "Gereed is niet hetzelfde als geaccepteerd; een beoordelaar legt de keuring vast.") },
     { key: "inspected_by", label: w("Inspected by", "Gekeurd door"), kind: "text", auto: true, visible: when(filled("inspected_by")) },
@@ -632,17 +669,25 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     { key: "remarks", label: w("Remarks", "Opmerkingen"), kind: "text" },
     { ...recordStatus, label: w("Workflow status", "Workflowstatus") },
   ],
-  workforce: [
-    { key: "shift", label: w("Shift", "Dienst"), kind: "select", listKey: "shifts", otherExplanation: true },
-    { key: "attendance_status", label: w("Attendance status", "Aanwezigheidsstatus"), kind: "select", options: catalogue.attendanceStatuses },
-    { key: "competency_status", label: w("Competency / authorization status", "Status bevoegdheid / autorisatie"), kind: "select", options: catalogue.competencyStatuses },
-  ],
+  // v5.0 removed Shift, Attendance status and Competency / authorization status; the register keeps contractor, discipline and number.
+  workforce: [],
   // The workbook has no Inspections sheet; the client confirmed the checklist stays as it is
   // (20-11-2026). These are the workbook's shared classifications, so inspections filter like
   // every other record, and the links to the work they inspect.
   inspection: [
+    { key: "inspection_type", label: w("Inspection type", "Soort inspectie"), kind: "select", options: catalogue.inspectionTypes, otherExplanation: true },
+    { key: "inspection_category", label: w("Inspection category", "Inspectiecategorie"), kind: "dependent", groups: catalogue.inspectionCategories, parent: "inspection_type", otherExplanation: true },
     discipline("discipline", false),
     { key: "related_record", label: w("Inspected work / related record", "Gekeurd werk / gekoppelde registratie"), kind: "record", recordKinds: ["register:works_ongoing", "register:works_completed", "register:delivery", "ncr", "finding"] },
+    { key: "drawing_reference", label: w("Drawing / specification reference", "Tekening- / specificatiereferentie"), kind: "document" },
+    { key: "checklist_version", label: w("Checklist version", "Checklistversie"), kind: "text", auto: true, visible: when(filled("checklist_version")), hint: w("Revision and upload date of the checklist, kept with the inspection", "Revisie en uploaddatum van de checklist, bewaard bij de inspectie") },
+    { key: "inspection_result", label: w("Inspection result", "Inspectieresultaat"), kind: "select", options: catalogue.inspectionResults, hint: w("Suggested from the checklist: all Pass / N/A is Accepted, any Fail is Re-inspection Required", "Voorgesteld vanuit de checklist: alles Pass / N.v.t. is Accepted, een Fail is Re-inspection Required") },
+    { key: "findings", label: w("Findings / observations", "Bevindingen / waarnemingen"), kind: "textarea", visible: needsFindings, required: needsFindings },
+    { key: "finding_types", label: w("Finding type", "Soort bevinding"), kind: "multi", options: catalogue.inspectionFindingTypes, visible: needsFindings, required: needsFindings, otherExplanation: true },
+    { key: "corrective_action", label: w("Corrective action required", "Vereiste correctieve actie"), kind: "textarea", visible: needsFindings },
+    person("responsible_contractor", w("Responsible contractor / person", "Verantwoordelijke aannemer / persoon"), { people: { users: false, partyTypes: ["contractor", "subcontractor"] }, visible: needsFindings }),
+    { key: "reinspection_date", label: w("Re-inspection date", "Datum herkeuring"), kind: "date", visible: when(is("inspection_result", "Re-inspection Required", "Rejected")), required: when(is("inspection_result", "Re-inspection Required")) },
+    { key: "ncr_reference", label: w("NCR reference", "NCR-referentie"), kind: "record", recordKinds: ["ncr"], visible: needsFindings },
     person("contractor_witness", w("Contractor witness", "Getuige aannemer"), { people: { users: true, partyTypes: ["contractor", "subcontractor"] } }),
   ],
 };
@@ -687,7 +732,6 @@ export const sheetLayouts: Partial<Record<SpecFormKey, SheetItem[]>> = {
     "related_record",
     slot("attachments", "Attachments", "Bijlagen"),
     "workflow_status",
-    "closure_note",
   ],
   ncr: [
     "raised_at",
@@ -708,8 +752,6 @@ export const sheetLayouts: Partial<Record<SpecFormKey, SheetItem[]>> = {
     "corrective_action",
     "action_owner",
     "target_date",
-    "verification_result",
-    row("verified", ["verified_by", "verified_on"], w("Verified by / date", "Geverifieerd door / datum")),
     slot("attachments", "Attachments", "Bijlagen"),
     "workflow_status",
   ],
@@ -759,12 +801,16 @@ export const sheetLayouts: Partial<Record<SpecFormKey, SheetItem[]>> = {
     row("reviewer", ["hse_reviewer"], w("Reported by / HSE reviewer", "Gemeld door / HSE-beoordelaar"), true),
   ],
   works_ongoing: [
+    slot("title", "Title", "Titel", true),
     "report_date",
     "shift",
+    "weather",
+    row("rain", ["rainfall", "weather_hours_lost"]),
     row("discipline", ["discipline", "secondary_discipline"]),
     "activity",
     slot("location", "Building / area", "Gebouw / gebied", true),
     "exact_location",
+    slot("drawing_location", "Drawing location (PDF + pin)", "Tekeninglocatie (PDF + pin)"),
     "work_item",
     row("quantity", ["quantity", "quantity_na"]),
     "quantity_unit",
@@ -780,12 +826,16 @@ export const sheetLayouts: Partial<Record<SpecFormKey, SheetItem[]>> = {
     "workflow_status",
   ],
   works_completed: [
+    slot("title", "Title", "Titel", true),
+    "based_on",
     "completion_date",
     row("discipline", ["discipline", "secondary_discipline"]),
     "activity",
     slot("location", "Building / area", "Gebouw / gebied", true),
     "exact_location",
-    row("completed", ["completed_items", "activity_answers"]),
+    slot("drawing_location", "Drawing location (PDF + pin)", "Tekeninglocatie (PDF + pin)"),
+    "completed_items",
+    row("details", ["element_type", "element_id", "concrete_grade", "concrete_volume", "delivery_tickets", "slump_cube_refs", "activity_answers"], w("Activity-specific technical details", "Activiteitsspecifieke technische gegevens")),
     row("quantity", ["quantity", "quantity_na"]),
     "quantity_unit",
     row("inspection", ["inspection_status", "inspected_by"]),
@@ -797,6 +847,7 @@ export const sheetLayouts: Partial<Record<SpecFormKey, SheetItem[]>> = {
     "workflow_status",
   ],
   delivery: [
+    slot("title", "Title", "Titel", true),
     row("delivery_at", ["delivery_at", "planned_delivery_at"]),
     "supplier",
     "purchase_order",
@@ -804,6 +855,9 @@ export const sheetLayouts: Partial<Record<SpecFormKey, SheetItem[]>> = {
     "material_group",
     "material_category",
     "material_specification",
+    "batch_number",
+    slot("certificate", "Certificate / test certificate", "Certificaat / testcertificaat", false, w("Mill certificate, cement test certificate, product or pile certificate. Required for the groups that need a batch number.", "Walscertificaat, cementtestcertificaat, product- of paalcertificaat. Verplicht voor de groepen met een batchnummer.")),
+    row("concrete_ticket", ["ticket_number", "truck_number", "concrete_class", "batching_time", "arrival_time", "discharge_end_time", "slump_mm", "concrete_temperature", "water_added", "cubes_taken"], w("Concrete delivery ticket details", "Gegevens leverbon beton")),
     "ordered_quantity",
     "delivered_quantity",
     "unit",
@@ -816,6 +870,7 @@ export const sheetLayouts: Partial<Record<SpecFormKey, SheetItem[]>> = {
     "received_by",
   ],
   technical_instruction: [
+    slot("title", "Title", "Titel", true),
     "instruction_date",
     "instruction_type",
     "discipline",
@@ -848,13 +903,13 @@ export const sheetLayouts: Partial<Record<SpecFormKey, SheetItem[]>> = {
     row("time", ["time_impact", "time_impact_unit"]),
     "assessment",
     "approval_status",
-    row("approved", ["approved_amount", "approved_days"], w("Approved amount / days", "Goedgekeurd bedrag / dagen")),
     "instruction_to_proceed",
     "related_record",
     slot("attachments", "Attachments", "Bijlagen"),
     row("approvers", ["approved_by", "approved_on"], w("Prepared / reviewed / approved by", "Opgesteld / beoordeeld / goedgekeurd door")),
   ],
   delay_report: [
+    slot("title", "Title", "Titel", true),
     "delay_start_at",
     row("activity", ["affected_activity", "affected_activity_text"], undefined, true),
     slot("location", "Location", "Locatie", true),
@@ -905,13 +960,121 @@ export const sheetLayouts: Partial<Record<SpecFormKey, SheetItem[]>> = {
     "related_record",
     "workflow_status",
     slot("photos", "Evidence / minutes", "Bewijs / notulen"),
-    "closure_note",
   ],
 };
 
 export const isSheetRow = (item: SheetItem): item is SheetRow => typeof item !== "string" && "row" in item;
 export const isSheetSlot = (item: SheetItem | string): item is SheetSlot => typeof item !== "string" && "slot" in item;
 /** The spec fields of a sheet layout, top to bottom (rows flattened). */
+/**
+ * Numbered sections of a sheet form (mockups v6: "one continuous page, numbered sections"). A section starts at
+ * the sheet item named in `from` (a field key, a slot name or a row name) and runs to the next one. The rows keep the
+ * order of the workbook; the headings only group them, so the order of the fields never changes.
+ */
+export type SheetSection = { from: string; title: Words };
+export const sheetSections: Partial<Record<SpecFormKey, SheetSection[]>> = {
+  works_ongoing: [
+    { from: "title", title: w("General", "Algemeen") },
+    { from: "discipline", title: w("Work", "Werk") },
+    { from: "location", title: w("Location", "Locatie") },
+    { from: "work_item", title: w("Progress", "Voortgang") },
+    { from: "details", title: w("Technical", "Technisch") },
+    { from: "photos", title: w("Blockers and photos", "Belemmeringen en foto's") },
+    { from: "workflow_status", title: w("Sign-off", "Ondertekening") },
+  ],
+  works_completed: [
+    { from: "title", title: w("General", "Algemeen") },
+    { from: "discipline", title: w("Work", "Werk") },
+    { from: "location", title: w("Location", "Locatie") },
+    { from: "completed_items", title: w("Progress", "Voortgang") },
+    { from: "inspection", title: w("Technical", "Technisch") },
+    { from: "crew", title: w("Crew and photos", "Ploeg en foto's") },
+    { from: "workflow_status", title: w("Sign-off", "Ondertekening") },
+  ],
+  // The other sheet forms: the workbook's row order, grouped as General, what the record is about, what happens next,
+  // evidence and sign-off (decision D-12: the groups are inferred; the order of the rows is the workbook's).
+  issue: [
+    { from: "identified_at", title: w("General", "Algemeen") },
+    { from: "location", title: w("Location and impact", "Locatie en impact") },
+    { from: "immediate_action", title: w("Action", "Actie") },
+    { from: "related_record", title: w("Evidence", "Bewijs") },
+    { from: "workflow_status", title: w("Sign-off", "Ondertekening") },
+  ],
+  ncr: [
+    { from: "raised_at", title: w("General", "Algemeen") },
+    { from: "requirement_reference", title: w("Requirement and detection", "Eis en constatering") },
+    { from: "containment", title: w("Containment and cause", "Beheersing en oorzaak") },
+    { from: "corrective_action", title: w("Corrective action", "Corrigerende actie") },
+    { from: "attachments", title: w("Evidence", "Bewijs") },
+    { from: "workflow_status", title: w("Sign-off", "Ondertekening") },
+  ],
+  hse: [
+    { from: "observed_at", title: w("General", "Algemeen") },
+    { from: "person_involved", title: w("People and risk", "Personen en risico") },
+    { from: "immediate_action", title: w("Action", "Actie") },
+    { from: "photos", title: w("Evidence", "Bewijs") },
+    { from: "status", title: w("Sign-off", "Ondertekening") },
+  ],
+  hse_incident: [
+    { from: "incident_at", title: w("General", "Algemeen") },
+    { from: "people_involved", title: w("People and injury", "Personen en letsel") },
+    { from: "environmental_impact", title: w("Impact and response", "Gevolgen en reactie") },
+    { from: "incident_severity", title: w("Severity and investigation", "Ernst en onderzoek") },
+    { from: "photos", title: w("Evidence", "Bewijs") },
+    { from: "status", title: w("Sign-off", "Ondertekening") },
+  ],
+  delivery: [
+    { from: "title", title: w("General", "Algemeen") },
+    { from: "supplier", title: w("Supplier and order", "Leverancier en bestelling") },
+    { from: "material_group", title: w("Material", "Materiaal") },
+    { from: "ordered_quantity", title: w("Quantity", "Hoeveelheid") },
+    { from: "delivery_status", title: w("Condition and inspection", "Staat en keuring") },
+    { from: "photos", title: w("Evidence", "Bewijs") },
+    { from: "received_by", title: w("Sign-off", "Ondertekening") },
+  ],
+  technical_instruction: [
+    { from: "title", title: w("General", "Algemeen") },
+    { from: "instruction_type", title: w("Scope", "Reikwijdte") },
+    { from: "description", title: w("Instruction", "Instructie") },
+    { from: "issued_to", title: w("Issue and response", "Uitgifte en reactie") },
+    { from: "attachments", title: w("Evidence", "Bewijs") },
+    { from: "acknowledged_by", title: w("Sign-off", "Ondertekening") },
+  ],
+  change_order: [
+    { from: "request_date", title: w("General", "Algemeen") },
+    { from: "location", title: w("Location", "Locatie") },
+    { from: "quantity", title: w("Impact", "Impact") },
+    { from: "approval_status", title: w("Decision", "Besluit") },
+    { from: "related_record", title: w("Evidence", "Bewijs") },
+    { from: "approvers", title: w("Sign-off", "Ondertekening") },
+  ],
+  delay_report: [
+    { from: "title", title: w("General", "Algemeen") },
+    { from: "activity", title: w("Activity and location", "Activiteit en locatie") },
+    { from: "delay_cause_type", title: w("Cause", "Oorzaak") },
+    { from: "duration", title: w("Impact and recovery", "Impact en herstel") },
+    { from: "photos", title: w("Evidence", "Bewijs") },
+    { from: "status", title: w("Sign-off", "Ondertekening") },
+  ],
+  lessons_learned: [
+    { from: "recorded_on", title: w("General", "Algemeen") },
+    { from: "situation", title: w("Lesson", "Les") },
+    { from: "discipline", title: w("Application", "Toepassing") },
+    { from: "photos", title: w("Evidence", "Bewijs") },
+    { from: "review_status", title: w("Sign-off", "Ondertekening") },
+  ],
+  agreement: [
+    { from: "agreement_at", title: w("General", "Algemeen") },
+    { from: "agreed_by", title: w("Agreement", "Afspraak") },
+    { from: "action_required", title: w("Action", "Actie") },
+    { from: "related", title: w("Links", "Koppelingen") },
+    { from: "workflow_status", title: w("Sign-off", "Ondertekening") },
+    { from: "photos", title: w("Evidence", "Bewijs") },
+  ],
+};
+/** The name a sheet item goes by in `sheetSections`. */
+export const sheetItemName = (item: SheetItem): string => (typeof item === "string" ? item : isSheetRow(item) ? item.row : item.slot);
+
 export const sheetKeys = (form: SpecFormKey): string[] => (sheetLayouts[form] ?? []).flatMap((item) => (isSheetRow(item) ? item.items : [item])).filter((item): item is string => typeof item === "string");
 
 
@@ -999,8 +1162,13 @@ export function upgradeSpecValues(form: SpecFormKey, values: SpecValues): SpecVa
   const next: SpecValues = { ...values };
   if (form === "delivery" && !one(next, "material_category")) {
     const legacyCategory = one(next, "material_group");
-    if (catalogue.materialCategories["Material Group"].some((option) => option.value === legacyCategory)) {
-      next.material_group = "Material Group";
+    // Records made on the v2 workbook kept the category in material_group (the group was "Material Group").
+    const group = Object.entries(catalogue.materialCategories).find(([, options]) => options.some((option) => option.value === legacyCategory));
+    if (!group && legacyCategory && ["Delivery Status", "Material Group", "Delivery Discrepancy"].includes(legacyCategory)) {
+      delete next.material_group;
+    }
+    if (group && group[0] !== legacyCategory) {
+      next.material_group = group[0];
       next.material_category = legacyCategory;
       if (next.material_group_other) next.material_category_other = next.material_group_other;
       delete next.material_group_other;
@@ -1058,6 +1226,7 @@ export function setSpecValue(form: SpecFormKey, rawValues: SpecValues, key: stri
       if (field.rowsFrom === promptSource) delete next[field.key];
     }
   }
+  applyDerivedDefaults(form, values, next, key);
   // "Not applicable" is never combined with another selection.
   for (const field of fields) {
     if (field.kind !== "multi") continue;
@@ -1066,6 +1235,49 @@ export function setSpecValue(form: SpecFormKey, rawValues: SpecValues, key: stri
     if (exclusive && current.length > 1) next[field.key] = key === field.key && val(values, field.key).includes(exclusive) ? current.filter((item) => item !== exclusive) : [exclusive];
   }
   return next;
+}
+
+/**
+ * v5.0 auto-fill: what the system knows is never typed. Issue category fixes the discipline when the
+ * workbook gives it one (Issue field 9); priority sets the target date (field 15: Low +14 days,
+ * Medium +7, High +3, Critical +1) and an HSE risk rating sets the due date (Risk & Severity Scales).
+ * A date the user changed is kept: it is only replaced while it is empty or still the earlier default.
+ */
+export const issueCategoryDisciplines: Record<string, string> = {
+  "Concrete Works": "Concrete & Reinforced Concrete",
+  "Reinforcement Works": "Concrete & Reinforced Concrete",
+  "Welding & Fabrication": "Structural Steel & Metal Works",
+  "Masonry Works": "Masonry & Wall Construction",
+  "Waterproofing": "Waterproofing & Roofing",
+  "Painting & Finishing": "Architectural & Interior Finishes",
+};
+
+const today = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+};
+
+function applyDerivedDefaults(form: SpecFormKey, before: SpecValues, next: SpecValues, changedKey: string) {
+  if (form === "issue") {
+    if (changedKey === "issue_category" || changedKey === "issue_type") {
+      const fixed = issueCategoryDisciplines[one(next, "issue_category")];
+      if (fixed) next.discipline = fixed;
+      else if (changedKey === "issue_category" && Object.values(issueCategoryDisciplines).includes(one(before, "discipline"))) next.discipline = "";
+    }
+    if (changedKey === "priority") {
+      const from = one(next, "identified_at").slice(0, 10) || today();
+      const previous = targetDateFromPriority(one(before, "priority"), from);
+      const current = one(next, "target_date");
+      if (!current || current === previous) next.target_date = targetDateFromPriority(one(next, "priority"), from);
+    }
+  }
+  if (form === "hse" && (changedKey === "risk_likelihood" || changedKey === "risk_severity" || changedKey === "risk_rating")) {
+    const rating = one(next, "risk_rating");
+    const from = one(next, "observed_at").slice(0, 10) || today();
+    const previous = dueDateFromRiskRating(one(before, "risk_rating"), from);
+    const current = one(next, "due_date");
+    if (rating && (!current || current === previous)) next.due_date = dueDateFromRiskRating(rating, from);
+  }
 }
 
 /** The values with the starting value of every field that was never touched. */
@@ -1079,6 +1291,15 @@ export function withInitial(form: SpecFormKey, values: SpecValues): SpecValues {
 const rowFilled = (row: SpecRow) => Object.entries(row).some(([key, value]) => key !== "step" && key !== "action_id" && key !== "row_id" && !key.endsWith("_ref") && String(value ?? "").trim() !== "");
 
 /** The labels of every visible required field that is still empty, in form order. */
+/** Planned, target and deadline dates may lie in the future; every other date or time records something that happened. */
+const futureDateKeys = /^(due|due_date|target_date|planned_delivery_at|revised_delivery_date|response_required_by|target_recovery_date|reinspection_date)$/;
+export const isEventDateField = (field: SpecField) => (field.kind === "date" || field.kind === "datetime") && !field.derived && !field.auto && !futureDateKeys.test(field.key);
+
+/** The project-local moment as YYYY-MM-DDTHH:mm, to compare with what a date or date-time box holds. */
+export function projectNowLocal(now = new Date()) {
+  return new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Paramaribo", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(now).replace(" ", "T");
+}
+
 export function specMissing(form: SpecFormKey, rawValues: SpecValues, language: "en" | "nl" = "en", skip: readonly string[] = []): string[] {
   const values = withInitial(form, rawValues);
   const missing: string[] = [];
@@ -1099,6 +1320,7 @@ export function specMissing(form: SpecFormKey, rawValues: SpecValues, language: 
     const entered = val(values, field.key).filter((item) => String(item).trim() !== "");
     if (isRequired(field, values) && !entered.length) missing.push(label);
     if (needsOtherExplanation(field, values) && !one(values, otherKey(field)).trim()) missing.push(`${label} · ${language === "nl" ? "toelichting bij Overig" : "explanation for Other"}`);
+    if (isEventDateField(field) && entered.length && eventDateInFuture(String(entered[0]), projectNowLocal())) missing.push(`${label} · ${language === "nl" ? "datum ligt in de toekomst" : "date is in the future"}`);
     if (field.kind === "number" && entered.length) {
       const number = Number(entered[0]);
       if (!Number.isFinite(number) || (field.min !== undefined && number < field.min) || (field.max !== undefined && number > field.max)) missing.push(`${label} · ${language === "nl" ? "ongeldige waarde" : "invalid value"}`);
@@ -1199,7 +1421,7 @@ export function cleanSpecValues(form: SpecFormKey, rawValues: SpecValues, config
     }
   }
   // Who decided is recorded by the database; it is carried along so an edit keeps it.
-  for (const key of ["approved_by_user_id", "reviewed_by_user_id", "verified_by_user_id", "inspected_by_user_id", "accepted_by_user_id", "corrective_action_reopened", "reviewed_on", "inspected_on", "accepted_on"]) {
+  for (const key of ["closure_note", "verification_result", "verified_by", "verified_on", "approved_amount", "approved_days", "approved_by_user_id", "reviewed_by_user_id", "verified_by_user_id", "inspected_by_user_id", "accepted_by_user_id", "corrective_action_reopened", "reviewed_on", "inspected_on", "accepted_on"]) {
     if (one(values, key) && !(key in out)) out[key] = one(values, key);
   }
   // F05: a photo's record of its original file is written once at upload and kept on every edit.

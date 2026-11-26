@@ -20,6 +20,7 @@ export function RecordFormShell({
   onCancel,
   className = "",
   headerAside,
+  overlay,
   icon: Icon,
 }: {
   code?: string;
@@ -37,6 +38,8 @@ export function RecordFormShell({
   onCancel?: () => void;
   className?: string;
   headerAside?: ReactNode;
+  /** A popup that belongs to the form, such as the signing dialog of "Sign, submit & notify". */
+  overlay?: ReactNode;
 }) {
   const { text } = useLanguage();
   return (
@@ -73,6 +76,7 @@ export function RecordFormShell({
           ) : null}
         </div>
       ) : null}
+      {overlay}
     </div>
   );
 }

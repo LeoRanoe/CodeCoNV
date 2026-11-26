@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { fillSpecFields } from "./spec-fill";
+import { finishSigning } from "./sign-popup";
 
 /**
  * QA M20. A Project Delay Report is a formal document and its photo on the original finish date is
@@ -41,11 +42,9 @@ async function openDelayReport(page: Page) {
   await expect(page.getByRole("heading", { level: 1, name: "Project Delay Report (PDR)" })).toBeVisible();
 }
 
-/** The PDR sheet's photo field (PR #21): one button that opens the camera or the library. */
+/** The PDR sheet's photo field (developer package v5): "Take a picture" and "Add a file" on every attachment field. */
 async function addPhoto(page: Page) {
-  const chooser = page.waitForEvent("filechooser");
-  await page.getByRole("button", { name: /^Take or choose a photo/ }).first().click();
-  await (await chooser).setFiles(photo!);
+  await page.locator(".attachment-button", { hasText: "Take a picture" }).first().locator("input[type=file]").setInputFiles(photo!);
 }
 
 async function fillDelayReport(page: Page, description: string) {
@@ -84,6 +83,7 @@ test("a delay report is saved with its attached photo confirmed", async ({ page 
   await addPhoto(page);
   await fillSpecFields(page.locator(".record-form-shell").first());
   await page.getByRole("button", { name: "Save delay report" }).click();
+  await finishSigning(page);
   await expect(page.locator(".operation-alert.success")).toBeVisible({ timeout: 90_000 });
   expect((await liveReports(page, description)).length, "the report is saved").toBe(1);
   expect(await page.locator(".offline-queue").count(), "the photo is confirmed, nothing waits on the device").toBe(0);
@@ -99,6 +99,7 @@ test("a delay report whose attached photo is not confirmed is not left behind", 
   await addPhoto(page);
   await fillSpecFields(page.locator(".record-form-shell").first());
   await page.getByRole("button", { name: "Save delay report" }).click();
+  await finishSigning(page);
   await expect(page.getByText(/Not saved: the attached photos were not confirmed/)).toBeVisible({ timeout: 90_000 });
   expect((await liveReports(page, description)).length, "no formal report without its photo").toBe(0);
   // What was typed is still there for the next try.

@@ -5,8 +5,8 @@ import { specServerRules } from "../scripts/generate-spec-server-rules.mjs";
 import { specConditionHolds, specForms, specMissing } from "../lib/forms/spec-forms.ts";
 
 test("F03: the database's form rules are the rules of lib/forms/spec-forms.ts", async () => {
-  const sql = await readFile(new URL("../../../supabase/migrations/202611250006_workbook_potential_consequence.sql", import.meta.url), "utf8");
-  const stored = JSON.parse(sql.match(/select '(\{.*?\})'::jsonb;\r?\n\$rules\$/s)[1].replace(/''/g, "'"));
+  const sql = await readFile(new URL("../../../supabase/migrations/202611250009_close_verify_approve_dialog.sql", import.meta.url), "utf8");
+  const stored = JSON.parse(sql.slice(sql.indexOf("function app_private.spec_form_rules()")).match(/select '(\{.*?\})'::jsonb;\r?\n\$rules\$/s)[1].replace(/''/g, "'"));
   assert.deepEqual(stored, specServerRules());
 });
 
@@ -28,8 +28,12 @@ test("F03: every conditional requirement is a server rule, except the listed sen
   for (const [form, rule] of Object.entries(rules)) {
     for (const key of rule.clientOnly) assert.ok(specForms[form].find((field) => field.key === key).sensitive, `${form}.${key} is sensitive`);
   }
-  assert.ok(rules.issue.conditional.some((item) => item.key === "closure_note"), "Issue closure note when Closed");
-  assert.ok(rules.change_order.conditional.some((item) => item.key === "approved_amount"));
+  // v5.0: the closure note, the NCR verification result and the approved amount / days are entered in the
+  // Close / Verify / Approve dialog (record_signoff_action), not in the form, so the form rules ask for none.
+  for (const [form, key] of [["issue", "closure_note"], ["ncr", "verification_result"], ["agreement", "closure_note"], ["change_order", "approved_amount"], ["change_order", "approved_days"]]) {
+    assert.ok(!specForms[form].some((field) => field.key === key), `${form}.${key} is not a form field`);
+    assert.ok(!rules[form].conditional.some((item) => item.key === key) && !rules[form].required.includes(key), `${form}.${key} is not a form rule`);
+  }
   assert.ok(rules.works_ongoing.conditional.some((item) => item.key === "crosses_midnight"));
   assert.deepEqual(rules.ncr.columns.containment_details, ["person", "implemented_at"]);
 });

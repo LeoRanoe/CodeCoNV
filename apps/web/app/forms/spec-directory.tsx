@@ -11,7 +11,7 @@ import type { SpecConfiguration, SpecFormKey } from "@/lib/forms/spec-forms";
  */
 export type SpecPerson = { id: string; name: string; role?: string };
 export type SpecParty = { id: string; name: string; type: string };
-export type SpecRecordOption = { id: string; kind: string; registerType?: string; code: string; title: string };
+export type SpecRecordOption = { id: string; kind: string; registerType?: string; code: string; title: string; linkSpec?: Record<string, string> | null; linkedRefs?: string[] | null };
 export type SpecLocation = { id: string; label: string };
 /** The Project Documents register, for exact revision references (F11). */
 export type SpecDocument = { id: string; document_number: string | null; title: string; current_revision_id: string | null };
