@@ -43,6 +43,6 @@ The 253 skips are `test.skip` conditions in the specs, not failures: 18 on deskt
 
 ## Security and data integrity
 
-- New migrations: 202611250013 (photo numbers) and 202611250014 (delivery acceptance). No RLS policy was changed or weakened. The number-assigning function is `security definer` with a fixed `search_path` and execute revoked from public; the number cannot be edited afterwards (trigger, pgTAP 047). The backfill only fills `capture_number` where it is null and is repeatable (ordered by created_at, id).
+- New migrations: 202611250014 (photo numbers) and 202611250015 (delivery acceptance). No RLS policy was changed or weakened. The number-assigning function is `security definer` with a fixed `search_path` and execute revoked from public; the number cannot be edited afterwards (trigger, pgTAP 047). The backfill only fills `capture_number` where it is null and is repeatable (ordered by created_at, id).
 - The decision dialog calls the existing `record_signoff_action`, so permissions (`findings.verify`), the "not your own response" rule and the approver lists are enforced by the database as before. The status-change fallback is the existing `transition_project_finding`.
 - No service-role key reaches the browser; the report, assistant and viewer run in the signed-in user's session.

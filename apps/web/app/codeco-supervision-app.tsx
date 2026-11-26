@@ -1598,7 +1598,7 @@ export function CodecoSupervisionApp() {
                   folderId: null,
                   folderName: text("Daily progress", "Dagvoortgang"),
                   kind: "photo",
-                  sourcePhoto: photo.file !== photo.original ? photo.original : undefined,
+                  sourcePhoto: photo.untouched ?? (photo.file !== photo.original ? photo.original : undefined),
                   file: prepared.blob,
                   fileName: prepared.fileName,
                   mimeType: prepared.mimeType,
@@ -1749,32 +1749,6 @@ export function CodecoSupervisionApp() {
     },
   };
 
-  // Supervision opens the portal of any contractor or client of the project, read-only ("View as").
-  if (!portalModeFor(permissions) && selectedProject && (activeNav === "contractorportal" || activeNav === "clientportal")) {
-    return (
-      <ProjectPermissionsProvider value={permissions}>
-        <ViewAsPortal
-          key={`${activeNav}:${selectedProject.id}`}
-          client={supabase!}
-          mode={activeNav === "clientportal" ? "client" : "contractor"}
-          projectId={selectedProject.id}
-          projectName={selectedProject.name}
-          projects={workspaceQuery.data!.projects.map((project) => ({ id: project.id, name: project.name, code: project.code }))}
-          buildings={selectedProject.buildings.map((building) => ({ id: building.id, name: building.name }))}
-          userName={currentUserName}
-          brand={<CompanyLogo />}
-          onSwitchProject={(projectId) => {
-            const project = workspaceQuery.data?.projects.find((item) => item.id === projectId);
-            if (project) chooseProject(project);
-          }}
-          focusShareId=""
-          clearFocus={() => setFocusRecordId("")}
-          onClose={() => navigate("vandaag")}
-        />
-      </ProjectPermissionsProvider>
-    );
-  }
-
   // A contractor or client account works in its own portal, never in the supervisor workspace
   // (requirements 6 and 21). The database already limits every row to the user's organisation.
   const portalMode = portalModeFor(permissions) as "contractor" | "client" | null;
@@ -1869,6 +1843,8 @@ export function CodecoSupervisionApp() {
             signOut={(discardUnsent) => void performSignOut({ discardUnsent })}
           />
         ) : null}
+        {/* A link that is not this account's says so here too; the portal returns before the shared toast below. */}
+        {toast ? <div className="toast" role="status" aria-live="polite"><CheckCircle2 size={18} /> {toast}</div> : null}
       </ProjectPermissionsProvider>
     );
   }
@@ -2011,7 +1987,24 @@ export function CodecoSupervisionApp() {
         {/* Keyed on the project: a module that switches to another project starts over
             instead of carrying the previous project's selection, filters and drafts. */}
         <main id="main-content" tabIndex={-1} className={`main-content${unsavedPhotos ? " has-resume-bar" : ""}`} key={selectedProject?.id ?? "no-project"}>
-          {activeNav === "vandaag" ? (
+          {activeNav === "contractorportal" || activeNav === "clientportal" ? (
+            <ViewAsPortal
+              preview
+              key={`${activeNav}:${selectedProject!.id}`}
+              client={supabase!}
+              focusShareId=""
+              clearFocus={() => undefined}
+              mode={activeNav === "contractorportal" ? "contractor" : "client"}
+              projectId={selectedProject!.id}
+              projectName={projectName}
+              projects={[]}
+              buildings={selectedProject?.buildings.map((building) => ({ id: building.id, name: building.name })) ?? []}
+              userName={currentUserName}
+              brand={null}
+              onSwitchProject={() => undefined}
+              onClose={() => navigate("vandaag")}
+            />
+          ) : activeNav === "vandaag" ? (
             <>
             <ClientDashboard
               entries={entries}

@@ -41,6 +41,7 @@ async function signIn(page: Page) {
   await page.reload();
   const form = page.locator(".access-form");
   await form.waitFor({ state: "visible" });
+  await page.waitForLoadState("networkidle").catch(() => undefined);
   await form.locator("input[type='email']").fill(email!);
   await form.locator("input[type='password']").fill(password!);
   await form.locator("button[type='submit']").click();

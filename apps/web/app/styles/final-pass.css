@@ -999,3 +999,7 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
 .compliance-pane-note { margin: 0; color: var(--ink-700); }
 .compliance-assistant { display: grid; gap: var(--space-2); justify-items: start; margin-block: var(--space-2); }
 @media (max-width: 900px) { .compliance-viewer { grid-template-columns: 1fr; } .compliance-pane iframe, .compliance-pane img { height: 60vh; } }
+/* Records & Photos folders: the Workspace tiles, then a way back from an open folder. */
+.records-folders { display: grid; gap: 16px; }
+.records-folder-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.records-folder-head h2 { margin: 0; font-size: var(--text-lg); }

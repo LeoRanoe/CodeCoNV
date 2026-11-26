@@ -8,7 +8,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { specServerRules } from "./generate-spec-server-rules.mjs";
 
-const file = new URL("../../../supabase/migrations/202611250008_close_verify_approve_dialog.sql", import.meta.url);
+const file = new URL("../../../supabase/migrations/202611250009_close_verify_approve_dialog.sql", import.meta.url);
 const sql = await readFile(file, "utf8");
 const json = JSON.stringify(specServerRules()).replace(/'/g, "''");
 // Only the literal inside spec_form_rules(); other functions of the migration also select a JSON literal.

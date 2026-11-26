@@ -218,6 +218,8 @@ test("Records & Photos, the register reports, the action views and document sett
   const archive = page.locator(".records-archive");
   await expect(archive.getByRole("heading", { name: "Records & Photos" })).toBeVisible();
   for (const section of [/Photo library/, /Attachments/, /Record history/, /Submitted forms/]) await openSection(page, ".records-archive", section);
+  // Submitted forms opens on the folders; All records is the flat list with its filters.
+  await archive.locator("[data-records-folder='all']").click();
   await expect(archive.getByLabel("Form type")).toBeVisible();
 
   await nav(page, "Reports");

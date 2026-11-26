@@ -4,7 +4,7 @@
 -- workbook itself marks as traceable (row 9.1: Cement & Binders, Concrete & Precast, Reinforcement & Structural Steel,
 -- Piles & Foundation Products; lib/forms/spec-forms.ts traceableMaterialGroups, kept identical by a unit test). For those
 -- groups a delivery can only be recorded as Accepted / Accepted with Comments when its latest signed compliance check
--- Complies (or Complies with comments). For every other group the rule of 202611250012 stays: a delivery whose latest
+-- Complies (or Complies with comments). For every other group the rule of 202611250013 stays: a delivery whose latest
 -- check does not comply cannot be accepted. A delivery is first registered with another result, checked in Rapid Verify,
 -- and accepted afterwards.
 

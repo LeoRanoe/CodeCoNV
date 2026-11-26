@@ -87,7 +87,7 @@ test("editing a document never rewrites what was answered", async () => {
 test("F16: the database's stage/action table is the approved sign-off profiles", async () => {
   const { readFile } = await import("node:fs/promises");
   const { signoffProfiles } = await import("../lib/forms/signoff.ts");
-  const sql = await readFile(new URL("../../../supabase/migrations/202611250006_signoff_without_reviewer.sql", import.meta.url), "utf8");
+  const sql = await readFile(new URL("../../../supabase/migrations/202611250007_signoff_without_reviewer.sql", import.meta.url), "utf8");
   const stored = JSON.parse(sql.match(/select \('(\{.*?\})'::jsonb\) -> p_profile;/s)[1]);
   const expected = Object.fromEntries(Object.values(signoffProfiles).map((profile) => [profile.code,
     Object.fromEntries(profile.stages.map((stage) => [String(stage.number), [...stage.actions]]))]));

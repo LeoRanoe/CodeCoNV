@@ -1,12 +1,14 @@
 "use client";
 
-import { Search } from "lucide-react";
+import { ArrowLeft, ArrowRight, Search } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useMemo, useState, type ReactNode } from "react";
 import { FormLogs } from "@/app/form-logs";
 import { formTabOrder } from "@/lib/forms/record-defaults.mjs";
+import { formIcons } from "@/app/forms/form-icons";
 import { SectionNav } from "@/app/section-nav";
+import { workspaceFolders } from "@/lib/records/workspace-folders";
 import { useLanguage } from "@/lib/i18n";
 import { buildRecordDirectory, filterRecordDirectory, recordKindTabs } from "@/lib/records/record-directory.mjs";
 import { statusText, typeText } from "@/lib/status-labels";
@@ -101,6 +103,8 @@ export function RecordsArchive({ client, projectId, data, buildings, photoLibrar
   const [section, setSection] = useState(requestedLog ? "formlogs" : "forms");
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState("");
+  /** The open folder (the same names as the Workspace); empty shows the folders themselves. */
+  const [folder, setFolder] = useState("");
   const [status, setStatus] = useState("");
   const [building, setBuilding] = useState("");
   const [from, setFrom] = useState("");
@@ -220,12 +224,36 @@ export function RecordsArchive({ client, projectId, data, buildings, photoLibrar
         ) : null}
       </section>
     );
-  } else {
+  } else if (!folder && !query.trim()) {
+    body = (
+      <section className="ui-panel records-folders">
+        <div className="workspace-launcher-grid client-workspace-grid" role="list" aria-label={text("Folders", "Mappen")}>
+          {workspaceFolders.map((item) => {
+            const Icon = formIcons[item.icon];
+            const count = item.kind ? directory.filter((entry) => formTypeOf(entry) === item.kind || entry.kind === item.kind).length : undefined;
+            return (
+              <button className="workspace-launcher-tile ui-list-row" type="button" role="listitem" data-records-folder={item.id} key={item.id}
+                onClick={() => { if (item.kind) { setKind(item.kind); setFolder(item.id); setShown(pageSize); } else setSection("photos"); }}>
+                <span className="workspace-launcher-icon"><Icon size={23} /></span>
+                {typeof count === "number" ? <span className="workspace-launcher-count" aria-hidden="true">{count}</span> : null}
+                <strong>{text(item.en, item.nl)}</strong>
+                <ArrowRight className="workspace-launcher-arrow" size={15} />
+              </button>
+            );
+          })}
+        </div>
+        <button className="ui-button ui-button--secondary ui-button--md" type="button" data-records-folder="all" onClick={() => setFolder("*")}>{text("All records", "Alle registraties")} ({directory.length})</button>
+      </section>
+    );  } else {
     body = (
       <section className="ui-panel">
+        <div className="records-folder-head">
+          <button className="ui-button ui-button--quiet ui-button--sm" type="button" data-records-folder="back" onClick={() => { setFolder(""); setKind(""); setQuery(""); setShown(pageSize); }}><ArrowLeft size={14} /> {text("Folders", "Mappen")}</button>
+          {folder && folder !== "*" ? <h2>{(() => { const open = workspaceFolders.find((item) => item.id === folder); return open ? text(open.en, open.nl) : ""; })()}</h2> : <h2>{text("All records", "Alle registraties")}</h2>}
+        </div>
         <div className="portal-filters">
           <label className="form-field"><span>{text("Form type", "Formuliertype")}</span>
-            <select value={kind} onChange={(event) => { setKind(event.target.value); setShown(pageSize); }}><option value="">{text("All", "Alle")}</option>{formTypes.map((value) => <option key={value} value={value}>{kindLabel(value)}</option>)}</select>
+            <select value={kind} onChange={(event) => { setKind(event.target.value); if (folder && folder !== "*") setFolder("*"); setShown(pageSize); }}><option value="">{text("All", "Alle")}</option>{formTypes.map((value) => <option key={value} value={value}>{kindLabel(value)}</option>)}</select>
           </label>
           <label className="form-field"><span>{text("Status", "Status")}</span>
             <select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">{text("All", "Alle")}</option>{statuses.map((value) => <option key={value} value={value}>{statusText(value, text)}</option>)}</select>

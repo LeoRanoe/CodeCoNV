@@ -5,7 +5,7 @@ import { specServerRules } from "../scripts/generate-spec-server-rules.mjs";
 import { specConditionHolds, specForms, specMissing } from "../lib/forms/spec-forms.ts";
 
 test("F03: the database's form rules are the rules of lib/forms/spec-forms.ts", async () => {
-  const sql = await readFile(new URL("../../../supabase/migrations/202611250008_close_verify_approve_dialog.sql", import.meta.url), "utf8");
+  const sql = await readFile(new URL("../../../supabase/migrations/202611250009_close_verify_approve_dialog.sql", import.meta.url), "utf8");
   const stored = JSON.parse(sql.slice(sql.indexOf("function app_private.spec_form_rules()")).match(/select '(\{.*?\})'::jsonb;\r?\n\$rules\$/s)[1].replace(/''/g, "'"));
   assert.deepEqual(stored, specServerRules());
 });

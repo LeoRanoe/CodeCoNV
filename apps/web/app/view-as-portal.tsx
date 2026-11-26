@@ -41,10 +41,10 @@ export function ViewAsPortal({ client, mode, projectId, onClose, ...rest }: Omit
   if (!parties.length) {
     return (
       <div className="portal-shell">
-        <main id="main-content" tabIndex={-1} className="portal-main">
+        <div className="portal-main">
           <p className="record-list-empty">{mode === "contractor" ? text("This project has no contractor to view as yet.", "Dit project heeft nog geen aannemer om als te bekijken.") : text("This project has no client to view as yet.", "Dit project heeft nog geen opdrachtgever om als te bekijken.")}</p>
           <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={onClose}>{text("Back", "Terug")}</button>
-        </main>
+        </div>
       </div>
     );
   }

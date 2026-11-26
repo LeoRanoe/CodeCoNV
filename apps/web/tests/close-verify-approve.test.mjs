@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { outcomeDetails, outcomeFields, outcomeReady, signoffOutcomeFields, signoffProfiles } from "../lib/forms/signoff.ts";
 import { specForms } from "../lib/forms/spec-forms.ts";
 
-const sql = await readFile(new URL("../../../supabase/migrations/202611250008_close_verify_approve_dialog.sql", import.meta.url), "utf8");
+const sql = await readFile(new URL("../../../supabase/migrations/202611250009_close_verify_approve_dialog.sql", import.meta.url), "utf8");
 const server = JSON.parse(sql.match(/function app_private\.signoff_outcome_fields\(\)[\s\S]*?select '(\{[\s\S]*?\})'::jsonb;/)[1]);
 
 test("the dialog's fields are the fields the database asks for, per profile and action", () => {
