@@ -63,7 +63,7 @@ async function createStackedFinding(page: Page, title: string) {
   await page.locator('[data-workspace-destination="issues"]').click();
   await expect(page.getByRole("heading", { name: "Create issue" })).toBeVisible();
   // The Issue sheet (PR #22): issue type and category are lists, priority a choice of four.
-  await page.getByRole("combobox", { name: /Issue type/ }).selectOption({ label: "Quality" });
+  await page.getByRole("radiogroup", { name: /Issue type/ }).getByRole("radio", { name: "Quality", exact: true }).check(); // pills since mockups v6 (#37)
   await page.getByRole("combobox", { name: /^Category/ }).first().selectOption({ index: 1 });
   await page.getByRole("radio", { name: "High", exact: true }).click();
   await page.getByRole("textbox", { name: "Title", exact: true }).fill(title);

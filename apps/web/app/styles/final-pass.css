@@ -1167,3 +1167,8 @@ html { scroll-padding-bottom: calc(var(--mobile-nav-height, 0px) + 96px); }
   .action-center-toolbar { align-items: center; flex-flow: row wrap; }
   .action-center-toolbar .action-center-search { flex: 1 1 100%; order: -1; }
 }
+
+/* OPUS-F19. Pills and segments are a thumb target on a phone and a tablet (44 px, gloves on site); 40 px from 1025 px. */
+@media (max-width: 1024px) {
+  .choice-tiles--chips .choice-tile, .choice-tiles--segmented .choice-tile, .choice-tile-multi { min-height: 44px; }
+}

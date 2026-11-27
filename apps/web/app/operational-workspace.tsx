@@ -1408,7 +1408,11 @@ function ProjectOperations({
    * emptied whenever another register form is opened, so a photo taken for a delivery is
    * never filed with the technical instruction that is opened next.
    */
+  // Whether a form was chosen for the registers tab (a tile, "New" of a form, a record): only then does the list
+  // narrow to that form. After a reload the tab does not know its form and lists every register, as before (OPUS-F02).
+  const [registerTypeChosen, setRegisterTypeChosen] = useState(false);
   const clearRegisterStaging = (type: string) => {
+    setRegisterTypeChosen(true);
     setRegisterForm({ ...emptyControlledDocumentDraft, type });
     setRegisterSpec({});
     setAgreementForm({ ...emptyAgreementSignature });
@@ -3620,7 +3624,7 @@ function ProjectOperations({
   // A Workspace tab opened on one of the client's forms lists that form's records only (OPUS-F02):
   // Works ongoing used to list every delivery, agreement, change order and instruction of the project.
   const registerListType = (focusRecordId && data.registerEntries.find((entry) => entry.id === focusRecordId)?.register_type) || registerForm.type;
-  const registerListFilter = !externalSubmissionIntent && workspacePageTitles[registerListType] ? registerListType : "";
+  const registerListFilter = !externalSubmissionIntent && (registerTypeChosen || focusRecordId) && workspacePageTitles[registerListType] ? registerListType : "";
   const inRegisterList = (entry: { register_type: string }) => !registerListFilter || entry.register_type === registerListFilter;
   const projectSections: Array<[Exclude<ProjectTab, "home">, string, number]> = ([
     ["inspections", text("Inspections", "Inspecties"), data.inspections.length],

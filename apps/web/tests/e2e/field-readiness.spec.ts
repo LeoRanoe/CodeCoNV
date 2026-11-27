@@ -212,11 +212,8 @@ test("desktop workspace exposes every client module through a working destinatio
   await expect(page.getByRole("heading", { name: "Actions", exact: true })).toBeVisible();
   await openWorkspace();
 
-  await page.locator(".workspace-support-strip").getByRole("button", { name: /Rapid Verify/ }).click();
-  await expect(page.getByRole("heading", { name: "Rapid Verify", exact: true })).toBeVisible();
-  await openWorkspace();
-
-  // Reports and Management are in the main navigation and are not repeated on the strip.
+  // Reports, Management, Rapid Verify and Project Documents are in the main navigation and are not repeated on the strip (OPUS-F06).
+  await expect(page.locator(".workspace-support-strip").getByRole("button", { name: /Rapid Verify|Project Docs|Assets & folders/ })).toHaveCount(0);
   await expect(page.locator(".workspace-support-strip").getByRole("button", { name: "Reports", exact: true })).toHaveCount(0);
   await expect(page.locator(".workspace-support-strip").getByRole("button", { name: /Submissions & management/ })).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
