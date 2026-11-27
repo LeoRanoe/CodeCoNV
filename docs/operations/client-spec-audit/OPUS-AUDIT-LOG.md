@@ -30,7 +30,7 @@ Severity: blocker (cannot work), major (wrong or very hard), minor. Evidence pat
 | F13 | Project Documents | desktop | supervisor | Titled "Project Docs" with a "← Workspace" button although it is a main menu; two orange buttons; the register's rows spread over the folder-list height (100 px gaps) | major | `tmp/audit-after2/.../06-project-documents.png` | fixed |
 | F14 | Workforce day list | desktop | supervisor | Rows without actions: title pushed right, state pill stretched under it | major | `03-04-workforce-form-full.png` | fixed in the shared row rule (to verify on screen) |
 | F15 | Actions | 1366x768 | supervisor | Fifth state tile alone on a second row; two pickers each a full row | minor | `04-actions.png` | fixed (to verify on screen) |
-| F16 | Contractor Portal | all | contractor | "New submission (RFI, RFA, WCR, inspection request)" lets a contractor create records; Word decision 1 says forms are filled in by Supervision only, Word 6.2 lists no contractor RFI | client question | `portal-app.tsx` | open: client question Q-1 (RFI/RFA are not one of the 15 forms; an earlier written request asked for contractor submissions) |
+| F16 | Contractor Portal | all | contractor | "New submission (RFI, RFA, WCR, inspection request)" lets a contractor create records; Word decision 1 says forms are filled in by Supervision only, Word 6.2 lists no contractor RFI | client question | `portal-app.tsx` | fixed 27-11-2026: the client answered Q-1 "follow the new document"; the button is gone (D-36) |
 | F17 | Workforce form | all | supervisor | Mockup 04 is one table (discipline, contractor, number), total, remarks, sign-off; ours is a party / trade picker with steppers, visitors, totals per organisation and trade, deviation, signature; no Record ID (Excel gap) | major (gap) | mockup 04 vs `03-04-workforce-form-full.png` | open: recommendation, larger than tonight |
 | F19 | Issue / HSE pills and segments | 390x844, 820x1180 | supervisor | Pills 40 px high: under the 44 px thumb rule (tap-targets spec failed on #37) | major | tap-targets error-context | fixed |
 | F20 | Works ongoing / any sheet form with segments | 390x844 | supervisor | Segmented controls broke words letter by letter ("Da y", "Ev eni ng", "W ee ke nd") | major | `tmp/audit-dr/en/390x844/supervisor/03-02-works-ongoing-form-full.png` | fixed: on a narrow card the segments wrap as whole words |
@@ -54,6 +54,22 @@ All eight viewports for the supervisor in English (`tmp/audit-pass2/en/`), and 1
 ## Pass 3 (dialogs)
 
 The popups and menus at 1280x720, 1366x768, 820x1180, 390x844 and 844x390 (record view, More actions, signing, drawing picker, project switcher, notifications, the phone "More" sheet), measured for fit, internal scroll and reachable last button (`tmp/audit-pass3/`). All fit or scroll inside; two defects found by eye: F30, F31.
+
+## Pass 4 (27-11-2026, the client: "the app is used on a desktop, follow the desktop layout we sent")
+
+The forms at 1440x900, 1366x768 and 1024x768 against mockups 01-15 (`tmp/desk-before/`, `tmp/desk-after/`).
+
+| # | Place | Before | After |
+|---|---|---|---|
+| D01 | Form header | Two headers: "← Workspace · project · title · count · Open log · New", then the form's own title with a Draft pill | One row as the mockups: the title, then "project › Workspace" (the way back); the second title is for screen readers only; number, date, author and status stay in the auto bar |
+| D02 | Segmented controls | Equal parts: a long option broke inside its word ("Weeken d") | As wide as their words, wrapping as a whole |
+| D03 | Location card | A list of every drawing of the building (about 500 px) | A "Drawing" dropdown with the drawing under it; the popup keeps the searchable list |
+| D04 | Action bar | "7 required left" with the full list on two lines and one button; no Cancel or Save draft on the register forms | One row: what is still needed (one line), Cancel, Save draft, and "Sign, submit & notify" (Excel Form Steps) on the sheet forms |
+| D05 | "Day log for the whole day" | A row of its own above the form | In the header beside "Open log" (an icon on a phone) |
+| D06 | Sign-off of Works ongoing / completed | A "Contractor representative" and a contractor signature under the supervisor's | Removed: "There is no contractor signature on Works Ongoing or Works Completed" (package key decision 2; mockups 02-03) |
+| D07 | Contractor Portal | "New submission (RFI, RFA, WCR, inspection request)" | Removed (Q-1 answered, D-36) |
+
+Not changed tonight (need a migration or a new form, `OPUS-AUDIT-REPORT.md` section 6): R1 Workforce table, R2 Inspection start, R3 drawing pin on the other forms, R8 Photos as a form.
 
 ## Shipped
 

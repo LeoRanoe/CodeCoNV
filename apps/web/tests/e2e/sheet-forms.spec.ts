@@ -44,14 +44,14 @@ const sheets: Array<{ tile: string; form: string; heading: string; save: RegExp;
   { tile: "ncr", form: "ncr", heading: "NCR", save: /^Submit NCR$/, first: ["Title", "NCR type", "Category", "Non-conformance description", "Discipline / work package", "Requirement reference"] },
   { tile: "hse", form: "hse", heading: "HSE", save: /^Submit issue$/, first: ["Title", "Issue type", "Category", "Person / contractor involved", "Observation / hazard description", "Date/time observed"] },
   { tile: "hse-incident", form: "hse_incident", heading: "HSE incident registration", save: /^Submit issue$/, first: ["Incident title", "Incident type", "Incident category", "Detailed event description", "Incident date/time"] },
-  { tile: "materials-delivery", form: "delivery", heading: "Materials delivery", save: /^Save register item$/, first: ["Title", "Purchase order / requisition", "Supplier", "Delivery note number", "Delivery date/time", "Material group"] },
+  { tile: "materials-delivery", form: "delivery", heading: "Materials delivery", save: /^Sign, submit & notify$/, first: ["Title", "Purchase order / requisition", "Supplier", "Delivery note number", "Delivery date/time", "Material group"] },
   { tile: "technical-instructions", form: "technical_instruction", heading: "Technical instructions", save: /^Create controlled document$/, first: ["Title", "Instruction type", "Discipline"] },
   { tile: "change-order", form: "change_order", heading: "Change order (CO)", save: /^Create controlled document$/, first: ["Change title", "Change type", "Change category", "Change description", "Reason for change", "Originator / requester"] },
   { tile: "delay-report", form: "delay_report", heading: "Project Delay Report (PDR)", save: /^Save delay report$/, first: ["Title", "Delay start date/time", "Affected activity"] },
   { tile: "lessons-learned", form: "lessons_learned", heading: "Lessons Learned (LL)", save: /^Save lesson learned$/, first: ["Title", "Project phase", "Lesson category", "Date recorded", "Situation / context", "What happened?"] },
   { tile: "agreements-made", form: "agreement", heading: "Agreements Made", save: /^Save agreement$/, first: ["Agreement / decision title", "Meeting / agreement date", "Meeting / source", "Agreed by", "Agreement type", "Agreement category"] },
-  { tile: "works-ongoing", form: "works_ongoing", heading: "Works ongoing", save: /^Save register item$/, first: ["Title", "Drawing location (PDF + pin)", "Building / area", "Exact location / grid / level", "Shift", "Weather"] },
-  { tile: "works-completed", form: "works_completed", heading: "Works completed", save: /^Save register item$/, first: ["Title", "Based on Works Ongoing record", "Completion date", "Work discipline", "Activity"] },
+  { tile: "works-ongoing", form: "works_ongoing", heading: "Works ongoing", save: /^Sign, submit & notify$/, first: ["Title", "Drawing location (PDF + pin)", "Building / area", "Exact location / grid / level", "Shift", "Weather"] },
+  { tile: "works-completed", form: "works_completed", heading: "Works completed", save: /^Sign, submit & notify$/, first: ["Title", "Based on Works Ongoing record", "Completion date", "Work discipline", "Activity"] },
 ];
 
 /** The label of each row of the sheet form, top to bottom: the title bar, then the rows of the numbered cards. */

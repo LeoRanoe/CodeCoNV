@@ -1219,3 +1219,72 @@ html { scroll-padding-bottom: calc(var(--mobile-nav-height, 0px) + 96px); }
    was drawn on top. The menu lines up with the right edge of its button, inside the card. */
 .more-actions-menu { left: auto; right: 0; }
 :is(.finding-card, .controlled-document-card, .record-row):has(.more-actions-menu:not([hidden])) { overflow: visible; position: relative; z-index: 6; }
+
+/* OPUS-D01 (client, 27-11-2026: "the app is used on a desktop, follow the desktop layout we sent"). Mockups 01-15 head a
+   form with one row: the form's title, then "project › Workspace". With a form open the module header becomes that row
+   ("Workspace" is the way back), and the form's own second title row is kept for screen readers only. The record's
+   number, date, author and status stand in the auto bar (a controlled document: its project information block) under it. */
+@media (min-width: 1024px) {
+  .workspace-section-controls--form { align-items: baseline; column-gap: var(--space-2); display: flex; flex-wrap: wrap; }
+  .workspace-section-controls--form > .workspace-current-module { align-items: baseline; display: flex; gap: var(--space-3); order: 0; padding: 0; }
+  .workspace-section-controls--form .workspace-current-module > h1 { order: 0; }
+  .workspace-section-controls--form .workspace-current-module > span { order: 1; }
+  .workspace-section-controls--form .workspace-current-module > span::after { content: " ›"; }
+  .workspace-section-controls--form .workspace-current-module > b { display: none; }
+  .workspace-section-controls--form > .workspace-back-button { background: transparent; border: 0; color: var(--ink-700); font-size: var(--text-sm); font-weight: var(--weight-normal); min-height: var(--control-h-sm); order: 1; padding: 0 var(--space-1); text-decoration: underline; text-underline-offset: 3px; }
+  .workspace-section-controls--form > .workspace-back-button > svg { display: none; }
+  .workspace-section-controls--form > .workspace-open-log { margin-left: auto; order: 2; }
+  .workspace-section-controls--form > .workspace-module-create { order: 3; }
+  .workspace-section-controls--form > .workspace-module-create:only-of-type { margin-left: auto; }
+  main:has(.workspace-section-controls--form) .record-form-shell:has(.form-auto-bar, .controlled-document-context) > .record-form-heading { clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; white-space: nowrap; width: 1px; }
+  main:has(.workspace-section-controls--form) .record-form-shell:has(.form-auto-bar, .controlled-document-context) > .record-form-heading .record-heading-draft { display: none; }
+}
+
+/* OPUS-D02. A segmented control is as wide as its words (mockup 02: Shift, Weather): the options shared the row in equal
+   parts, so a long option broke inside its word ("Weeken d"). An option wraps between its words, never inside one. */
+@media (min-width: 1024px) {
+  .choice-tiles--segmented .choice-tile { flex: 1 1 auto; }
+  .choice-tiles--segmented .choice-tile span { hyphens: none; overflow-wrap: normal; white-space: normal; word-break: normal; }
+}
+
+/* OPUS-D03. The Location card of mockups 02-15: a "Drawing" dropdown with the drawing under it, not a list of every
+   drawing of the building. */
+.drawing-inline-select { margin: 0 0 var(--space-3); }
+.drawing-inline-select small { color: var(--ink-700); font-size: var(--text-xs); }
+.drawing-location-inline:not(:has(.drawing-canvas-surface)) { min-height: 0; }
+
+/* OPUS-D04. The action bar of a form on a desktop is one row as in the mockups: what is still needed (one line), then
+   Cancel, Save draft and the one primary button. The bar does not size the form (contain): one line of needs is cut with "…". */
+@media (min-width: 1024px) {
+  .record-form-actions { contain: inline-size; flex-wrap: nowrap; }
+  .record-form-actions .confirm-needs { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .record-form-actions > .ui-button { flex: none; }
+}
+
+/* OPUS-D05. "Day log for the whole day" (Works ongoing / completed) stands in the header beside "Open log" instead of a row
+   of its own above the form; on a phone it is its icon, as "Open log" is. */
+@media (min-width: 640px) {
+  .workspace-section-controls { grid-template-columns: auto minmax(0, 1fr) auto auto auto; }
+  .workspace-section-controls > .workspace-day-log { grid-column: 3; grid-row: 1; }
+  .workspace-section-controls > .workspace-open-log { grid-column: 4; }
+  .workspace-section-controls > .workspace-module-create { grid-column: 5; }
+}
+@media (min-width: 1024px) {
+  .workspace-section-controls--form > .workspace-day-log { margin-left: auto; order: 2; }
+  .workspace-section-controls--form > .workspace-day-log ~ .workspace-open-log { margin-left: 0; }
+}
+@media (max-width: 640px) {
+  .workspace-day-log { min-width: var(--control-h-lg); padding-inline: var(--space-3); }
+  .workspace-day-log-label { clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
+}
+
+/* OPUS-D06. The Issue, NCR, HSE and HSE incident forms had a second header of their own ("← Create issue · Online · Save
+   draft", "Non-conformance report") under the one of OPUS-D01. On a desktop the header row is the module header: the back arrow is "Cancel" and
+   "Save draft" is in the action bar, the title stays for screen readers, and the sync chip shows only while offline,
+   when it is the way to send what waits on the device. */
+@media (min-width: 1024px) {
+  main:has(.workspace-section-controls--form) .operation-form-heading:has(+ .form-auto-bar) > :is(.record-back-button, .record-heading-draft, .record-sync-chip:not(.offline)) { display: none; }
+  main:has(.workspace-section-controls--form) .operation-form-heading:has(+ .form-auto-bar) > div:not(.record-form-heading-aside) { clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; white-space: nowrap; width: 1px; }
+  main:has(.workspace-section-controls--form) .operation-form-heading:has(+ .form-auto-bar):not(:has(.record-sync-chip.offline, .experimental-badge)) { border: 0; margin: 0; min-height: 0; padding: 0; }
+  main:has(.workspace-section-controls--form) .operation-form-heading:has(+ .form-auto-bar):has(.record-sync-chip.offline, .experimental-badge) { justify-content: flex-end; }
+}

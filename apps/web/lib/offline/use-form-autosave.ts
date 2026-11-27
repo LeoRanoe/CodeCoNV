@@ -116,7 +116,19 @@ export function useFormAutosave<Value>({
     setSavedAt(null);
   }, [id]);
 
-  return { status, savedAt, clear };
+  /** "Save draft" (mockups 01-15): write what is on the form now instead of after the pause. */
+  const saveNow = useCallback(() => {
+    if (finished.current) return;
+    pending.current = false;
+    baseline.current = safeStringify(valueRef.current);
+    setStatus("saving");
+    void saveFormDraft<Value>(id, valueRef.current).then((saved) => {
+      if (finished.current) return;
+      if (saved) { setSavedAt(new Date().toISOString()); setStatus("saved"); } else setStatus("idle");
+    });
+  }, [id]);
+
+  return { status, savedAt, clear, saveNow };
 }
 
 function safeStringify(value: unknown) {

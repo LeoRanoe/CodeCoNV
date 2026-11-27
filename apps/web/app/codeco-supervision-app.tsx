@@ -1775,69 +1775,6 @@ export function CodecoSupervisionApp() {
             if (project) chooseProject(project);
           }}
           onSignOut={() => void requestSignOut()}
-          submissionWorkspace={permissions.can("records.create") && selectedBuilding ? (
-    <OperationalWorkspace
-      mode="project"
-      client={supabase}
-      organizationId={activeOrganizationId!}
-      projectId={selectedProject!.id}
-      projectName={projectName}
-      projectCode={selectedProject!.code}
-      projectLocation={selectedProject?.location ?? ""}
-      buildingId={selectedBuilding!.id}
-      buildingName={buildingName}
-      buildings={selectedProject?.buildings ?? []}
-      reportId={dayQuery.data?.report?.id ? String(dayQuery.data.report.id) : null}
-      reportNumber={reportNumber}
-      reportStatus={String(dayQuery.data?.report?.status ?? "draft")}
-      projectStartAnswers={projectStartAnswers}
-      currentUserName={currentUserName}
-      currentUserId={session.user.id}
-      companyEmployees={companyEmployees}
-      parties={dayQuery.data?.parties ?? []}
-      canManageOrganization={canManageMembers}
-      openUserAdmin={() => setModal("user_admin")}
-      initialProjectTab="registers"
-      initialRecordPreset={projectTabPreset}
-      onRecordPresetConsumed={() => setProjectTabPreset(undefined)}
-      onProjectTabChange={setInitialProjectTab}
-      externalSubmissionIntent
-      actionCenterView={actionCenterView}
-      focusRecordId={focusRecordId}
-      clearFocusedRecord={() => setFocusRecordId("")}
-      initialCameraFiles={pendingQuickPhotos}
-      onInitialCameraFilesConsumed={() => setPendingQuickPhotos([])}
-      dailyForms={dailyForms}
-      projectActions={dayActions}
-      openProjectAction={(actionId) => {
-        const action = dayActions.find((item) => item.id === actionId);
-        if (!action) return;
-        // An action that is still waiting on the device has no central record to
-        // update yet; opening its detail would offer buttons that cannot work.
-        if (isPendingRecordId(action.id)) {
-          setToast(text("Not sent yet. It opens after sending.", "Nog niet verzonden. Opent na verzending."));
-          return;
-        }
-        setSelectedAction(action);
-        setModal("action_detail");
-      }}
-      createProjectAction={() => setModal("action_create")}
-      openProjectArea={(tab, recordId) => {
-        // "submissions" is Management deliberately unlocking the contractor
-        // document types; every other destination is a normal workspace module.
-        openWorkspaceModule(tab === "submissions" ? "registers" : tab);
-        // Both of these are cleared by navigate, so they are set after it.
-        setExternalSubmissionIntent(tab === "submissions");
-        // The action centre points at a record, so the module opens on that record
-        // instead of on the list it stands in.
-        setFocusRecordId(recordId ?? "");
-      }}
-      openActionCenter={(view = "work") => { navigate("acties"); setActionCenterView(view); }}
-      openRapidVerify={() => navigate("verify")}
-      openManagement={() => navigate("meer")}
-      openReportCheck={() => setModal("report")}
-    />
-          ) : null}
         />
         {signOutPrompt ? (
           <SignOutDialog

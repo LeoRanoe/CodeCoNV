@@ -2426,9 +2426,11 @@ function ProjectOperations({
    * internally; a contractor's own submission is already signed by the contractor.
    */
   const registerContractorSignatureApplies = sheetRegister
-    // Every sheet form ends with the contractor's signature beside the author's, except the
-    // lesson: "Contractor signature is not required by default" (LESSON-REVIEW).
-    ? !lessonsLearnedRegister && !agreementRegister
+    // A sheet form ends with the contractor's signature beside the author's, except the lesson
+    // ("Contractor signature is not required by default", LESSON-REVIEW) and Works Ongoing / Completed:
+    // "There is no contractor signature on Works Ongoing or Works Completed" (package v5 key decision 2,
+    // mockups 02 and 03 show the supervisor's card only).
+    ? !lessonsLearnedRegister && !agreementRegister && registerForm.type !== "works_ongoing" && registerForm.type !== "works_completed"
     : !changeOrderRegister && !delayReportRegister && !agreementRegister && !lessonsLearnedRegister && !submittedRegister;
   // Who the parties of an agreement can be: the own company, the signed-in supervisor
   // and every party of this project.
@@ -3800,7 +3802,7 @@ function ProjectOperations({
         </>
       ) : (
         <>
-          <div className="workspace-section-controls">
+          <div className={`workspace-section-controls${showForm && tab !== "documents" ? " workspace-section-controls--form" : ""}`}>
             {/* Project Documents is a main menu (Word 2), not a Workspace form: it has no way "back" to the Workspace (OPUS-F13). */}
             {tab !== "documents" ? <button className="workspace-back-button" type="button" onClick={() => switchTab("home")}><ArrowLeft size={17} aria-hidden="true" /> <span className="workspace-back-label">{text("Workspace", "Werkruimte")}</span></button> : null}
             <div className="workspace-current-module" aria-live="polite">
@@ -3809,6 +3811,11 @@ function ProjectOperations({
               <h1>{activeSectionLabel}</h1>
               <b>{activeSectionCount}</b>
             </div>
+            {/* The Works tiles open the workbook's activity record; the one-box day log the client used before stays
+                one tap away, in the header beside "Open log" (OPUS-D01). */}
+            {tab === "registers" && (registerForm.type === "works_ongoing" || registerForm.type === "works_completed") && !editingRegisterId ? <button className="ui-button ui-button--quiet ui-button--md workspace-day-log" type="button" onClick={() => { openDailyWork(registerForm.type === "works_completed" ? "works_completed" : "works_ongoing"); switchTab("daily"); setShowForm(true); }}>
+                <FileText size={15} aria-hidden="true" /> <span className="workspace-day-log-label">{text("Day log for the whole day", "Daglog voor de hele dag")}</span>
+              </button> : null}
             {activeFormLog ? <button className="ui-button ui-button--quiet ui-button--md workspace-open-log" type="button" onClick={openFormLog}><ScrollText size={15} aria-hidden="true" /> <span className="workspace-open-log-label">{text("Open log", "Open logboek")}</span></button> : null}
             {/* The "Switch module" dropdown used to sit here. The client wrote next to it: "ik
                 begrijp dit niet, misschien kan het weg". Every module is one tap away on the
@@ -4317,6 +4324,7 @@ function ProjectOperations({
               </RecordSignatures>
               <p className="form-helper">{text(`Entered by ${currentUserName}`, `Ingevoerd door ${currentUserName}`)}</p>
               <div className="record-form-actions">
+              <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => { resetFindingForm(); setShowForm(false); }}><X size={14} /> {text("Cancel", "Annuleren")}</button>
               <StillNeeded items={[
                 exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId ? text("exact location", "exacte locatie") : "",
                 !online && !findingPhotos.length ? text("a photo (you are offline)", "een foto (je bent offline)") : "",
@@ -4579,15 +4587,6 @@ function ProjectOperations({
 
       {tab === "registers" ? (
         <section className="operation-panel">
-          {/* The Works tiles open the workbook's activity record; the one-box day log the
-              client used before stays one tap away. */}
-          {(registerForm.type === "works_ongoing" || registerForm.type === "works_completed") && !editingRegisterId ? (
-            <div className="works-activity-record">
-              <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => { openDailyWork(registerForm.type === "works_completed" ? "works_completed" : "works_ongoing"); switchTab("daily"); setShowForm(true); }}>
-                <FileText size={15} /> {text("Day log for the whole day", "Daglog voor de hele dag")}
-              </button>
-            </div>
-          ) : null}
           {showForm ? (
             <RecordFormShell
               code={data.registerEntries.find((item) => item.id === editingRegisterId)?.entry_number}
@@ -5407,7 +5406,10 @@ function ProjectOperations({
                 ].filter(Boolean);
                 return registerMissing.length ? <small className="confirm-needs"><strong>{text(`${registerMissing.length} required left`, `Nog ${registerMissing.length} verplicht`)}</strong>: {registerMissing.join(" · ")} · {text("auto-saved", "automatisch bewaard")}</small> : null;
               })()}
-              <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !registerLocationNodeId) || registerTitle.length < 3 || (sheetRegister ? sheetRegisterMissing.length > 0 : !controlledFormReady || !lessonFormReady || !delayReportFormReady) || registerSpecProblems.length > 0} onClick={registerSigning.request}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : agreementRegister ? text("Save agreement", "Afspraak opslaan") : lessonsLearnedRegister ? text("Save lesson learned", "Geleerde les opslaan") : delayReportRegister ? text("Save delay report", "Vertragingsrapport opslaan") : text("Save register item", "Registeritem opslaan")}</button>{registerSigning.dialog}
+              {/* Mockups 01-15: Cancel and Save draft beside the one primary button, as on the Issue and HSE forms. */}
+              <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => setShowForm(false)}><X size={14} /> {text("Cancel", "Annuleren")}</button>
+              {!editingRegisterId ? <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={registerAutosave.saveNow}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button> : null}
+              <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !registerLocationNodeId) || registerTitle.length < 3 || (sheetRegister ? sheetRegisterMissing.length > 0 : !controlledFormReady || !lessonFormReady || !delayReportFormReady) || registerSpecProblems.length > 0} onClick={registerSigning.request}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : agreementRegister ? text("Save agreement", "Afspraak opslaan") : lessonsLearnedRegister ? text("Save lesson learned", "Geleerde les opslaan") : delayReportRegister ? text("Save delay report", "Vertragingsrapport opslaan") : sheetRegister ? text("Sign, submit & notify", "Ondertekenen, indienen & melden") : text("Save register item", "Registeritem opslaan")}</button>{registerSigning.dialog}
               </div>
             </RecordFormShell>
           ) : null}

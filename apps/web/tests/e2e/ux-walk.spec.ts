@@ -85,7 +85,7 @@ for (const size of sizes) {
     await step("sign popup", async () => {
       await form("works-ongoing");
       await fillSpecFields(page.locator(".record-form-shell, [data-sheet-form]").first());
-      await page.locator("main").getByRole("button", { name: /Save register item|Save/ }).last().click();
+      await page.locator("main").getByRole("button", { name: /Save register item|Sign, submit|^Save (?!draft)/ }).last().click();
       await page.locator(".signature-modal").waitFor({ state: "visible", timeout: 15_000 });
       await shoot("12-sign-popup");
       await page.keyboard.press("Escape");

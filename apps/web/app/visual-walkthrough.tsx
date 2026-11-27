@@ -142,7 +142,7 @@ const tours: Record<GuideAudience, readonly Tour[]> = {
       w("The item shows Acknowledged or Response submitted, and History lists your response.", "Het item toont Bevestigd of Reactie ingediend en Historie vermeldt je reactie.")),
     tour("responses", "responses", undefined, w("Correct a returned response", "Herstel een teruggestuurde reactie"), [w("Responses & submissions", "Reacties & indieningen")],
       w("Open Responses & submissions and find the returned item. Read the reviewer's comment.", "Open Reacties & indieningen en zoek het teruggestuurde item. Lees de opmerking van de beoordelaar."),
-      [w("Update the response, attach the revised evidence and resubmit. New submission sends an RFI, RFA, WCR or inspection request.", "Werk de reactie bij, voeg aangepast bewijs toe en dien opnieuw in. Nieuwe indiening verstuurt een RFI, RFA, WCR of inspectieverzoek.")],
+      [w("Update the response, attach the revised evidence and resubmit.", "Werk de reactie bij, voeg aangepast bewijs toe en dien opnieuw in.")],
       w("History keeps both rounds. CODECO verifies completed work; you cannot close it yourself.", "Historie bewaart beide rondes. CODECO verifieert afgerond werk; jij kunt het niet zelf sluiten.")),
     tour("pending", "pending", undefined, w("Work through deadlines", "Volg deadlines op"), [w("Dashboard", "Dashboard"), w("Pending actions", "Openstaande acties")],
       w("Start on the Dashboard: awaiting your response, overdue, returned and due within 7 days.", "Begin op het Dashboard: wacht op jouw reactie, te laat, teruggestuurd en binnen 7 dagen."),

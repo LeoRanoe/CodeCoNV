@@ -86,11 +86,11 @@ Ordered by what a supervisor feels first. None of these is a layout defect; each
 | R7 | Lists that need a server-rule migration: Change Order time unit has "Hours" (Excel: Calendar / Working days); HSE incident severity scale (Excel: Level 1-5) | Excel CO row 17, HSE incident | The option lists are stored in `app_private.spec_form_rules()` (migration 202611250009 is checked by a unit test) | 2 hours + migration |
 | R8 | Photos as a form (mockup 01): per-photo title, classification pills, related record, sign-off profile | Mockup 01, Excel Photos | Photo flow and its stored fields | 1 day |
 | R9 | The tablet in landscape at exactly 1024 px gets the phone layout (bottom bar) instead of the sidebar | Word 16 ("tablet landscape") | The 1024 px breakpoint is shared by hundreds of rules | ½ day |
-| R10 | Form header as the mockups (one header: icon, title, "project › Workspace", Draft, time estimate) instead of the module header plus the form's own title | Mockups 01-15 | Visual only, but on every form; worth one careful pass | ½ day |
+| R10 | Form header as the mockups (one header: icon, title, "project › Workspace", Draft, time estimate) instead of the module header plus the form's own title | Mockups 01-15 | Visual only, but on every form; worth one careful pass | ½ day Done 27-11-2026 (pass 4, D-37). |
 
 ## 7. Client questions
 
-- Q-1 (F16): may a contractor create RFI, RFA, WCR and inspection requests in the Contractor Portal? Word v2.0 decision 1 says all forms are filled in by Supervision only; Word 6.2 lists no contractor RFI; an earlier written request (20-11-2026) asked for contractor submissions. Default kept: the button stays.
+- Q-1 (F16): may a contractor create RFI, RFA, WCR and inspection requests in the Contractor Portal? Word v2.0 decision 1 says all forms are filled in by Supervision only; Word 6.2 lists no contractor RFI; an earlier written request (20-11-2026) asked for contractor submissions. Answered 27-11-2026: "follow the new document". The button is gone (D-36).
 
 ## 8. What was verified, and what was not
 
