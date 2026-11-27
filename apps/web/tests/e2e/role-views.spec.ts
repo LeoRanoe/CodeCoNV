@@ -116,7 +116,7 @@ test("a client reads and signs; nothing offers to write", async ({ page }, testI
   await openWorkspaceModule(page, "Issues");
   // The module opens on its list: there is no form to fill in and no "New" button.
   await expect(page.getByRole("button", { name: /^New$/ })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /Submit issue|Save draft/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Submit issue|Sign, submit|Save draft/ })).toHaveCount(0);
 
   if (desktop) {
     await expect(modules(page).filter({ hasText: "Management" })).toHaveCount(1);
@@ -169,11 +169,11 @@ test("Management offers a contractor and a client only what their role may do", 
   await expect(page.locator(".portal-shell")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Management overview" })).toHaveCount(0);
   for (const name of admin) await expect(page.getByRole("button", { name: new RegExp(name) }), `contractor: ${name}`).toHaveCount(0);
-  // The contractor's own way to submit a document stays, inside its portal.
+  // Word v2.0: Supervision fills in every form; the contractor only responds, so its portal has no way to create one.
   const responses = page.getByRole("tab", { name: /Responses & submissions/ }).first();
   if (!(await responses.isVisible().catch(() => false))) await page.locator(".portal-main button[aria-haspopup='true']").first().click();
   await page.getByRole("tab", { name: /Responses & submissions/ }).first().click();
-  await expect(page.getByRole("button", { name: /New submission/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /New submission/ })).toHaveCount(0);
 
   await page.context().clearCookies();
   await page.evaluate(() => localStorage.clear());

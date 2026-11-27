@@ -256,7 +256,7 @@ for (const role of roles) {
         });
         await step("dialog-drawing", async () => {
           await openForm("works-ongoing");
-          await page.locator(".sheet-drawing-location > button").first().click();
+          await page.locator(".sheet-drawing-tools > button").first().click();
           await page.getByRole("dialog").first().waitFor({ state: "visible", timeout: 10_000 });
           await shoot("18-dialog-drawing-picker");
           await page.keyboard.press("Escape");

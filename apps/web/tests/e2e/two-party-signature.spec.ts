@@ -66,11 +66,11 @@ test("technical instruction: the issuer signs as themself, the recipient signs t
 
   // The issuer's name on the signature is the account's own name; it cannot be typed over.
   // (The contractor's own signature box stands beside it since 19-11-2026.)
-  await form.locator(".signature-field").filter({ hasText: "Sign as the author of this document" }).getByRole("button", { name: "Sign now" }).click();
+  await form.locator(".signature-field").filter({ hasText: "Issuing supervisor" }).getByRole("button", { name: "Sign now" }).click();
   await expect(page.locator(".signature-modal input").first()).toHaveAttribute("readonly", "");
   await drawSignature(page);
   await fillSpecFields(page.locator(".record-form-shell").first());
-  await form.getByRole("button", { name: "Create controlled document" }).click();
+  await form.getByRole("button", { name: "Issue & notify contractor" }).click();
 
   const card = page.locator(".controlled-document-card").filter({ hasText: title }).first();
   await expect(card).toBeVisible({ timeout: 20_000 });
@@ -148,14 +148,14 @@ test("change order: title and description once, one issuer signature, contractor
   await sheet.locator("[data-sheet-slot='description'] textarea").fill("Add a second row of cast-in anchors along gridline C.");
 
   // Issuer: the account's own name. Contractor: a different person, signing on this device.
-  await form.locator(".signature-field").filter({ hasText: "Sign as the author of this document" }).getByRole("button", { name: "Sign now" }).click();
+  await form.locator(".signature-field").filter({ hasText: "Originator" }).getByRole("button", { name: "Sign now" }).click();
   await expect(page.locator(".signature-modal input").first()).toHaveAttribute("readonly", "");
   await drawSignature(page);
   await form.locator("label.form-field").filter({ hasText: "Contractor representative" }).locator("input").fill("Cees Contractor");
   await form.locator(".signature-field").filter({ hasText: "Signature · contractor" }).getByRole("button", { name: "Sign now" }).click();
   await drawSignature(page);
   await fillSpecFields(page.locator(".record-form-shell").first());
-  await form.getByRole("button", { name: "Create controlled document" }).click();
+  await form.getByRole("button", { name: "Sign, submit & notify" }).click();
 
   const card = page.locator(".controlled-document-card").filter({ hasText: title }).first();
   await expect(card).toBeVisible({ timeout: 20_000 });

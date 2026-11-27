@@ -1231,7 +1231,7 @@ test("processes the annotated screens of 1 August: NCR form, agreement and deadl
   assert.doesNotMatch(workspace, /Reference checklist \/ earlier report|Referentiechecklist \/ eerder rapport/);
   assert.match(workspace, /Description of non-conformance|Omschrijving van de afwijking/);
   assert.match(workspace, /Recommended action by engineer|Aanbevolen actie door de ingenieur/);
-  assert.match(workspace, /Sign as the engineer who issues this NCR|Ondertekenen als ingenieur/);
+  assert.match(workspace, /text\("NCR issuer", "Uitgever NCR"\)/);
   // Replaced by the workbook sheet layout (20-11-2026): assert.match(workspace, /text\("Remarks", "Opmerkingen"\)/);
   // Replaced by the workbook sheet layout (20-11-2026): assert.match(workspace, /Contractor · receives this NCR|Aannemer · ontvangt deze NCR/);
   assert.match(workspace, /ncr-form-boxes/);
@@ -1853,7 +1853,7 @@ test("processes the feedback of 4 August: photos first, written signatures, an N
   assert.match(signaturePad, /export function SignaturePad/);
   assert.match(signaturePad, /export function SignatureField/);
   assert.match(signaturePad, /toDataURL\("image\/png"\)/);
-  assert.match(operations, /<SignatureField[\s\S]{0,400}Sign as the engineer who issues this NCR/);
+  assert.match(operations, /<SignatureField[\s\S]{0,400}NCR issuer/);
   assert.match(operations, /<SignatureField[\s\S]{0,400}Sign as the author of this document|<SignatureField[\s\S]{0,400}Signature on the submitted form/);
   assert.match(agreement, /<SignatureField/);
   assert.doesNotMatch(agreement, /type="checkbox"/);
@@ -2097,7 +2097,7 @@ test("processes the annotated screens of 4 August: ordered photos, a named pin, 
   // Replaced by the workbook sheet layout (20-11-2026): assert.match(operations, /<SpecFields form="ncr" only=\{\["ncr_type", "ncr_category", "discipline"\]\}/);
   assert.doesNotMatch(operations, /Different impact or action|Andere impact of actie/);
   // The issue form is signed too: the client wrote "signature" beside it.
-  assert.match(operations, /Sign as the supervisor who reports this issue|Ondertekenen als supervisor die dit issue meldt/);
+  assert.match(operations, /text\("Recording supervisor", "Vastleggende supervisor"\)/);
 
   // #21: Workforce counts people per contractor and per trade, on its own page.
   assert.match(app, /renderWorkforce: \(\{ close \}\) =>/);
@@ -2252,7 +2252,7 @@ test("builds the HSE observation / issue screen the client sent, section by sect
   ];
   // 20-11-2026: every Workspace form is its workbook sheet, row by row (lib/forms/spec-forms.ts sheetLayouts).
   assert.ok(sections.length);
-  assert.match(operations, /form=\{hseSpecForm\}[\s\S]{0,200}onChange=\{changeHseSpec\}[\s\S]{0,120}slots=\{\{/);
+  assert.match(operations, /form=\{hseSpecForm\}[\s\S]{0,200}onChange=\{changeHseSpec\}[\s\S]{0,3000}slots=\{\{/);
 
   // Section 1 is a grid of tiles, and each tile keeps saying both what the client's form
   // files it under and what kind of event it is.
@@ -2376,7 +2376,7 @@ test("gives the issue screen the same sections the client drew for it", async ()
   ];
   // 20-11-2026: every Workspace form is its workbook sheet, row by row (lib/forms/spec-forms.ts sheetLayouts).
   assert.ok(sections.length);
-  assert.match(operations, /form="issue"[\s\S]{0,200}onChange=\{changeFindingSpec\}[\s\S]{0,120}slots=\{\{/);
+  assert.match(operations, /form="issue"[\s\S]{0,200}onChange=\{changeFindingSpec\}[\s\S]{0,3000}slots=\{\{/);
 
   // Section 1 is the tile grid of the client's issue screen, with the kinds it files under.
   assert.match(operations, /const issueTypeTiles = \[/);

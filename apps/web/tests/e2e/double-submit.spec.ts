@@ -48,7 +48,7 @@ test("two taps on 'Create controlled document' create one document", async ({ pa
   await form.locator("[data-sheet-slot='description'] textarea").fill(title);
 
   await fillSpecFields(page.locator(".record-form-shell").first());
-  const create = page.getByRole("button", { name: "Create controlled document" });
+  const create = page.getByRole("button", { name: "Issue & notify contractor" });
   await expect(create).toBeEnabled();
   await create.evaluate((button: HTMLButtonElement) => { button.click(); button.click(); });
   // A form with a signature field opens the signing popup first; the second tap must not open a second record.

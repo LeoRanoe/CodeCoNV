@@ -64,7 +64,7 @@ test("the day overview exports every Workspace form of the day as PDF and Word",
   // The fixture project has no storage locations configured (an administrator maintains that list), so the delivery is not stored on site.
   const storedOnSite = form.locator("[data-spec-field='stored_on_site'] input");
   if (await storedOnSite.isVisible().catch(() => false)) await storedOnSite.uncheck();
-  await page.getByRole("button", { name: "Save register item" }).click();
+  await page.getByRole("button", { name: "Sign, submit & notify" }).click();
   await finishSigning(page);
   await expect(page.getByText(/saved/i).first()).toBeVisible();
 

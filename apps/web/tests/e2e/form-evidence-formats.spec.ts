@@ -94,7 +94,7 @@ test("the Issue form takes every approved photo format, previews it, marks one a
 
   await page.getByPlaceholder("First and last name").fill("Demo Hoofdaannemer");
   await fillSpecFields(page.locator(".record-form-shell").first());
-  await page.getByRole("button", { name: "Submit issue" }).click();
+  await page.getByRole("button", { name: "Sign, submit & notify" }).click();
   await finishSigning(page);
   await expect(page.locator(".operation-alert.success")).toContainText(/Issue|saved|secured/i, { timeout: 120_000 });
 

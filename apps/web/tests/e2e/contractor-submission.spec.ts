@@ -1,10 +1,9 @@
 import { expect, type Page, test } from "@playwright/test";
-import { fillSpecFields } from "./spec-fill";
 
 /**
- * QA sweep H1. A contractor has no right to create a day report, yet every save first asked
- * for one, so an RFI came back 403 and the screen stayed silent. The contractor submits an
- * RFI, sees it in the list, and a refused save says why.
+ * Word v2.0, key decision 1 (client, 27-11-2026): every form is filled in and submitted by Supervision only. The
+ * contractor only responds (acknowledge, comment, upload evidence, witness / sign where the Sign-off sheet says), so
+ * its portal offers no way to create an RFI, RFA, WCR or inspection request (OPUS-F16, Q-1).
  *
  * Runs against the local fixture stack with the accounts from seed-ui-demo-data.mjs.
  */
@@ -35,71 +34,13 @@ async function signIn(page: Page) {
   await page.waitForLoadState("networkidle").catch(() => undefined);
 }
 
-async function openSubmissionForm(page: Page) {
+test("a contractor responds in its portal but cannot create a form", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-office", "The portal offers the same on every viewport.");
+  await signIn(page);
   const tab = page.getByRole("tab", { name: /Responses & submissions/ }).first();
   if (!(await tab.isVisible().catch(() => false))) await page.locator(".portal-main button[aria-haspopup='true']").first().click();
   await page.getByRole("tab", { name: /Responses & submissions/ }).first().click();
-  await page.getByRole("button", { name: /New submission/ }).click();
-  await expect(page.locator(".controlled-document-form")).toBeVisible();
-}
-
-async function drawSignature(page: Page) {
-  const canvas = page.locator(".signature-canvas");
-  const box = (await canvas.boundingBox())!;
-  await page.mouse.move(box.x + 30, box.y + box.height * 0.7);
-  await page.mouse.down();
-  for (let step = 1; step <= 12; step += 1) {
-    await page.mouse.move(box.x + 30 + step * 22, box.y + box.height * (0.7 - Math.sin(step / 2) * 0.3));
-  }
-  await page.mouse.up();
-  await page.getByRole("button", { name: "Sign the document" }).click();
-  await expect(page.locator(".signature-modal")).toHaveCount(0);
-}
-
-test("a contractor submits an RFI and sees it in the register", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop-office", "The submission flow is the same on every viewport.");
-  test.setTimeout(150_000);
-  const title = `Contractor RFI ${Date.now().toString(36)}`;
-  const dayReportRequests: Array<{ url: string; status: number }> = [];
-  page.on("response", (response) => {
-    if (/\/rpc\/(create_day_report|ensure_day_report_for_record)/.test(response.url())) {
-      dayReportRequests.push({ url: response.url(), status: response.status() });
-    }
-  });
-
-  await signIn(page);
-  await openSubmissionForm(page);
-  const form = page.locator(".controlled-document-form");
-  await form.locator(".controlled-document-primary input").fill(title);
-  await form.locator(".controlled-document-primary textarea").fill("Which anchor type applies in the stair core?");
-  await form.getByRole("combobox", { name: "To", exact: true }).selectOption({ index: 1 });
-  await form.getByLabel("Submitted by · name on the form").fill("P. Aannemer");
-  await form.getByLabel("Position").fill("Site manager");
-  await form.locator(".signature-field").getByRole("button", { name: "Sign now" }).click();
-  await drawSignature(page);
-
-  await fillSpecFields(page.locator(".record-form-shell").first());
-  const create = page.getByRole("button", { name: "Create controlled document" });
-  await expect(create).toBeEnabled();
-  await create.click();
-
-  await expect(page.locator(".operation-alert.error")).toHaveCount(0);
-  await expect(page.getByText(/RFI.*saved\./)).toBeVisible();
-  // One request per tap, answered with 200, never the 403 of the old create_day_report.
-  expect(dayReportRequests.length, "one day-report request per save").toBe(1);
-  expect(dayReportRequests[0].url).toContain("ensure_day_report_for_record");
-  expect(dayReportRequests[0].status).toBe(200);
-
-  // The form closes once the document is saved and its draft is gone.
-  await expect(page.locator(".controlled-document-form")).toHaveCount(0);
-
-  await page.reload();
-  const projectCard = page.getByRole("button", { name: new RegExp(projectName) }).first();
-  if (await projectCard.isVisible().catch(() => false)) await projectCard.click();
   await expect(page.locator(".portal-shell")).toBeVisible();
-  await openSubmissionForm(page);
-  // With the form open, the saved records fold shut under one bar (client, 19-11-2026).
-  const fold = page.locator("details.saved-records-fold").first();
-  if (await fold.count() && !(await fold.evaluate((element) => (element as HTMLDetailsElement).open))) await fold.locator("summary").click();
-  await expect(page.locator("main").getByText(title).first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("button", { name: /New submission/ })).toHaveCount(0);
+  await expect(page.locator(".controlled-document-form, .record-form-shell")).toHaveCount(0);
 });

@@ -1044,12 +1044,6 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
 .sheet-workflow { align-items: center; color: var(--text); display: flex; flex-wrap: wrap; font-size: var(--text-sm); gap: var(--space-1) var(--space-2); margin: 0; }
 .sheet-role { background: var(--ink-100); border-radius: var(--radius-sm); font-weight: var(--weight-semibold); padding: 2px var(--space-2); }
 .sheet-role--supervision { background: var(--signal-soft); color: var(--signal-dark); }
-/* The signatures continue the Sign-off card: supervision's own card outlined in orange, the counterpart beside it. */
-.sheet-form + .record-signatures { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-card); margin-top: calc(var(--space-4) * -1); padding: var(--space-4) var(--space-5) var(--space-5); }
-.sheet-form + .record-signatures > h3 { display: none; }
-.sheet-form + .record-signatures .record-signatures-grid { align-items: stretch; }
-.sheet-form + .record-signatures .signature-field { border: 2px solid var(--signal); border-radius: var(--radius-card); height: 100%; padding: var(--space-4); }
-.sheet-form + .record-signatures .contractor-signature-field .signature-field { border: 2px dashed var(--ink-400); }
 
 
 /* Rapid Verify compliance check: the bestek and the submittal side by side (Word 10.1). */
@@ -1219,3 +1213,158 @@ html { scroll-padding-bottom: calc(var(--mobile-nav-height, 0px) + 96px); }
    was drawn on top. The menu lines up with the right edge of its button, inside the card. */
 .more-actions-menu { left: auto; right: 0; }
 :is(.finding-card, .controlled-document-card, .record-row):has(.more-actions-menu:not([hidden])) { overflow: visible; position: relative; z-index: 6; }
+
+/* OPUS-D01 (client, 27-11-2026: "the app is used on a desktop, follow the desktop layout we sent"). Mockups 01-15 head a
+   form with one row: the form's title, then "project › Workspace". With a form open the module header becomes that row
+   ("Workspace" is the way back), and the form's own second title row is kept for screen readers only. The record's
+   number, date, author and status stand in the auto bar (a controlled document: its project information block) under it. */
+@media (min-width: 1024px) {
+  .workspace-section-controls--form { align-items: baseline; column-gap: var(--space-2); display: flex; flex-wrap: wrap; }
+  .workspace-section-controls--form > .workspace-current-module { align-items: baseline; display: flex; gap: var(--space-3); order: 0; padding: 0; }
+  .workspace-section-controls--form .workspace-current-module > h1 { order: 0; }
+  .workspace-section-controls--form .workspace-current-module > span { order: 1; }
+  .workspace-section-controls--form .workspace-current-module > span::after { content: " ›"; }
+  .workspace-section-controls--form .workspace-current-module > b { display: none; }
+  .workspace-section-controls--form > .workspace-back-button { background: transparent; border: 0; color: var(--ink-700); font-size: var(--text-sm); font-weight: var(--weight-normal); min-height: var(--control-h-sm); order: 1; padding: 0 var(--space-1); text-decoration: underline; text-underline-offset: 3px; }
+  .workspace-section-controls--form > .workspace-back-button > svg { display: none; }
+  .workspace-section-controls--form > .workspace-open-log { order: 2; }
+  .workspace-section-controls--form > .workspace-module-create { order: 3; }
+  .workspace-section-controls--form > .workspace-module-create:only-of-type { margin-left: auto; }
+  main:has(.workspace-section-controls--form) .record-form-shell:has(.form-auto-bar, .controlled-document-context) > .record-form-heading { clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; white-space: nowrap; width: 1px; }
+  main:has(.workspace-section-controls--form) .record-form-shell:has(.form-auto-bar, .controlled-document-context) > .record-form-heading .record-heading-draft { display: none; }
+}
+
+/* OPUS-D02. A segmented control is as wide as its words (mockup 02: Shift, Weather): the options shared the row in equal
+   parts, so a long option broke inside its word ("Weeken d"). An option wraps between its words, never inside one. */
+@media (min-width: 1024px) {
+  .choice-tiles--segmented .choice-tile { flex: 1 1 auto; }
+  .choice-tiles--segmented .choice-tile span { hyphens: none; overflow-wrap: normal; white-space: normal; word-break: normal; }
+}
+
+/* OPUS-D03. The Location card of mockups 02-15: a "Drawing" dropdown with the drawing under it, not a list of every
+   drawing of the building. */
+.drawing-inline-select { margin: 0 0 var(--space-3); }
+.drawing-inline-select small { color: var(--ink-700); font-size: var(--text-xs); }
+.drawing-location-inline:not(:has(.drawing-canvas-surface)) { min-height: 0; }
+
+/* OPUS-D04. The action bar of a form on a desktop is one row as in the mockups: what is still needed (one line), then
+   Cancel, Save draft and the one primary button. The bar does not size the form (contain): one line of needs is cut with "…". */
+@media (min-width: 1024px) {
+  .record-form-actions { contain: inline-size; flex-wrap: nowrap; }
+  .record-form-actions .confirm-needs { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .record-form-actions > .ui-button { flex: none; }
+}
+
+/* OPUS-D05. "Day log for the whole day" (Works ongoing / completed) stands in the header beside "Open log" instead of a row
+   of its own above the form; on a phone it is its icon, as "Open log" is. */
+@media (min-width: 640px) {
+  .workspace-section-controls { grid-template-columns: auto minmax(0, 1fr) auto auto auto; }
+  .workspace-section-controls > .workspace-day-log { grid-column: 3; grid-row: 1; }
+  .workspace-section-controls > .workspace-open-log { grid-column: 4; }
+  .workspace-section-controls > .workspace-module-create { grid-column: 5; }
+}
+@media (min-width: 1024px) {
+  .workspace-section-controls--form > .workspace-day-log { order: 2; }
+  .workspace-section-controls--form > .workspace-day-log ~ .workspace-open-log { margin-left: 0; }
+}
+@media (max-width: 640px) {
+  .workspace-day-log { min-width: var(--control-h-lg); padding-inline: var(--space-3); }
+  .workspace-day-log-label { clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
+}
+
+/* OPUS-D06. The Issue, NCR, HSE and HSE incident forms had a second header of their own ("← Create issue · Online · Save
+   draft", "Non-conformance report") under the one of OPUS-D01. On a desktop the header row is the module header: the back arrow is "Cancel" and
+   "Save draft" is in the action bar, the title stays for screen readers, and the sync chip shows only while offline,
+   when it is the way to send what waits on the device. */
+@media (min-width: 1024px) {
+  main:has(.workspace-section-controls--form) .operation-form-heading:has(+ .form-auto-bar) > :is(.record-back-button, .record-heading-draft, .record-sync-chip:not(.offline)) { display: none; }
+  main:has(.workspace-section-controls--form) .operation-form-heading:has(+ .form-auto-bar) > div:not(.record-form-heading-aside) { clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; white-space: nowrap; width: 1px; }
+  main:has(.workspace-section-controls--form) .operation-form-heading:has(+ .form-auto-bar):not(:has(.record-sync-chip.offline, .experimental-badge)) { border: 0; margin: 0; min-height: 0; padding: 0; }
+  main:has(.workspace-section-controls--form) .operation-form-heading:has(+ .form-auto-bar):has(.record-sync-chip.offline, .experimental-badge) { justify-content: flex-end; }
+}
+
+/* OPUS-D07. Mockups 01-15: the signatures stand in the last card, "Sign-off / review workflow", under its workflow line,
+   as cards side by side: the role chip and the role, a signing box ("Sign now" opens the pad), the name and the
+   declaration. Supervision's card is outlined in orange, the counterpart's is dashed (signed on the tablet). */
+.sheet-signoff { margin-top: var(--space-3); }
+.sheet-signoff .record-signatures { border-top: 0; margin: 0; padding: 0; }
+.sheet-signoff .record-signatures > h3 { clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
+.sheet-signoff .record-signatures-grid { align-items: stretch; grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr)); }
+.sheet-signoff .record-signatures-grid > .record-form-field-block { display: block; }
+.sheet-signoff .record-form-field-signature > .record-form-field-copy { clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
+.sheet-signoff .signature-field { background: var(--paper); border: 2px solid var(--signal); border-radius: var(--radius-card); height: 100%; padding: var(--space-4); }
+.sheet-signoff .contractor-signature-field { background: var(--paper); border: 2px dashed var(--ink-400); border-radius: var(--radius-card); padding: var(--space-4); }
+.sheet-signoff .contractor-signature-field > .signature-field { border: 0; height: auto; order: -1; padding: 0; }
+.sheet-signoff .signature-field-copy { align-items: baseline; column-gap: var(--space-2); display: flex; flex-wrap: wrap; }
+.sheet-signoff .signature-field-copy strong { font-size: var(--text-md); }
+.sheet-signoff .signature-field-copy small { flex: 1 1 100%; }
+.sheet-signoff .signature-field-party { font-size: var(--text-xs); }
+.sheet-signoff .signature-open-button { border: 1px dashed var(--ink-400); justify-content: center; justify-self: stretch; min-height: 6rem; width: 100%; }
+.sheet-signoff .signature-field-proof img { max-height: 6rem; }
+.sheet-card:has(> .sheet-signoff) [data-sheet-cell="workflow_status"]:has(> [data-spec-readonly]) { display: none; }
+
+/* OPUS-D08. The Location card of mockups 02 and 03: the drawing on the left (7 of 12 columns), and on the right the
+   "Drawing" dropdown, the building and the exact location. The drawing slot's own boxes step aside (display: contents)
+   so its dropdown and its drawing stand in the card's grid. Under 760 px wide the card keeps one column. */
+.drawing-inline-empty { align-items: center; background: var(--ink-50); border: 1px dashed var(--ink-300); border-radius: var(--radius-md); color: var(--ink-700); display: flex; font-size: var(--text-sm); justify-content: center; min-height: 12rem; padding: var(--space-4); text-align: center; }
+.sheet-drawing-tools { align-items: center; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.sheet-location .record-form-field-copy > strong { clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
+@container (min-width: 760px) {
+  .sheet-card-grid > [data-sheet-cell="drawing_location"]:has(.drawing-location-inline),
+  [data-sheet-cell="drawing_location"] > .sheet-slot:has(.drawing-location-inline),
+  [data-sheet-cell="drawing_location"] .sheet-drawing-location,
+  [data-sheet-cell="drawing_location"] .drawing-location-inline,
+  [data-sheet-cell="drawing_location"] .drawing-location-inline > .drawing-location-body { display: contents; }
+  [data-sheet-cell="drawing_location"] > .sheet-slot > .sheet-slot-label { clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
+  [data-sheet-cell="drawing_location"] .drawing-inline-select { grid-column: 8 / -1; grid-row: 1; margin: 0; }
+  [data-sheet-cell="drawing_location"] :is(.drawing-canvas-frame, .drawing-inline-empty, .visual-load-state) { grid-column: 1 / 8; grid-row: 1 / span 3; }
+  [data-sheet-cell="drawing_location"] :is(.drawing-location-pages, .sheet-drawing-tools) { grid-column: 1 / 8; }
+  .sheet-card-grid:has(> [data-sheet-cell="drawing_location"] .drawing-location-inline) > [data-sheet-cell="location"] { grid-column: 8 / -1; grid-row: 2; }
+  .sheet-card-grid:has(> [data-sheet-cell="drawing_location"] .drawing-location-inline) > [data-sheet-cell="exact_location"] { grid-column: 8 / -1; grid-row: 3; }
+}
+
+/* OPUS-D09. A row of several controls (Work discipline with its secondary discipline, Responsible party with the
+   person): the row's label heads its first control only, so every control's caption stands on one line and the
+   controls line up under them, as in the mockups. One column under 760 px. */
+@container (min-width: 760px) {
+  .sheet-row:has(> .sheet-row-main) { row-gap: var(--space-1); }
+  .sheet-row:has(> .sheet-row-main) > .sheet-slot-label { grid-column: 1; grid-row: 1; }
+  .sheet-row:has(> .sheet-row-main) > .sheet-row-main { grid-column: 1; grid-row: 2; }
+  .sheet-row:has(> .sheet-row-main) > :not(.sheet-slot-label, .sheet-row-main, .spec-toggle) { grid-row: 1 / span 2; }
+  /* A tick box of the row ("Quantity not measurable (N/A)", "Crosses midnight") stands under the controls. */
+  .sheet-row:has(> .sheet-row-main) > .spec-toggle { grid-column: 1 / -1; grid-row: 3; }
+}
+/* Mockup 02, "Progress percentage": a slider with its value at the end. */
+.spec-slider { align-items: center; display: flex; gap: var(--space-3); min-height: var(--control-h-md); }
+.spec-slider input[type="range"] { accent-color: var(--signal); flex: 1 1 auto; min-width: 0; }
+.spec-slider output { font-weight: var(--weight-bold); min-width: 3.5ch; text-align: right; }
+
+/* OPUS-D10. Mockups 01-15: the form's state ("Draft") at the right of the header, and a description of two lines that
+   grows as you type. */
+.workspace-form-state { display: none; }
+@media (min-width: 1024px) {
+  .workspace-section-controls--form > .workspace-form-state { margin-left: auto; align-items: center; background: var(--green-soft); border-radius: var(--radius-pill); color: var(--green); display: inline-flex; font-size: var(--text-sm); font-weight: var(--weight-semibold); order: 2; padding: 2px var(--space-3); }
+  .sheet-form textarea { field-sizing: content; min-height: 4.5rem; }
+}
+
+/* OPUS-D11. The record's date in the auto bar can be corrected there ("tap to correct", Excel column I): a quiet box
+   that reads as the value until it is touched. */
+.form-auto-bar .form-auto-bar-input:not(:hover, :focus-visible) { border-color: transparent; box-shadow: none; }
+.form-auto-bar .form-auto-bar-input { background: transparent; border: 1px solid transparent; border-radius: var(--radius-sm); color: var(--ink-950); font: inherit; font-weight: var(--weight-bold); min-height: var(--control-h-sm); padding: 0 var(--space-1); width: 100%; }
+.form-auto-bar-input:hover, .form-auto-bar-input:focus-visible { border-color: var(--ink-400); }
+.record-form-shell > .controlled-document-author-edit { font-size: var(--text-sm); margin-top: calc(var(--space-2) * -1); }
+/* On a touch screen the auto-bar date and the slider are thumb targets (44 px), and the date box never makes the auto
+   bar wider than a phone. */
+.form-auto-bar .form-auto-bar-input { box-sizing: border-box; max-width: 100%; min-width: 0; }
+@media (max-width: 1024px) {
+  .form-auto-bar .form-auto-bar-input, .spec-slider input[type="range"] { min-height: var(--control-h-lg); }
+}
+@media (max-width: 640px) {
+  .form-auto-bar .form-auto-bar-input { font-size: var(--text-sm); }
+}
+/* A phone's date box cannot shrink below its own fields: the date takes a row of its own in the auto bar. */
+@media (max-width: 640px) {
+  .form-auto-bar-item[data-auto-bar-item="event-at"]:has(.form-auto-bar-input) { border-left: 0; border-top: 1px solid var(--ink-300); grid-column: 1 / -1; grid-row: 2; }
+  .form-auto-bar:has(.form-auto-bar-input) > .form-auto-bar-item:nth-child(n + 3) { grid-row: 3; }
+  .form-auto-bar:has(.form-auto-bar-input) > .form-auto-bar-item:nth-child(3) { border-left: 0; }
+}

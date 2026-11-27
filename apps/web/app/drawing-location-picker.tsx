@@ -122,7 +122,48 @@ export function DrawingLocationPicker({
         <div className="modal-body drawing-location-body">
           {/* Choosing comes first. The picker used to open straight on whichever drawing
               happened to be first in the list, and called it the location of the photo. */}
-          {!activeDrawing ? (
+          {/* Inside the form (mockups 02-15, Location card) the drawing is one dropdown with the drawing under it;
+              the popup keeps the searchable list. */}
+          {inline ? (
+            <>
+              <label className="form-field drawing-inline-select">
+                <span>{text("Drawing", "Tekening")}</span>
+                <select value={activeId} onChange={(event) => { setActiveId(event.target.value); setPageNumber(1); setPoint(null); }}>
+                  <option value="">{drawings.length ? text("Choose the drawing first", "Kies eerst de tekening") : text("No drawings yet", "Nog geen tekeningen")}</option>
+                  {drawings.map((drawing) => (
+                    <option value={drawing.id} key={drawing.id}>
+                      {drawing.mime_type === "application/pdf" ? "PDF · " : ""}{drawing.original_name.replace(/\.[^.]+$/, "")}{drawing.document_code ? ` · ${drawing.document_code}` : ""} · {buildingName(drawing)}
+                    </option>
+                  ))}
+                </select>
+                <small>{drawings.length
+                  ? text("Project Documents · tap the spot on the drawing", "Projectdocumenten · tik de plek aan op de tekening")
+                  : text("Upload drawings under Project Documents, then pick the spot here.", "Upload tekeningen onder Projectdocumenten en kies de plek dan hier.")}</small>
+              </label>
+              {activeDrawing ? (
+                <DrawingPointCanvas
+                  key={`${activeDrawing.id}-${pageNumber}`}
+                  file={activeDrawing}
+                  pageNumber={pageNumber}
+                  client={client}
+                  point={point}
+                  onPageCount={setPageCount}
+                  onPoint={choose}
+                />
+              ) : (
+                <div className="drawing-inline-empty">{drawings.length
+                  ? text("Choose the drawing, then tap the spot on it.", "Kies de tekening en tik dan de plek aan.")
+                  : text("This project has no drawings yet.", "Dit project heeft nog geen tekeningen.")}</div>
+              )}
+              {activeDrawing && pageCount > 1 ? (
+                <div className="drawing-location-pages">
+                  <button type="button" disabled={pageNumber <= 1} onClick={() => { setPageNumber(pageNumber - 1); setPoint(null); }} aria-label={text("Previous page", "Vorige pagina")}><ChevronLeft size={17} /></button>
+                  <span>{text(`Page ${pageNumber} of ${pageCount}`, `Pagina ${pageNumber} van ${pageCount}`)}</span>
+                  <button type="button" disabled={pageNumber >= pageCount} onClick={() => { setPageNumber(pageNumber + 1); setPoint(null); }} aria-label={text("Next page", "Volgende pagina")}><ChevronRight size={17} /></button>
+                </div>
+              ) : null}
+            </>
+          ) : !activeDrawing ? (
             <div className="drawing-choice-list">
               {drawings.length > 4 ? (
                 <label className="drawing-choice-search">

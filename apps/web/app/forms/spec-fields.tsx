@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Check, Plus, X } from "lucide-react";
 import {
   activityGuide,
+  autoBarDateKey,
   canChooseDecision,
   fieldOptions,
   isEventDateField,
@@ -66,6 +67,8 @@ export function SpecFields({
   skip,
   disabled,
   slots,
+  signoff,
+  dateInAutoBar = false,
 }: {
   form: SpecFormKey;
   values: SpecValues;
@@ -82,6 +85,10 @@ export function SpecFields({
    * screen's own controls (title, description, location, photos …) in their rows.
    */
   slots?: Partial<Record<string, ReactNode>>;
+  /** The signature cards: they stand in the last card, "Sign-off / review workflow", under its workflow line (mockups 01-15). */
+  signoff?: ReactNode;
+  /** The form's own date stands in the auto bar (`AutoBarDate`), so the sheet does not repeat it. */
+  dateInAutoBar?: boolean;
 }) {
   const idBase = useId();
   const directory = useSpecDirectory();
@@ -156,9 +163,11 @@ export function SpecFields({
         // One sheet row, several controls: they stand together under the sheet's label. A
         // row without its own label is headed by its first control's label (the sheet's);
         // that control then does not repeat it (it keeps it as its accessible name).
-        const first = typeof item.items[0] === "string" ? specForms[form].find((candidate) => candidate.key === item.items[0]) : undefined;
+        // The form's own date may stand in the auto bar instead (dateInAutoBar): the row then starts with its next control.
+        const rowItems = item.items.filter((part) => !(dateInAutoBar && part === autoBarDateKey[form]));
+        const first = typeof rowItems[0] === "string" ? specForms[form].find((candidate) => candidate.key === rowItems[0]) : undefined;
         const rowLabel = item.label ?? first?.label;
-        const parts = item.items.map((part) => {
+        const parts = rowItems.map((part) => {
           if (typeof part === "string") {
             const field = fields.find((candidate) => candidate.key === part);
             if (!field) return null;
@@ -188,6 +197,7 @@ export function SpecFields({
         );
       }
       const field = fields.find((candidate) => candidate.key === item);
+      if (field && dateInAutoBar && autoBarDateKey[form] === field.key) return null;
       return field ? render(field) : null;
       })();
       if (section || !blocks.length) blocks.push({ index: sectionIndex, section, cells: [] });
@@ -199,7 +209,7 @@ export function SpecFields({
       <section className="record-section spec-section sheet-form" aria-label={heading ?? text("Form", "Formulier")} data-spec-form={form} data-sheet-form={form}>
         {heading ? <h3>{heading}</h3> : null}
         {titleCell ? <div className="sheet-title-row" data-sheet-title>{titleCell}</div> : null}
-        {blocks.filter((block) => block.cells.length).map((block, position, shown) => {
+        {blocks.filter((block, index) => block.cells.length || (signoff && index === blocks.length - 1 && block.section)).map((block, position, shown) => {
           const workflow = position === shown.length - 1 ? sheetWorkflow[form] : undefined;
           const heading3 = block.section ? (
             <h3 className="sheet-section-title" data-sheet-section={block.index + 1}>
@@ -223,6 +233,7 @@ export function SpecFields({
               <div className="sheet-card-grid">
                 {block.cells.map((cell) => <div className="sheet-cell" style={{ "--span": cell.span } as React.CSSProperties} data-sheet-cell={cell.key} key={cell.key}>{cell.node}</div>)}
               </div>
+              {signoff && position === shown.length - 1 ? <div className="sheet-signoff">{signoff}</div> : null}
             </section>
           );
         })}
@@ -437,6 +448,14 @@ function SpecInput({ id, form, field, values, set, setMany, text, language, disa
         })}
         {single && !options.some((option) => option.value === single) ? <option value={single}>{show(single)}</option> : null}
       </select>
+    );
+  } else if (field.kind === "number" && field.slider) {
+    // Mockup 02: a slider with the value beside it. An untouched slider stores nothing: the value reads "—" until moved.
+    control = (
+      <span className="spec-slider">
+        <input id={id} type="range" min={field.min ?? 0} max={field.max ?? 100} step={5} value={single === "" ? String(field.min ?? 0) : single} disabled={disabled} onChange={(event) => set(field.key, event.target.value)} />
+        <output htmlFor={id}>{single === "" ? "—" : `${single}%`}</output>
+      </span>
     );
   } else if (field.kind === "textarea") {
     control = <textarea id={id} value={single} required={required} disabled={disabled} rows={3} maxLength={4000} onChange={(event) => set(field.key, event.target.value)} />;

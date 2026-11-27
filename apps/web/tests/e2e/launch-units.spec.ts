@@ -74,7 +74,7 @@ for (const unit of ["bags", "litre (L)"]) {
     const stored = form.locator('[data-spec-field="stored_on_site"] input');
     if (await stored.isVisible()) await stored.uncheck();
     await expect(page.locator(".confirm-needs, .record-still-needed")).toHaveCount(0);
-    await page.getByRole("button", { name: /^Save register item$/ }).click();
+    await page.getByRole("button", { name: /^Sign, submit & notify$/ }).click();
     await finishSigning(page);
     await expect(page.getByText(/saved|opgeslagen/i).first()).toBeVisible({ timeout: 30_000 });
   });

@@ -95,7 +95,6 @@ export function PortalApp({
   brand,
   onSwitchProject,
   onSignOut,
-  submissionWorkspace,
   focusShareId = "",
   preview = false,
   clearFocus,
@@ -111,8 +110,6 @@ export function PortalApp({
   brand: ReactNode;
   onSwitchProject: (projectId: string) => void;
   onSignOut: () => void;
-  /** The existing controlled-submission form (RFI, RFA, WCR, inspection request), when the role may originate one. */
-  submissionWorkspace?: ReactNode;
   focusShareId?: string;
   clearFocus: () => void;
   /**
@@ -128,7 +125,6 @@ export function PortalApp({
   const queryClient = useQueryClient();
   const [section, setSection] = useState("dashboard");
   const [openShareId, setOpenShareId] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
 
   /** Supervision looking at a portal is read-only and is not the organisation viewing it. */
   const readOnly = preview || Boolean(viewAs);
@@ -229,14 +225,6 @@ export function PortalApp({
     } else if (section === "responses") {
       body = (
         <>
-          {submissionWorkspace ? (
-            <div className="portal-submission-toggle">
-              <button className={`ui-button ui-button--md ${submitting ? "ui-button--secondary" : "ui-button--primary"}`} type="button" aria-expanded={submitting} onClick={() => setSubmitting((value) => !value)}>
-                {submitting ? text("Close the submission form", "Indieningsformulier sluiten") : text("New submission (RFI, RFA, WCR, inspection request)", "Nieuwe indiening (RFI, RFA, WCR, inspectieaanvraag)")}
-              </button>
-            </div>
-          ) : null}
-          {submitting && submissionWorkspace ? <div className="portal-submission">{submissionWorkspace}</div> : null}
           <ContractorResponses client={client} projectId={projectId} snapshot={snapshot!} openShare={setOpenShareId} />
         </>
       );

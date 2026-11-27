@@ -267,8 +267,11 @@ export function SignatureField({
   onChange,
   disabled = false,
   disabledHint = "",
+  party,
 }: {
   label: string;
+  /** Who signs, as the chip of the mockups' sign-off card ("Supervision", "Contractor"). */
+  party?: { label: string; tone: "supervision" | "other" };
   declaration: string;
   hint?: string;
   nameSuggestion?: string;
@@ -290,6 +293,7 @@ export function SignatureField({
   return (
     <div className={`signature-field ${isSigned(value) ? "signed" : ""}`}>
       <div className="signature-field-copy">
+        {party ? <span className={`sheet-role sheet-role--${party.tone} signature-field-party`}>{party.label}</span> : null}
         <strong>{label}</strong>
         <small>{disabled && disabledHint ? disabledHint : isSigned(value) ? `${value!.name} · ${moment(value!.signedAt)}` : hint ?? declaration}</small>
       </div>

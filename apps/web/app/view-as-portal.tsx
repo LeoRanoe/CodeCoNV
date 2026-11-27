@@ -19,7 +19,7 @@ const sideTypes: Record<"contractor" | "client", string[]> = {
  * portal of any contractor or client of its project, "View as: <organisation>", read-only. It shows what that
  * organisation sees; nothing done here is logged as the organisation.
  */
-export function ViewAsPortal({ client, mode, projectId, onClose, ...rest }: Omit<PortalProps, "viewAs" | "onSignOut" | "submissionWorkspace"> & {
+export function ViewAsPortal({ client, mode, projectId, onClose, ...rest }: Omit<PortalProps, "viewAs" | "onSignOut"> & {
   client: SupabaseClient;
   onClose: () => void;
 }) {

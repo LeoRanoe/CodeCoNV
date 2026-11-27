@@ -81,6 +81,7 @@ export function ContractorSignatureField({
       </div>
       <SignatureField
         label={text("Signature · contractor", "Handtekening · aannemer")}
+        party={{ label: text("Contractor", "Aannemer"), tone: "other" }}
         declaration={declaration ?? text(
           "By signing, the contractor confirms receipt of this record. It is not an acceptance of fault, cost or time.",
           "Met deze handtekening bevestigt de aannemer de ontvangst van deze registratie. Het is geen erkenning van schuld, kosten of tijd.",
