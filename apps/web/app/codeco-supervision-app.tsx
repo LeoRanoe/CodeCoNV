@@ -690,10 +690,12 @@ export function CodecoSupervisionApp() {
   const navAllowed = (id: NavKey) => id === "acties" ? permissions.canAny("actions.read", "actions.create")
     : id === "projectdocs" ? permissions.canAny("documents.read", "files.read")
     : id === "records" ? permissions.can("records.read")
-    : id === "verify" ? permissions.can("files.read")
+    // Rapid Verify and "View as" of the portals are Supervision's (Word 2 and 2.1): an account that cannot record
+    // (the legacy client role) does not get them (OPUS-F24).
+    : id === "verify" ? permissions.can("files.read") && permissions.can("records.create")
       : id === "punchlist" ? permissions.can("findings.read")
         : id === "rapporten" ? permissions.canAny("reports.read", "reports.readapproved")
-          : id === "contractorportal" || id === "clientportal" ? permissions.can("records.read")
+          : id === "contractorportal" || id === "clientportal" ? permissions.can("records.read") && permissions.can("records.create")
           : true;
   const localizedNavigation = navigation.filter((item) => navAllowed(item.id)).map((item) => ({
     ...item,
@@ -1911,9 +1913,9 @@ export function CodecoSupervisionApp() {
         <button className="user-card" type="button" onClick={() => void requestSignOut()} title={text("Sign out", "Afmelden")}>
           <span className="avatar" aria-hidden="true">{initials(currentUserName)}</span>
           <span className="user-copy">
-            <span className="sr-only">{text("Sign out: ", "Afmelden: ")}</span>
             <strong>{currentUserName}</strong>
-            <small>{text("CODECO user", "CODECO-gebruiker")}</small>
+            {/* The card signs out when tapped (OPUS-F25): it says so, instead of "CODECO user", which was also wrong for a client. */}
+            <small>{text("Sign out", "Afmelden")}</small>
           </span>
           <LogOut size={16} color="#7893a1" />
         </button>

@@ -32,6 +32,15 @@ Severity: blocker (cannot work), major (wrong or very hard), minor. Evidence pat
 | F15 | Actions | 1366x768 | supervisor | Fifth state tile alone on a second row; two pickers each a full row | minor | `04-actions.png` | fixed (to verify on screen) |
 | F16 | Contractor Portal | all | contractor | "New submission (RFI, RFA, WCR, inspection request)" lets a contractor create records; Word decision 1 says forms are filled in by Supervision only, Word 6.2 lists no contractor RFI | client question | `portal-app.tsx` | open: client question Q-1 (RFI/RFA are not one of the 15 forms; an earlier written request asked for contractor submissions) |
 | F17 | Workforce form | all | supervisor | Mockup 04 is one table (discipline, contractor, number), total, remarks, sign-off; ours is a party / trade picker with steppers, visitors, totals per organisation and trade, deviation, signature; no Record ID (Excel gap) | major (gap) | mockup 04 vs `03-04-workforce-form-full.png` | open: recommendation, larger than tonight |
+| F19 | Issue / HSE pills and segments | 390x844, 820x1180 | supervisor | Pills 40 px high: under the 44 px thumb rule (tap-targets spec failed on #37) | major | tap-targets error-context | fixed |
+| F20 | Works ongoing / any sheet form with segments | 390x844 | supervisor | Segmented controls broke words letter by letter ("Da y", "Ev eni ng", "W ee ke nd") | major | `tmp/audit-dr/en/390x844/supervisor/03-02-works-ongoing-form-full.png` | fixed: on a narrow card the segments wrap as whole words |
+| F21 | Auto bar | 390x844 | supervisor | Record ID and date cut to "E2E-001-WO-2…" | minor | same | fixed |
+| F22 | Module header | 390x844 | supervisor | "Works o…": the name cut by Open log | minor | same | fixed: Open log is an icon on a phone |
+| F23 | Sticky action bar | 390x844 | supervisor | The "required left" list took five lines (170 px) | minor | same | fixed: two lines |
+| F24 | Sidebar for the legacy client role | all | client | A client account sees Rapid Verify and "View as" Contractor / Client Portal (Supervision's per Word 2 / 2.1) | major | `tmp/audit-roles/en/1366x768/client/01-portal-home.png` | fixed: those three need records.create; Workspace, Actions, Documents, Records, Reports, Management stay (role-views covers them) |
+| F25 | Account card | all | all | The card signs out on a tap but says "CODECO user" (also for a client) | minor | same | fixed: it says "Sign out" |
+| F26 | Portal header | 390x844 | contractor, client portal | 290 px header (large logo, stacked controls) | minor | `tmp/audit-roles/en/390x844/clientportal/01-portal-home.png` | fixed: about 220 px |
+| F27 | Portal rows | 390x844 | contractor, client portal, supervisor preview | Title squeezed into a 90 px column beside the states, one word per line | major | `tmp/audit-roles2/en/390x844/contractor/01-portal-home.png` | fixed: states under the title |
 
 ## Decisions
 
@@ -39,4 +48,4 @@ See `V5-DECISION-REGISTER.md` D-31 and later.
 
 ## Next step
 
-Phone, tablet and landscape walk after the fixes; then the Issue / controlled-document card buttons, the form header, the Overview counts, the rest of the viewports and the client and contractor roles.
+PR #38 (batch 1, includes #37): full local gate on the head, then merge and confirm production. Then: Dutch walk, second pass over every viewport with the walk, report.
