@@ -1088,11 +1088,11 @@ h2:has(> .record-form-heading-icon) { align-items: center; display: flex; gap: 0
 /* The photo button of the top bar: one quiet row with the other tools; orange only on the Overview, where it is the main action. */
 .topbar .quick-add-side { flex: none; font-size: var(--text-sm); gap: var(--space-2); min-height: var(--control-h-md); padding-inline: var(--space-3); white-space: nowrap; }
 @media (max-width: 1024px) { .topbar .quick-add-side { display: none; } }
-@media (min-width: 1025px) and (max-width: 1280px) { .topbar .quick-add-side > span { clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; } }
+@media (min-width: 1024px) and (max-width: 1280px) { .topbar .quick-add-side > span { clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; } }
 
 /* OPUS-F03. A module page heads with one row: back, the module name with its count, "Open log" and "New". With three
    columns for four items "New" fell to a second row under the back button and pushed every form 60 px down. */
-@media (min-width: 641px) {
+@media (min-width: 640px) {
   .workspace-section-controls { align-items: center; column-gap: var(--space-3); display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; }
   .workspace-section-controls > .workspace-module-create { grid-column: 4; grid-row: 1; }
   .workspace-section-controls > .workspace-open-log { grid-column: 3; grid-row: 1; margin-left: 0; }
@@ -1162,8 +1162,8 @@ html { scroll-padding-bottom: calc(var(--mobile-nav-height, 0px) + 96px); }
 
 /* OPUS-F15. Actions: the five state counts share one row on a laptop (the fifth stood alone on a second row), and the
    two pickers above the list sit side by side instead of one full row each. */
-@media (min-width: 1025px) { .action-center-summary { grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); } }
-@media (min-width: 641px) {
+@media (min-width: 1024px) { .action-center-summary { grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); } }
+@media (min-width: 640px) {
   .action-center-toolbar { align-items: center; flex-flow: row wrap; }
   .action-center-toolbar .action-center-search { flex: 1 1 100%; order: -1; }
 }

@@ -40,7 +40,26 @@ Recommended, not done tonight (see section 6): open Actions on the automatic fol
 
 ## 5. Mockups against the screens
 
-(filled in below during the run)
+Compared at 1366 x 768 and 1280 x 720 (the mockups are tablet landscape, one continuous page). Shared to all form mockups: the module header of the app is "← Workspace · project · title · count · Open log · New" and the form shell repeats the title with its pill; the mockups have one header (icon, title, "project › Workspace", Draft pill, "± 8-12 min").
+
+| Mockup | Screen | Result | Differences |
+|---|---|---|---|
+| 00 Overview | index of the 15 form mockups | n/a | It is not a screen; the left menu in every mockup is the ten Word menus (matches the sidebar after F01) |
+| 01 Photos | Workspace › Photos | differs | Mockup: a form (photo upload with two buttons, caption, classification pills, location card with drawing, sign-off). App: the photo library first (Take photo / Upload / 360°), the form after a photo is chosen; no per-photo Title or sign-off profile (Excel gap 8) |
+| 02 Works ongoing | form | matches mostly | Numbered cards and order match (D-27); the drawing is in the Location card; differences: building is a multi-building picker, not "FROM DRAWING" locked fields; "What exactly is being worked on?" is free text, the mockup shows activity pills (Excel gap 2); primary button "Save register item" vs "Sign, submit & notify" |
+| 03 Works completed | form | matches mostly | as 02; "Based on Works ongoing record" first |
+| 04 Workforce | form | differs (major) | Mockup: one table (discipline, contractor, number, add row), total, remarks, sign-off card. App: party / trade picker with steppers per building tab, visitors, totals per organisation and trade, deviation, signature block; no Record ID (F17) |
+| 05 Project Delay Report | form | matches mostly | cards match; Location card has no drawing |
+| 06 Issues | form | matches mostly | cards, pills, segments and sign-off match; Location card has no drawing (needs a per-record pin store); Discipline is a dropdown, the mockup shows it AUTO and locked from Category |
+| 07 HSE | form | matches mostly | Location without drawing; risk rating only computed with a project matrix (Excel gap 4) |
+| 08 Materials delivery | form | matches mostly | no purchase-order record (D-17), so PO-filled fields are typed |
+| 09 Inspections | form | differs (major) | Mockup: Inspection card (type, category, discipline, linked work / material), Location, Checklist with Pass / Fail / N/A per item, Result pills, sign-off. App: planner and a checklist run; type, category, discipline, linked work and result are not asked when an inspection starts (Excel gap 1) |
+| 10 Technical instructions | form | matches mostly | Location without drawing |
+| 11 Change order | form | matches mostly | Location without drawing; approval status is an editable select (Excel gap 3) |
+| 12 NCR | form | matches mostly | Location without drawing; nothing is filled from the related inspection |
+| 13 Lessons Learned | form | matches | |
+| 14 HSE incident | form | matches mostly | Location without drawing; severity scale differs from the Excel (Excel gap 5, needs a migration of the server rules) |
+| 15 Agreements Made | form | matches | |
 
 ## 6. What remains
 
