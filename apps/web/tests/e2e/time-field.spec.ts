@@ -35,10 +35,13 @@ test("a shift time is picked on a 24-hour clock whatever the browser language", 
   await page.locator(".sidebar").getByRole("button", { name: "Workspace", exact: true }).click();
   await page.locator("[data-workspace-destination='workforce']").click();
   // v5.0 removed the shift of a worker line; a visitor's arrival and departure are still picked on the 24-hour clock.
+  // Visitors are not on the Excel sheet: they are folded under the table (mockup 04).
+  const visitors = page.locator(".workforce-visitors");
+  if (!(await visitors.evaluate((element) => (element as HTMLDetailsElement).open))) await visitors.locator("summary").click();
   await page.getByPlaceholder("Who visited the site?").fill("Clock check visitor");
   await page.getByRole("button", { name: "Add visitor" }).click();
 
-  const row = page.locator(".workforce-row", { hasText: "Clock check visitor" });
+  const row = page.locator(".workforce-visitor-row", { hasText: "Clock check visitor" });
   await expect(row.locator(".workforce-shift")).toBeVisible();
   expect(await row.locator("input[type='time']").count(), "no native time input is left").toBe(0);
   const hours = row.locator(".workforce-shift select").nth(2);

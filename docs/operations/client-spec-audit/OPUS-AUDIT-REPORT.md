@@ -77,7 +77,7 @@ Ordered by what a supervisor feels first. None of these is a layout defect; each
 
 | # | What | Source | Why not tonight | Size |
 |---|---|---|---|---|
-| R1 | Workforce form as mockup 04: one table (discipline, contractor, number), total, remarks, sign-off; Record ID `WF-` | Mockup 04, Excel Workforce rows 3-12 | A new form and a numbering branch in the database (migration); the current form also writes attendance used by reports | 1-2 days |
+| R1 | Workforce form as mockup 04: one table (discipline, contractor, number), total, remarks, sign-off; Record ID `WF-` | Mockup 04, Excel Workforce rows 3-12 | A new form and a numbering branch in the database (migration); the current form also writes attendance used by reports | 1-2 days Screen done 27-11-2026 (pass 4, D13, same stored rows); the WF- number still needs the numbering migration. |
 | R2 | Inspection start as mockup 09: type, category, discipline, linked work / material, result list (6 values), title | Mockup 09, Excel Inspections | Changes the inspection flow and its stored fields (migration for required server rules) | 1-2 days |
 | R3 | Drawing and pin in the Location card of Issue, NCR, HSE, HSE incident, TI, CO, PDR; building and level filled from the drawing | Mockups 05-07, 10-12, 14; Excel "Location block" | A pin per record needs storage (migration) | 1 day |
 | R4 | Event date only in the auto bar ("tap to correct"), not a second field in the body | Excel column I on 10 forms | Touches the save path of ten forms | ½ day Done 27-11-2026 (pass 4, D10). |

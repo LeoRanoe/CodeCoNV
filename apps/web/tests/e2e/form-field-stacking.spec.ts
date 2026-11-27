@@ -64,7 +64,10 @@ const fieldsSideBySide = (page: Page) => page.evaluate(() => {
       // Two signature cards stand side by side (mockups 01-15): a field of one card is not "beside" a field of the other.
       const card = (element: Element) => element.closest(".record-signatures-grid > *");
       const otherCard = card(a.element) !== null && card(b.element) !== null && card(a.element) !== card(b.element);
-      const allowed = otherCard || (grid !== null && grid === b.element.closest(".sheet-card-grid, .form-grid-2") && boxes.filter((box) => grid.contains(box.element) && sameRow(box)).length <= limit);
+      // A row of the Workforce table (mockup 04: worker discipline, contractor, number) is a table row, not a form row.
+      const tableRow = a.element.closest(".workforce-table .workforce-row");
+      const sameTableRow = tableRow !== null && tableRow === b.element.closest(".workforce-table .workforce-row");
+      const allowed = otherCard || sameTableRow || (grid !== null && grid === b.element.closest(".sheet-card-grid, .form-grid-2") && boxes.filter((box) => grid.contains(box.element) && sameRow(box)).length <= limit);
       if (overlap > Math.min(a.rect.height, b.rect.height) * 0.5 && apart && !allowed) pairs.push(`"${name(a.element)}" beside "${name(b.element)}" [${(() => { let node: HTMLElement | null = a.element.parentElement; while (node && !node.contains(b.element)) node = node.parentElement; return node ? `${node.tagName}.${String(node.className)} ${getComputedStyle(node).display}` : ""; })()}]`);
     }
   }
