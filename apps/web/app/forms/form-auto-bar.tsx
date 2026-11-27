@@ -1,7 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useLanguage } from "@/lib/i18n";
+import { autoBarDateKey, projectNowLocal, setSpecValue, specForms, type SpecFormKey, type SpecValues } from "@/lib/forms/spec-forms";
 
 export type AutoBarItem = {
   key: string;
@@ -62,4 +63,38 @@ export function autoBarItems({
     { key: "by", label: byLabel, value: byValue },
     { key: "status", label: text("Status", "Status"), value: statusValue, note: statusNote ?? text("by workflow", "door workflow") },
   ];
+}
+
+/**
+ * The record's date in the auto bar (Excel v5.0 column I, "tap to correct"; mockups 01-15): filled with now, corrected
+ * here when the record is written later. It is the form's own date field (`autoBarDateKey`), which the form then does
+ * not repeat. Without such a field the fallback text is shown.
+ */
+export function AutoBarDate({ form, values, onChange, fallback }: { form: SpecFormKey | null; values: SpecValues; onChange: (next: SpecValues) => void; fallback: ReactNode }) {
+  const { language } = useLanguage();
+  const key = form ? autoBarDateKey[form] : undefined;
+  const field = key && form ? specForms[form].find((item) => item.key === key) : undefined;
+  const value = field ? String(values[field.key] ?? "") : "";
+  // "AUTO": an empty date starts at now, as the auto bar shows it; the user corrects it when the record is written later.
+  useEffect(() => {
+    if (!form || !field || value) return;
+    const moment = projectNowLocal();
+    onChange(setSpecValue(form, values, field.key, field.kind === "datetime" ? moment : moment.slice(0, 10)));
+    // Only while it is empty.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, field?.key, value]);
+  if (!form || !field) return <>{fallback}</>;
+  const now = projectNowLocal();
+  return (
+    <input
+      className="form-auto-bar-input"
+      type={field.kind === "datetime" ? "datetime-local" : "date"}
+      aria-label={field.label[language]}
+      data-spec-field={field.key}
+      value={value}
+      max={field.kind === "datetime" ? now : now.slice(0, 10)}
+      required
+      onChange={(event) => onChange(setSpecValue(form, values, field.key, event.target.value))}
+    />
+  );
 }

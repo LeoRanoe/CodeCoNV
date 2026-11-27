@@ -56,7 +56,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import NextImage from "next/image";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { AgreementSignatureFields, agreementRecordDetails, agreementSignatureDetails, agreementSummaryLine, emptyAgreementRecord, emptyAgreementSignature } from "@/app/agreement-signature";
 import { ALL_BUILDINGS, BuildingMultiPicker, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { readChecklistFile } from "@/lib/checklists/import-checklist.mjs";
@@ -66,7 +66,7 @@ import { MoreActions } from "@/app/forms/more-actions";
 import { RecordList, SavedRecordsFold } from "@/app/forms/record-list";
 import { ContractorSignatureField, RecordSignatures, contractorSignatureDetails, contractorSignatureFrom, emptyContractorSignature, type ContractorSignatureValue } from "@/app/forms/contractor-signature";
 import { SpecFields, SpecLinkChips } from "@/app/forms/spec-fields";
-import { FormAutoBar, autoBarItems } from "@/app/forms/form-auto-bar";
+import { AutoBarDate, FormAutoBar, autoBarItems } from "@/app/forms/form-auto-bar";
 import { fileProblem, formCodes, nextRecordId, suggestTitle, titleFollowsSuggestion } from "@/lib/forms/record-defaults.mjs";
 import { AttachmentButtons } from "@/app/forms/attachment-buttons";
 import { WorkspaceSpecDirectory } from "@/app/forms/workspace-spec-directory";
@@ -3751,6 +3751,149 @@ function ProjectOperations({
     locked: Boolean(editingDocument?.signature_image || editingDocument?.details?.signature_image),
     enabled: !agreementRegister && !(submittedRegister && !registerForm.issuerName.trim()),
   });
+  /** The signatures of a register form. On an Excel sheet form they stand in its last card, "Sign-off / review workflow"
+      (mockups 01-15); on the other register forms they close the form. */
+  const registerSignoffNode = (): ReactNode => 
+              (sheetRegister && agreementRegister ? (
+                <RecordSignatures>
+                  <AgreementSignatureFields
+                    options={agreementPartyOptions}
+                    value={agreementForm}
+                    onChange={setAgreementForm}
+                    roleLabels={[text("Contractor representative", "Vertegenwoordiger aannemer"), text("Supervision (consultant)", "Supervisie (consultant)")]}
+                  />
+                </RecordSignatures>
+              ) : changeOrderRegister && !sheetRegister ? (
+                <div className="record-form-sections change-order-sections">
+                    <RecordFormSection
+                      number={5}
+                      title={text("Acknowledgement & agreement", "Erkenning & akkoord")}
+                    >
+                      <div className="form-grid-2">
+                        <label className="form-field"><span>{text("Contractor representative", "Vertegenwoordiger aannemer")}</span><input style={inputWithMicStyle} list="change-order-contractors" value={changeOrder.contractorRepresentative} onChange={(event) => setChangeOrder({ ...changeOrder, contractorRepresentative: event.target.value })} placeholder={text("Enter name", "Voer naam in")} /><DictateButton style={micInputStyle} onText={(transcript) => setChangeOrder((current) => ({ ...current, contractorRepresentative: appendDictation(current.contractorRepresentative, transcript) }))} /><datalist id="change-order-contractors">{parties.map((party) => <option value={party.name} key={party.id} />)}</datalist></label>
+                        <label className="form-field"><span>{text("Position", "Functie")}</span><input style={inputWithMicStyle} value={changeOrder.contractorPosition} onChange={(event) => setChangeOrder({ ...changeOrder, contractorPosition: event.target.value })} placeholder={text("Enter position", "Voer functie in")} /><DictateButton style={micInputStyle} onText={(transcript) => setChangeOrder((current) => ({ ...current, contractorPosition: appendDictation(current.contractorPosition, transcript) }))} /></label>
+                      </div>
+                      <SignatureField
+                        label={text("Signature · contractor representative", "Handtekening · vertegenwoordiger aannemer")}
+                        declaration={text(
+                          "By signing you acknowledge this change and agree to proceed according to its impact on time, if any.",
+                          "Met je handtekening erken je deze wijziging en ga je akkoord met de uitvoering volgens het effect op de tijd, indien van toepassing.",
+                        )}
+                        hint={text("Signature, name and date are stored with the change order.", "Handtekening, naam en datum worden bij de wijzigingsopdracht bewaard.")}
+                        nameSuggestion={changeOrder.contractorRepresentative}
+                        value={signatureFromDetails(changeOrder.contractorSignedBy, changeOrder.contractorSignedAt, changeOrder.contractorSignatureImage)}
+                        onChange={(signature) => setChangeOrder({
+                          ...changeOrder,
+                          contractorSignedBy: signature?.name ?? "",
+                          contractorSignedAt: signature?.signedAt ?? "",
+                          contractorSignatureImage: signature?.image ?? "",
+                          contractorRepresentative: signature?.name || changeOrder.contractorRepresentative,
+                        })}
+                      />
+                      <label className="form-field"><span>{text("Contractor remarks (optional)", "Opmerkingen aannemer (optioneel)")}</span><textarea rows={2} maxLength={500} value={changeOrder.contractorRemarks} onChange={(event) => setChangeOrder({ ...changeOrder, contractorRemarks: event.target.value })} placeholder={text("Enter remarks (if any).", "Voer eventuele opmerkingen in.")} /><DictateButton onText={(transcript) => setChangeOrder((current) => ({ ...current, contractorRemarks: appendDictation(current.contractorRemarks, transcript) }))} /></label>
+                    </RecordFormSection>
+
+                    <RecordFormSection
+                      number={6}
+                      title={text("Approval · supervision", "Goedkeuring · supervisie")}
+                    >
+                      {/* The supervision approval is the issuer's signature on a change order: one signature,
+                          under the account's own name, not a second one asked at the bottom of the form. */}
+                      <SignatureField
+                        label={text("Signature · supervision (issuer)", "Handtekening · supervisie (uitgever)")}
+                        declaration={text(
+                          "By signing you issue and approve this change order on behalf of supervision.",
+                          "Met je handtekening geef je deze wijzigingsopdracht uit en keur je die goed namens de supervisie.",
+                        )}
+                        hint={text("Signed under your own name; it cannot be changed afterwards.", "Ondertekend onder je eigen naam; daarna niet meer te wijzigen.")}
+                        nameSuggestion={currentUserName}
+                        lockName
+                        locked={Boolean(editingDocument?.signature_image || editingDocument?.details?.signature_image)}
+                        value={signatureFromDetails(changeOrder.supervisionSignedBy, changeOrder.supervisionSignedAt, changeOrder.supervisionSignatureImage)}
+                        onChange={(signature) => {
+                          setChangeOrder({
+                            ...changeOrder,
+                            supervisionSignedBy: signature?.name ?? "",
+                            supervisionSignedAt: signature?.signedAt ?? "",
+                            supervisionSignatureImage: signature?.image ?? "",
+                            supervisionName: signature?.name || "",
+                          });
+                          setRegisterForm((current) => ({ ...current, signedBy: signature?.name ?? "", signedAt: signature?.signedAt ?? "", signatureImage: signature?.image ?? "" }));
+                        }}
+                      />
+                    </RecordFormSection>
+                </div>
+              ) : controlledRegister ? (
+                <RecordSignatures>
+                {/* The document is signed here, with a written signature, at the moment it
+                    is drawn up or the moment the received form is recorded. */}
+                  <SignatureField
+                  label={submittedRegister
+                    ? text("Signature on the submitted form", "Handtekening op het ingediende formulier")
+                    // Mockups 10 and 11 name the signer by role: the issuing supervisor, the originator of a change.
+                    : registerForm.type === "technical_instruction" ? text("Issuing supervisor", "Uitgevende supervisor")
+                    : registerForm.type === "change_order" ? text("Originator", "Initiatiefnemer")
+                    : text("Sign as the author of this document", "Ondertekenen als opsteller van dit document")}
+                  party={submittedRegister ? undefined : { label: text("Supervision", "Supervisie"), tone: "supervision" }}
+                  declaration={submittedRegister
+                    ? text("Record the signature on the received form. CODECO signs in the formal response.", "Leg de handtekening op het ontvangen formulier vast. CODECO tekent bij de formele reactie.")
+                    : text("By signing you issue this document under your own name.", "Met je handtekening geef je dit document onder je eigen naam uit.")}
+                  hint={text("Signature, name and time are stored with the document.", "Handtekening, naam en tijdstip worden bij het document bewaard.")}
+                  nameSuggestion={submittedRegister ? registerForm.issuerName.trim() : currentUserName}
+                  nameOptions={[]}
+                  lockName={!submittedRegister}
+                  locked={Boolean(editingDocument?.signature_image || editingDocument?.details?.signature_image)}
+                  disabled={submittedRegister && !registerForm.issuerName.trim()}
+                  disabledHint={text("Fill in who submitted the form first.", "Vul eerst in wie het formulier heeft ingediend.")}
+                  value={signatureFromDetails(registerForm.signedBy, registerForm.signedAt, registerForm.signatureImage)}
+                  onChange={(signature) => setRegisterForm({
+                    ...registerForm,
+                    signedBy: signature?.name ?? "",
+                    signedAt: signature?.signedAt ?? "",
+                    signatureImage: signature?.image ?? "",
+                  })}
+                />
+                {submittedRegister ? <p className="form-helper">{text("Drawn up and signed by the submitting party. CODECO signs in the formal response below.", "Opgesteld en ondertekend door de indienende partij. CODECO tekent bij de formele reactie hieronder.")}</p> : null}
+                  {registerContractorSignatureApplies ? (
+                    <ContractorSignatureField
+                      idPrefix="register"
+                      value={registerContractorSignature}
+                      partyNames={parties.map((party) => party.name)}
+                      locked={Boolean(editingDocument?.details?.contractor_signature_image)}
+                      onChange={setRegisterContractorSignature}
+                    />
+                  ) : null}
+                </RecordSignatures>
+              ) : !agreementRegister ? (
+                <RecordSignatures>
+                  <RecordSignatureField
+                    value={registerSignature}
+                    onChange={setRegisterSignature}
+                    nameSuggestion={currentUserName}
+                    role={({
+                      works_ongoing: text("Reporting supervisor", "Rapporterende supervisor"),
+                      works_completed: text("Recording supervisor", "Vastleggende supervisor"),
+                      delivery: text("Receiving supervisor", "Ontvangende supervisor"),
+                      delay_report: text("Reporting supervisor", "Rapporterende supervisor"),
+                      lessons_learned: text("Author", "Opsteller"),
+                    } as Record<string, string>)[registerForm.type]}
+                    declaration={text(
+                      "I confirm that this register entry reflects what was recorded on site.",
+                      "Ik bevestig dat dit registeritem weergeeft wat op de bouwplaats is vastgelegd.",
+                    )}
+                  />
+                  {registerContractorSignatureApplies ? (
+                    <ContractorSignatureField
+                      idPrefix="register"
+                      value={registerContractorSignature}
+                      partyNames={parties.map((party) => party.name)}
+                      locked={Boolean(editingDocument?.details?.contractor_signature_image)}
+                      onChange={setRegisterContractorSignature}
+                    />
+                  ) : null}
+                </RecordSignatures>
+              ) : null);
+
   return (
     <>
       {tab === "home" ? (
@@ -3811,6 +3954,8 @@ function ProjectOperations({
               <h1>{activeSectionLabel}</h1>
               <b>{activeSectionCount}</b>
             </div>
+            {/* Mockups 01-15: the record's state beside the title while a form is open (shown on a desktop, final-pass.css OPUS-D10). */}
+            {showForm && tab !== "documents" ? <span className="workspace-form-state">{editingRegisterId || editingFindingId || editingHseId ? text("Editing", "Bewerken") : text("Draft", "Concept")}</span> : null}
             {/* The Works tiles open the workbook's activity record; the one-box day log the client used before stays
                 one tap away, in the header beside "Open log" (OPUS-D01). */}
             {tab === "registers" && (registerForm.type === "works_ongoing" || registerForm.type === "works_completed") && !editingRegisterId ? <button className="ui-button ui-button--quiet ui-button--md workspace-day-log" type="button" onClick={() => { openDailyWork(registerForm.type === "works_completed" ? "works_completed" : "works_ongoing"); switchTab("daily"); setShowForm(true); }}>
@@ -4103,7 +4248,7 @@ function ProjectOperations({
                 idValue: nextIssueNumber,
                 idNote: text("Provisional · fixed on submit", "Voorlopig · vast bij indienen"),
                 dateLabel: text("Date/time identified", "Datum/tijd vastgesteld"),
-                dateValue: `${issueDateLabel} · ${issueTime}`,
+                dateValue: <AutoBarDate form={"issue"} values={findingSpecValues} onChange={changeFindingSpec} fallback={`${issueDateLabel} · ${issueTime}`} />,
                 byLabel: text("Reported by", "Gemeld door"),
                 byValue: currentUserName,
                 statusValue: issueStatusLabel,
@@ -4120,14 +4265,43 @@ function ProjectOperations({
 
               {/* The Issue sheet of the specification workbook, row by row in its order. */}
               <SpecFields
+                dateInAutoBar
                 form="issue"
                 skip={findingSpecSkip}
                 values={findingSpecValues}
                 onChange={changeFindingSpec}
                 text={text}
                 language={language}
+                signoff={(
+                <RecordSignatures>
+                <SignatureField
+                  label={text("Recording supervisor", "Vastleggende supervisor")} party={{ label: text("Supervision", "Supervisie"), tone: "supervision" }}
+                  declaration={text(
+                    "By signing you report this issue under your own name.",
+                    "Met je handtekening meld je dit issue onder je eigen naam.",
+                  )}
+                  hint={text("Signature, name and time are stored with the report.", "Handtekening, naam en tijdstip worden bij het rapport bewaard.")}
+                  nameSuggestion={currentUserName}
+                  nameOptions={documentIssuerOptions}
+                  value={signatureFromDetails(findingForm.signedBy, findingForm.signedAt, findingForm.signatureImage)}
+                  onChange={(signature) => setFindingForm({
+                    ...findingForm,
+                    signedBy: signature?.name ?? "",
+                    signedAt: signature?.signedAt ?? "",
+                    signatureImage: signature?.image ?? "",
+                  })}
+                />
+                <ContractorSignatureField
+                  idPrefix="issue"
+                  value={findingForm.contractorSignature}
+                  partyNames={parties.map((party) => party.name)}
+                  locked={Boolean(editingFindingId && data.findings.find((item) => item.id === editingFindingId)?.issue_management?.contractor_signature_image)}
+                  onChange={(contractorSignature) => setFindingForm((current) => ({ ...current, contractorSignature }))}
+                />
+                </RecordSignatures>
+                )}
                 slots={{
-                  title: <input aria-label={text("Title", "Titel")} value={findingForm.title} maxLength={160} onChange={(event) => setFindingForm({ ...findingForm, title: event.target.value })} />,
+                  title: <input aria-label={text("Title", "Titel")} placeholder={text("Short title", "Korte titel")} value={findingForm.title} maxLength={160} onChange={(event) => setFindingForm({ ...findingForm, title: event.target.value })} />,
                   description: (
                     <label className="form-field record-description-field">
                       <textarea aria-label={text("Description", "Omschrijving")} rows={5} maxLength={1000} value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} />
@@ -4186,34 +4360,6 @@ function ProjectOperations({
                   ),
                 }}
               />
-              {/* The client wrote "signature" beside the issue form too, and "contractor ook
-                  tekenen": both signatures close the form, supervisor first. */}
-              <RecordSignatures>
-              <SignatureField
-                label={text("Sign as the supervisor who reports this issue", "Ondertekenen als supervisor die dit issue meldt")}
-                declaration={text(
-                  "By signing you report this issue under your own name.",
-                  "Met je handtekening meld je dit issue onder je eigen naam.",
-                )}
-                hint={text("Signature, name and time are stored with the report.", "Handtekening, naam en tijdstip worden bij het rapport bewaard.")}
-                nameSuggestion={currentUserName}
-                nameOptions={documentIssuerOptions}
-                value={signatureFromDetails(findingForm.signedBy, findingForm.signedAt, findingForm.signatureImage)}
-                onChange={(signature) => setFindingForm({
-                  ...findingForm,
-                  signedBy: signature?.name ?? "",
-                  signedAt: signature?.signedAt ?? "",
-                  signatureImage: signature?.image ?? "",
-                })}
-              />
-              <ContractorSignatureField
-                idPrefix="issue"
-                value={findingForm.contractorSignature}
-                partyNames={parties.map((party) => party.name)}
-                locked={Boolean(editingFindingId && data.findings.find((item) => item.id === editingFindingId)?.issue_management?.contractor_signature_image)}
-                onChange={(contractorSignature) => setFindingForm((current) => ({ ...current, contractorSignature }))}
-              />
-              </RecordSignatures>
               <div className="record-form-actions">
                 <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => { resetFindingForm(); setShowForm(false); }}><X size={14} /> {text("Cancel", "Annuleren")}</button>
                 <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => writeRecordDraft("issue", projectId, findingForm)}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button>
@@ -4230,7 +4376,7 @@ function ProjectOperations({
                   findingForm.description.trim().length < 3 ? text("description", "omschrijving") : "",
                   ...findingSpecProblems,
                 ]} />
-                <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || !findingForm.issueCategory || findingForm.title.trim().length < 3 || (issueNeedsResponsibleName && findingForm.responsiblePerson.trim().length < 2) || findingForm.description.trim().length < 3 || findingSpecProblems.length > 0} onClick={findingSigning.request}><Send size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit issue", "Issue indienen")}</button>{findingSigning.dialog}
+                <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || !findingForm.issueCategory || findingForm.title.trim().length < 3 || (issueNeedsResponsibleName && findingForm.responsiblePerson.trim().length < 2) || findingForm.description.trim().length < 3 || findingSpecProblems.length > 0} onClick={findingSigning.request}><Send size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Sign, submit & notify", "Ondertekenen, indienen & melden")}</button>{findingSigning.dialog}
               </div>
             </div>
           ) : null}
@@ -4243,7 +4389,7 @@ function ProjectOperations({
                 idLabel: text("NCR number", "NCR-nummer"),
                 idValue: text("On submit", "Bij indienen"),
                 dateLabel: text("Date raised", "Datum gemeld"),
-                dateValue: `${issueDateLabel} · ${issueTime}`,
+                dateValue: <AutoBarDate form={"ncr"} values={findingSpecValues} onChange={changeFindingSpec} fallback={`${issueDateLabel} · ${issueTime}`} />,
                 byLabel: text("Raised by", "Gemeld door"),
                 byValue: currentUserName,
                 statusValue: text("Open", "Open"),
@@ -4251,14 +4397,46 @@ function ProjectOperations({
               })} />
               {/* The NCR sheet of the specification workbook, row by row in its order. */}
               <SpecFields
+                dateInAutoBar
                 form="ncr"
                 skip={findingSpecSkip}
                 values={findingSpecValues}
                 onChange={changeFindingSpec}
                 text={text}
                 language={language}
+                signoff={(
+                <RecordSignatures>
+                  <div className="record-signature-with-position">
+                  <SignatureField
+                    label={text("NCR issuer", "Uitgever NCR")} party={{ label: text("Supervision", "Supervisie"), tone: "supervision" }}
+                    declaration={text(
+                      "By signing you issue this non-conformance report to the contractor named above.",
+                      "Met je handtekening geef je dit non-conformance report uit aan de hierboven genoemde aannemer.",
+                    )}
+                    hint={text("Signature, name and date are stored with the report.", "Handtekening, naam en datum worden bij het rapport bewaard.")}
+                    nameSuggestion={currentUserName}
+                    nameOptions={documentIssuerOptions}
+                    value={signatureFromDetails(findingForm.signedBy, findingForm.signedAt, findingForm.signatureImage)}
+                    onChange={(signature) => setFindingForm({
+                      ...findingForm,
+                      signedBy: signature?.name ?? "",
+                      signedAt: signature?.signedAt ?? "",
+                      signatureImage: signature?.image ?? "",
+                    })}
+                  />
+                  <label className="form-field ncr-signature-position"><span>{text("Position", "Functie")}</span><input value={findingForm.signedPosition} onChange={(event) => setFindingForm({ ...findingForm, signedPosition: event.target.value })} placeholder={text("Quality Engineer", "Quality Engineer")} /></label>
+                  </div>
+                  <ContractorSignatureField
+                    idPrefix="ncr"
+                    value={findingForm.contractorSignature}
+                    partyNames={parties.map((party) => party.name)}
+                    locked={Boolean(editingFindingId && data.findings.find((item) => item.id === editingFindingId)?.issue_management?.contractor_signature_image)}
+                    onChange={(contractorSignature) => setFindingForm((current) => ({ ...current, contractorSignature }))}
+                  />
+                </RecordSignatures>
+                )}
                 slots={{
-                  title: <input aria-label={text("Title", "Titel")} value={findingForm.title} maxLength={160} onChange={(event) => setFindingForm({ ...findingForm, title: event.target.value })} />,
+                  title: <input aria-label={text("Title", "Titel")} placeholder={text("Short title", "Korte titel")} value={findingForm.title} maxLength={160} onChange={(event) => setFindingForm({ ...findingForm, title: event.target.value })} />,
                   description: (
                     <label className="form-field record-description-field">
                       <textarea aria-label={text("Non-conformance description", "Omschrijving van de afwijking")} rows={5} value={findingForm.description} onChange={(event) => setFindingForm({ ...findingForm, description: event.target.value })} />
@@ -4292,36 +4470,6 @@ function ProjectOperations({
               {/* "Gaat dit in de app gebeuren?" - yes: the contractor answers in the app through
                   the link, without an account, and CODECO verifies and closes it here. */}
               <div className="operation-alert warning"><RotateCcw size={17} /><div><strong>{text("The contractor answers in the app", "De aannemer antwoordt in de app")}</strong><span>{text("After submitting, send the NCR link to the action owner's company (no account needed). The contractor writes the corrective action in the app; CODECO verifies and closes it here.", "Stuur na het indienen de NCR-link naar het bedrijf van de actiehouder (geen account nodig). De aannemer schrijft de corrigerende maatregel in de app; CODECO verifieert en sluit hier af.")}</span></div></div>
-              {/* "Overal aan het eind plaatsen": the engineer and the contractor sign last. */}
-              <RecordSignatures>
-                <div className="record-signature-with-position">
-                <SignatureField
-                  label={text("Sign as the engineer who issues this NCR", "Ondertekenen als ingenieur die deze NCR uitgeeft")}
-                  declaration={text(
-                    "By signing you issue this non-conformance report to the contractor named above.",
-                    "Met je handtekening geef je dit non-conformance report uit aan de hierboven genoemde aannemer.",
-                  )}
-                  hint={text("Signature, name and date are stored with the report.", "Handtekening, naam en datum worden bij het rapport bewaard.")}
-                  nameSuggestion={currentUserName}
-                  nameOptions={documentIssuerOptions}
-                  value={signatureFromDetails(findingForm.signedBy, findingForm.signedAt, findingForm.signatureImage)}
-                  onChange={(signature) => setFindingForm({
-                    ...findingForm,
-                    signedBy: signature?.name ?? "",
-                    signedAt: signature?.signedAt ?? "",
-                    signatureImage: signature?.image ?? "",
-                  })}
-                />
-                <label className="form-field ncr-signature-position"><span>{text("Position", "Functie")}</span><input value={findingForm.signedPosition} onChange={(event) => setFindingForm({ ...findingForm, signedPosition: event.target.value })} placeholder={text("Quality Engineer", "Quality Engineer")} /></label>
-                </div>
-                <ContractorSignatureField
-                  idPrefix="ncr"
-                  value={findingForm.contractorSignature}
-                  partyNames={parties.map((party) => party.name)}
-                  locked={Boolean(editingFindingId && data.findings.find((item) => item.id === editingFindingId)?.issue_management?.contractor_signature_image)}
-                  onChange={(contractorSignature) => setFindingForm((current) => ({ ...current, contractorSignature }))}
-                />
-              </RecordSignatures>
               <p className="form-helper">{text(`Entered by ${currentUserName}`, `Ingevoerd door ${currentUserName}`)}</p>
               <div className="record-form-actions">
               <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => { resetFindingForm(); setShowForm(false); }}><X size={14} /> {text("Cancel", "Annuleren")}</button>
@@ -4332,7 +4480,7 @@ function ProjectOperations({
                 findingForm.description.trim().length < 3 ? text("description", "omschrijving") : "",
                 ...findingSpecProblems,
               ]} />
-              <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3 || findingSpecProblems.length > 0} onClick={findingSigning.request}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit NCR", "NCR indienen")}</button>{findingSigning.dialog}
+              <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3 || findingSpecProblems.length > 0} onClick={findingSigning.request}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Raise & notify contractor", "Uitgeven & aannemer melden")}</button>{findingSigning.dialog}
               </div>
             </div>
           ) : null}
@@ -4442,7 +4590,7 @@ function ProjectOperations({
                 idValue: nextHseNumber,
                 idNote: text("Provisional · fixed on submit", "Voorlopig · vast bij indienen"),
                 dateLabel: text("Date/time observed", "Datum/tijd waargenomen"),
-                dateValue: `${issueDateLabel} · ${issueTime}`,
+                dateValue: <AutoBarDate form={hseSpecForm} values={hseSpecValues} onChange={changeHseSpec} fallback={`${issueDateLabel} · ${issueTime}`} />,
                 byLabel: text("Reported by", "Gemeld door"),
                 byValue: currentUserName,
                 statusValue: hseStatusLabel,
@@ -4460,14 +4608,36 @@ function ProjectOperations({
 
               {/* The HSE sheet, or the HSE Incident Registration sheet, row by row in its order. */}
               <SpecFields
+                dateInAutoBar
                 form={hseSpecForm}
                 skip={hseSpecSkip}
                 values={hseSpecValues}
                 onChange={changeHseSpec}
                 text={text}
                 language={language}
+                signoff={(
+                <RecordSignatures>
+                <RecordSignatureField
+                  value={hseSignature}
+                  onChange={setHseSignature}
+                  nameSuggestion={currentUserName}
+                  lockName
+                  locked={Boolean(data.hseEvents.find((item) => item.id === editingHseId)?.signature_image)}
+                  declaration={text("I confirm this HSE record is complete and accurate.", "Ik bevestig dat deze HSE-registratie volledig en juist is.")}
+                  role={text("Recording supervisor", "Vastleggende supervisor")}
+                />
+                {/* "Contractor ook tekenen!" */}
+                <ContractorSignatureField
+                  idPrefix="hse"
+                  value={hseForm.contractorSignature}
+                  partyNames={parties.map((party) => party.name)}
+                  locked={Boolean(data.hseEvents.find((item) => item.id === editingHseId)?.contractor_signature_image)}
+                  onChange={(contractorSignature) => setHseForm((current) => ({ ...current, contractorSignature }))}
+                />
+                </RecordSignatures>
+                )}
                 slots={{
-                  title: <input aria-label={hseSpecForm === "hse" ? text("Title", "Titel") : text("Incident title", "Titel incident")} value={hseForm.title} maxLength={160} onChange={(event) => setHseForm({ ...hseForm, title: event.target.value })} />,
+                  title: <input aria-label={hseSpecForm === "hse" ? text("Title", "Titel") : text("Incident title", "Titel incident")} placeholder={text("Short title", "Korte titel")} value={hseForm.title} maxLength={160} onChange={(event) => setHseForm({ ...hseForm, title: event.target.value })} />,
                   description: (
                     <label className="form-field record-description-field">
                       <textarea aria-label={hseSpecForm === "hse" ? text("Observation / hazard description", "Omschrijving observatie / gevaar") : text("Detailed event description", "Gedetailleerde omschrijving van de gebeurtenis")} rows={5} maxLength={1000} value={hseForm.description} onChange={(event) => setHseForm({ ...hseForm, description: event.target.value })} />
@@ -4517,24 +4687,6 @@ function ProjectOperations({
                 }}
               />
               <label className="check-field"><input type="checkbox" checked={hseForm.confidential} onChange={(event) => setHseForm({ ...hseForm, confidential: event.target.checked })} /> {text("Restrict this sensitive incident to authorized HSE roles", "Beperk dit gevoelige incident tot bevoegde HSE-rollen")}</label>
-              <RecordSignatures>
-              <RecordSignatureField
-                value={hseSignature}
-                onChange={setHseSignature}
-                nameSuggestion={currentUserName}
-                lockName
-                locked={Boolean(data.hseEvents.find((item) => item.id === editingHseId)?.signature_image)}
-                declaration={text("I confirm this HSE record is complete and accurate.", "Ik bevestig dat deze HSE-registratie volledig en juist is.")}
-              />
-              {/* "Contractor ook tekenen!" */}
-              <ContractorSignatureField
-                idPrefix="hse"
-                value={hseForm.contractorSignature}
-                partyNames={parties.map((party) => party.name)}
-                locked={Boolean(data.hseEvents.find((item) => item.id === editingHseId)?.contractor_signature_image)}
-                onChange={(contractorSignature) => setHseForm((current) => ({ ...current, contractorSignature }))}
-              />
-              </RecordSignatures>
               {/* The bar of the client's screen: leave it, park it, count the evidence,
                   submit it. */}
               <div className="record-form-actions">
@@ -4551,7 +4703,7 @@ function ProjectOperations({
                   hseForm.description.trim().length < 3 ? text("description", "omschrijving") : "",
                   ...hseSpecProblems,
                 ]} />
-                <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !hseLocationNodeId) || !hseForm.issueCategory || hseForm.title.trim().length < 3 || hseForm.description.trim().length < 3 || hseSpecProblems.length > 0} onClick={hseSigning.request}><Send size={15} /> {text("Submit issue", "Issue indienen")}</button>{hseSigning.dialog}
+                <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !hseLocationNodeId) || !hseForm.issueCategory || hseForm.title.trim().length < 3 || hseForm.description.trim().length < 3 || hseSpecProblems.length > 0} onClick={hseSigning.request}><Send size={15} /> {text("Sign, submit & notify", "Ondertekenen, indienen & melden")}</button>{hseSigning.dialog}
               </div>
             </RecordFormShell>
           ) : null}
@@ -4612,7 +4764,7 @@ function ProjectOperations({
                     idLabel: delayReportRegister ? text("PDR number", "PDR-nummer") : text("Record ID", "Registratienummer"),
                     idValue: editingDocument?.entry_number || (formCodes[registerForm.type as keyof typeof formCodes] ? nextRecordId(data.registerEntries.map((entry) => entry.entry_number), projectCode, registerForm.type, recordYear) : text("On submit", "Bij indienen")),
                     dateLabel: delayReportRegister ? text("Reported date/time", "Datum/tijd gemeld") : registerForm.type === "delivery" ? text("Delivery date/time", "Datum/tijd levering") : text("Date and time", "Datum en tijd"),
-                    dateValue: `${issueDateLabel} · ${issueTime}`,
+                    dateValue: <AutoBarDate form={sheetRegister ? registerSpecForm : null} values={registerSpecValues} onChange={changeRegisterSpec} fallback={`${issueDateLabel} · ${issueTime}`} />,
                     byLabel: delayReportRegister ? text("Reported by", "Gemeld door") : registerForm.type === "delivery" ? text("Received by", "Ontvangen door") : registerForm.type === "technical_instruction" ? text("Issued by", "Uitgegeven door") : text("Recorded by", "Vastgelegd door"),
                     byValue: currentUserName,
                     statusValue: text("Draft", "Concept"),
@@ -4622,7 +4774,31 @@ function ProjectOperations({
               ) : null}
               {/* A controlled document starts with the project information and the dates:
                   that is the head of the paper form the client hands out. */}
-              {controlledRegister ? (
+              {controlledRegister && sheetRegister ? (
+                <>
+                  {/* Mockups 10 and 11: the same auto bar as every form (ID, the record's date, who issues it, status). */}
+                  <FormAutoBar items={autoBarItems({
+                    idLabel: registerForm.type === "change_order" ? text("Change order ID", "Wijzigingsopdracht-ID") : text("Instruction ID", "Instructie-ID"),
+                    idValue: editingDocument?.entry_number || (formCodes[registerForm.type as keyof typeof formCodes] ? nextRecordId(data.registerEntries.map((entry) => entry.entry_number), projectCode, registerForm.type, recordYear) : text("On submit", "Bij indienen")),
+                    dateLabel: registerForm.type === "change_order" ? text("Request date", "Aanvraagdatum") : text("Instruction date", "Instructiedatum"),
+                    dateValue: <AutoBarDate form={registerSpecForm} values={registerSpecValues} onChange={changeRegisterSpec} fallback={documentIssueDateLabel} />,
+                    byLabel: registerForm.type === "change_order" ? text("Requested by", "Aangevraagd door") : text("Issued by", "Uitgegeven door"),
+                    byValue: registerForm.issuerName.trim() || currentUserName,
+                    statusValue: text("Draft", "Concept"),
+                    text,
+                  })} />
+                  {!registerForm.signedBy ? (
+                    <details className="controlled-document-author-edit">
+                      <summary>{text("Change author", "Opsteller wijzigen")}</summary>
+                      <label className="form-field">
+                        <span>{text("Document author", "Opsteller document")}</span>
+                        <input list="controlled-document-author-options" value={registerForm.issuerName || currentUserName} onChange={(event) => setRegisterForm({ ...registerForm, issuerName: event.target.value })} />
+                        <datalist id="controlled-document-author-options">{documentIssuerOptions.map((name) => <option value={name} key={name} />)}</datalist>
+                      </label>
+                    </details>
+                  ) : null}
+                </>
+              ) : controlledRegister ? (
                 <>
                 <section className="controlled-document-context sectioned-record-context" aria-label={text("Project information", "Projectinformatie")}>
                   <div><small>{text("Form no · automatic", "Formuliernummer · automatisch")}</small><strong>{editingDocument?.entry_number || text("On submit", "Bij indienen")}</strong><span>{text("Unique project code", "Unieke projectcode")}</span></div>
@@ -4692,23 +4868,27 @@ function ProjectOperations({
               {sheetRegister && registerSpecForm ? (
                 /* The workbook sheet of this form, row by row in its order. */
                 <SpecFields
+                  dateInAutoBar
                   form={registerSpecForm}
                   skip={registerSpecSkip}
                   values={registerSpecValues}
                   onChange={changeRegisterSpec}
                   text={text}
                   language={language}
+                  signoff={registerSignoffNode()}
                   slots={{
                     drawing_location: (
                       <div className="sheet-drawing-location">
                         <DrawingLocationPicker inline key={`inline-${registerBuildingId}`} drawings={pickableDrawings(data.files, registerBuildingId)} buildings={buildings} client={client} initial={registerDrawingLocation} subject="record" close={() => undefined} save={(location) => setRegisterDrawingLocation(location)} />
-                        {registerDrawingLocation ? <span className="sheet-drawing-location-summary"><MapPin size={14} aria-hidden="true" /> {drawingLocationLabel(registerDrawingLocation, text("page", "pagina"))}</span> : <small>{text("Optional: point at the spot on the drawing.", "Optioneel: wijs de plek aan op de tekening.")}</small>}
-                        <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setPickingRegisterDrawing(true)}><MapPin size={14} /> {registerDrawingLocation ? text("Change on drawing", "Wijzigen op tekening") : text("Choose on drawing", "Kies op tekening")}</button>
-                        {registerDrawingLocation ? <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => setRegisterDrawingLocation(null)}><X size={14} /> {text("Remove", "Verwijderen")}</button> : null}
+                        <div className="sheet-drawing-tools">
+                          {registerDrawingLocation ? <span className="sheet-drawing-location-summary"><MapPin size={14} aria-hidden="true" /> {drawingLocationLabel(registerDrawingLocation, text("page", "pagina"))}</span> : <small>{text("Optional: point at the spot on the drawing.", "Optioneel: wijs de plek aan op de tekening.")}</small>}
+                          <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setPickingRegisterDrawing(true)}><MapPin size={14} /> {registerDrawingLocation ? text("Change on drawing", "Wijzigen op tekening") : text("Choose on drawing", "Kies op tekening")}</button>
+                          {registerDrawingLocation ? <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => setRegisterDrawingLocation(null)}><X size={14} /> {text("Remove", "Verwijderen")}</button> : null}
+                        </div>
                         {pickingRegisterDrawing ? <DrawingLocationPicker drawings={pickableDrawings(data.files, registerBuildingId)} buildings={buildings} client={client} initial={registerDrawingLocation} subject="record" close={() => setPickingRegisterDrawing(false)} save={(location) => { setRegisterDrawingLocation(location); setPickingRegisterDrawing(false); }} /> : null}
                       </div>
                     ),
-                    title: <input aria-label={text("Title", "Titel")} value={registerTitleEditable ? registerForm.title || registerTitleDerived : registerForm.title} maxLength={registerTitleEditable ? 120 : 160} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} />,
+                    title: <input aria-label={text("Title", "Titel")} placeholder={text("Short title", "Korte titel")} value={registerTitleEditable ? registerForm.title || registerTitleDerived : registerForm.title} maxLength={registerTitleEditable ? 120 : 160} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} />,
                     description: (
                       <label className="form-field record-description-field">
                         <textarea aria-label={text("Description", "Omschrijving")} value={registerForm.details} rows={5} onChange={(event) => setRegisterForm({ ...registerForm, details: event.target.value })} />
@@ -5250,134 +5430,7 @@ function ProjectOperations({
               {registerSpecForm && !sheetRegister ? <SpecFields form={registerSpecForm} skip={registerSpecSkip} values={registerSpecValues} onChange={setRegisterSpec} text={text} language={language} heading={text("Specification details", "Specificatiegegevens")} /> : null}
               {/* "Overal aan het eind": the signatures close every register form — supervision
                   first, the contractor next to it. */}
-              {sheetRegister && agreementRegister ? (
-                <RecordSignatures>
-                  <AgreementSignatureFields
-                    options={agreementPartyOptions}
-                    value={agreementForm}
-                    onChange={setAgreementForm}
-                    roleLabels={[text("Contractor representative", "Vertegenwoordiger aannemer"), text("Supervision (consultant)", "Supervisie (consultant)")]}
-                  />
-                </RecordSignatures>
-              ) : changeOrderRegister && !sheetRegister ? (
-                <div className="record-form-sections change-order-sections">
-                    <RecordFormSection
-                      number={5}
-                      title={text("Acknowledgement & agreement", "Erkenning & akkoord")}
-                    >
-                      <div className="form-grid-2">
-                        <label className="form-field"><span>{text("Contractor representative", "Vertegenwoordiger aannemer")}</span><input style={inputWithMicStyle} list="change-order-contractors" value={changeOrder.contractorRepresentative} onChange={(event) => setChangeOrder({ ...changeOrder, contractorRepresentative: event.target.value })} placeholder={text("Enter name", "Voer naam in")} /><DictateButton style={micInputStyle} onText={(transcript) => setChangeOrder((current) => ({ ...current, contractorRepresentative: appendDictation(current.contractorRepresentative, transcript) }))} /><datalist id="change-order-contractors">{parties.map((party) => <option value={party.name} key={party.id} />)}</datalist></label>
-                        <label className="form-field"><span>{text("Position", "Functie")}</span><input style={inputWithMicStyle} value={changeOrder.contractorPosition} onChange={(event) => setChangeOrder({ ...changeOrder, contractorPosition: event.target.value })} placeholder={text("Enter position", "Voer functie in")} /><DictateButton style={micInputStyle} onText={(transcript) => setChangeOrder((current) => ({ ...current, contractorPosition: appendDictation(current.contractorPosition, transcript) }))} /></label>
-                      </div>
-                      <SignatureField
-                        label={text("Signature · contractor representative", "Handtekening · vertegenwoordiger aannemer")}
-                        declaration={text(
-                          "By signing you acknowledge this change and agree to proceed according to its impact on time, if any.",
-                          "Met je handtekening erken je deze wijziging en ga je akkoord met de uitvoering volgens het effect op de tijd, indien van toepassing.",
-                        )}
-                        hint={text("Signature, name and date are stored with the change order.", "Handtekening, naam en datum worden bij de wijzigingsopdracht bewaard.")}
-                        nameSuggestion={changeOrder.contractorRepresentative}
-                        value={signatureFromDetails(changeOrder.contractorSignedBy, changeOrder.contractorSignedAt, changeOrder.contractorSignatureImage)}
-                        onChange={(signature) => setChangeOrder({
-                          ...changeOrder,
-                          contractorSignedBy: signature?.name ?? "",
-                          contractorSignedAt: signature?.signedAt ?? "",
-                          contractorSignatureImage: signature?.image ?? "",
-                          contractorRepresentative: signature?.name || changeOrder.contractorRepresentative,
-                        })}
-                      />
-                      <label className="form-field"><span>{text("Contractor remarks (optional)", "Opmerkingen aannemer (optioneel)")}</span><textarea rows={2} maxLength={500} value={changeOrder.contractorRemarks} onChange={(event) => setChangeOrder({ ...changeOrder, contractorRemarks: event.target.value })} placeholder={text("Enter remarks (if any).", "Voer eventuele opmerkingen in.")} /><DictateButton onText={(transcript) => setChangeOrder((current) => ({ ...current, contractorRemarks: appendDictation(current.contractorRemarks, transcript) }))} /></label>
-                    </RecordFormSection>
-
-                    <RecordFormSection
-                      number={6}
-                      title={text("Approval · supervision", "Goedkeuring · supervisie")}
-                    >
-                      {/* The supervision approval is the issuer's signature on a change order: one signature,
-                          under the account's own name, not a second one asked at the bottom of the form. */}
-                      <SignatureField
-                        label={text("Signature · supervision (issuer)", "Handtekening · supervisie (uitgever)")}
-                        declaration={text(
-                          "By signing you issue and approve this change order on behalf of supervision.",
-                          "Met je handtekening geef je deze wijzigingsopdracht uit en keur je die goed namens de supervisie.",
-                        )}
-                        hint={text("Signed under your own name; it cannot be changed afterwards.", "Ondertekend onder je eigen naam; daarna niet meer te wijzigen.")}
-                        nameSuggestion={currentUserName}
-                        lockName
-                        locked={Boolean(editingDocument?.signature_image || editingDocument?.details?.signature_image)}
-                        value={signatureFromDetails(changeOrder.supervisionSignedBy, changeOrder.supervisionSignedAt, changeOrder.supervisionSignatureImage)}
-                        onChange={(signature) => {
-                          setChangeOrder({
-                            ...changeOrder,
-                            supervisionSignedBy: signature?.name ?? "",
-                            supervisionSignedAt: signature?.signedAt ?? "",
-                            supervisionSignatureImage: signature?.image ?? "",
-                            supervisionName: signature?.name || "",
-                          });
-                          setRegisterForm((current) => ({ ...current, signedBy: signature?.name ?? "", signedAt: signature?.signedAt ?? "", signatureImage: signature?.image ?? "" }));
-                        }}
-                      />
-                    </RecordFormSection>
-                </div>
-              ) : controlledRegister ? (
-                <RecordSignatures>
-                {/* The document is signed here, with a written signature, at the moment it
-                    is drawn up or the moment the received form is recorded. */}
-                  <SignatureField
-                  label={submittedRegister
-                    ? text("Signature on the submitted form", "Handtekening op het ingediende formulier")
-                    : text("Sign as the author of this document", "Ondertekenen als opsteller van dit document")}
-                  declaration={submittedRegister
-                    ? text("Record the signature on the received form. CODECO signs in the formal response.", "Leg de handtekening op het ontvangen formulier vast. CODECO tekent bij de formele reactie.")
-                    : text("By signing you issue this document under your own name.", "Met je handtekening geef je dit document onder je eigen naam uit.")}
-                  hint={text("Signature, name and time are stored with the document.", "Handtekening, naam en tijdstip worden bij het document bewaard.")}
-                  nameSuggestion={submittedRegister ? registerForm.issuerName.trim() : currentUserName}
-                  nameOptions={[]}
-                  lockName={!submittedRegister}
-                  locked={Boolean(editingDocument?.signature_image || editingDocument?.details?.signature_image)}
-                  disabled={submittedRegister && !registerForm.issuerName.trim()}
-                  disabledHint={text("Fill in who submitted the form first.", "Vul eerst in wie het formulier heeft ingediend.")}
-                  value={signatureFromDetails(registerForm.signedBy, registerForm.signedAt, registerForm.signatureImage)}
-                  onChange={(signature) => setRegisterForm({
-                    ...registerForm,
-                    signedBy: signature?.name ?? "",
-                    signedAt: signature?.signedAt ?? "",
-                    signatureImage: signature?.image ?? "",
-                  })}
-                />
-                {submittedRegister ? <p className="form-helper">{text("Drawn up and signed by the submitting party. CODECO signs in the formal response below.", "Opgesteld en ondertekend door de indienende partij. CODECO tekent bij de formele reactie hieronder.")}</p> : null}
-                  {registerContractorSignatureApplies ? (
-                    <ContractorSignatureField
-                      idPrefix="register"
-                      value={registerContractorSignature}
-                      partyNames={parties.map((party) => party.name)}
-                      locked={Boolean(editingDocument?.details?.contractor_signature_image)}
-                      onChange={setRegisterContractorSignature}
-                    />
-                  ) : null}
-                </RecordSignatures>
-              ) : !agreementRegister ? (
-                <RecordSignatures>
-                  <RecordSignatureField
-                    value={registerSignature}
-                    onChange={setRegisterSignature}
-                    nameSuggestion={currentUserName}
-                    declaration={text(
-                      "I confirm that this register entry reflects what was recorded on site.",
-                      "Ik bevestig dat dit registeritem weergeeft wat op de bouwplaats is vastgelegd.",
-                    )}
-                  />
-                  {registerContractorSignatureApplies ? (
-                    <ContractorSignatureField
-                      idPrefix="register"
-                      value={registerContractorSignature}
-                      partyNames={parties.map((party) => party.name)}
-                      locked={Boolean(editingDocument?.details?.contractor_signature_image)}
-                      onChange={setRegisterContractorSignature}
-                    />
-                  ) : null}
-                </RecordSignatures>
-              ) : null}
+              {sheetRegister ? null : registerSignoffNode()}
               <div className="record-form-actions">
               {(() => {
                 // What is still missing before the save button works, in words. A disabled button
@@ -5409,7 +5462,7 @@ function ProjectOperations({
               {/* Mockups 01-15: Cancel and Save draft beside the one primary button, as on the Issue and HSE forms. */}
               <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => setShowForm(false)}><X size={14} /> {text("Cancel", "Annuleren")}</button>
               {!editingRegisterId ? <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={registerAutosave.saveNow}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button> : null}
-              <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !registerLocationNodeId) || registerTitle.length < 3 || (sheetRegister ? sheetRegisterMissing.length > 0 : !controlledFormReady || !lessonFormReady || !delayReportFormReady) || registerSpecProblems.length > 0} onClick={registerSigning.request}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : agreementRegister ? text("Save agreement", "Afspraak opslaan") : lessonsLearnedRegister ? text("Save lesson learned", "Geleerde les opslaan") : delayReportRegister ? text("Save delay report", "Vertragingsrapport opslaan") : sheetRegister ? text("Sign, submit & notify", "Ondertekenen, indienen & melden") : text("Save register item", "Registeritem opslaan")}</button>{registerSigning.dialog}
+              <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !registerLocationNodeId) || registerTitle.length < 3 || (sheetRegister ? sheetRegisterMissing.length > 0 : !controlledFormReady || !lessonFormReady || !delayReportFormReady) || registerSpecProblems.length > 0} onClick={registerSigning.request}><PackageCheck size={15} /> {/* Mockups 01-15 and Excel Form Steps: the sheet forms submit with "Sign, submit & notify"; a Technical Instruction is issued to the contractor. */}{sheetRegister ? (registerForm.type === "technical_instruction" ? text("Issue & notify contractor", "Uitgeven & aannemer melden") : text("Sign, submit & notify", "Ondertekenen, indienen & melden")) : controlledRegister ? text("Create controlled document", "Maak beheerd document") : agreementRegister ? text("Save agreement", "Afspraak opslaan") : lessonsLearnedRegister ? text("Save lesson learned", "Geleerde les opslaan") : delayReportRegister ? text("Save delay report", "Vertragingsrapport opslaan") : text("Save register item", "Registeritem opslaan")}</button>{registerSigning.dialog}
               </div>
             </RecordFormShell>
           ) : null}

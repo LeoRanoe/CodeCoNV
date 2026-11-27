@@ -78,7 +78,7 @@ async function createStackedFinding(page: Page, title: string) {
   await expect(page.getByText("Describe", { exact: true })).toHaveCount(3);
   await page.getByPlaceholder("First and last name").fill("Demo Hoofdaannemer");
   await fillSpecFields(page.locator(".record-form-shell").first());
-  await page.getByRole("button", { name: "Submit issue" }).click();
+  await page.getByRole("button", { name: "Sign, submit & notify" }).click();
   await finishSigning(page);
   await expect(page.locator(".operation-alert.success")).toContainText(/Issue|saved|secured/i, { timeout: 90_000 });
   await openWorkspaceHome(page);

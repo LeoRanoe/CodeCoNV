@@ -82,7 +82,7 @@ test("a delay report is saved with its attached photo confirmed", async ({ page 
   await fillDelayReport(page, description);
   await addPhoto(page);
   await fillSpecFields(page.locator(".record-form-shell").first());
-  await page.getByRole("button", { name: "Save delay report" }).click();
+  await page.getByRole("button", { name: "Sign, submit & notify" }).click();
   await finishSigning(page);
   await expect(page.locator(".operation-alert.success")).toBeVisible({ timeout: 90_000 });
   expect((await liveReports(page, description)).length, "the report is saved").toBe(1);
@@ -98,7 +98,7 @@ test("a delay report whose attached photo is not confirmed is not left behind", 
   await fillDelayReport(page, description);
   await addPhoto(page);
   await fillSpecFields(page.locator(".record-form-shell").first());
-  await page.getByRole("button", { name: "Save delay report" }).click();
+  await page.getByRole("button", { name: "Sign, submit & notify" }).click();
   await finishSigning(page);
   await expect(page.getByText(/Not saved: the attached photos were not confirmed/)).toBeVisible({ timeout: 90_000 });
   expect((await liveReports(page, description)).length, "no formal report without its photo").toBe(0);

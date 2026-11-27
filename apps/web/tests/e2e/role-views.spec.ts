@@ -116,7 +116,7 @@ test("a client reads and signs; nothing offers to write", async ({ page }, testI
   await openWorkspaceModule(page, "Issues");
   // The module opens on its list: there is no form to fill in and no "New" button.
   await expect(page.getByRole("button", { name: /^New$/ })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /Submit issue|Save draft/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Submit issue|Sign, submit|Save draft/ })).toHaveCount(0);
 
   if (desktop) {
     await expect(modules(page).filter({ hasText: "Management" })).toHaveCount(1);

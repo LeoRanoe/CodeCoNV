@@ -167,7 +167,10 @@ export function RecordSignatureField({
   disabledHint,
   lockName = false,
   locked = false,
+  role,
 }: {
+  /** The signer's role on the mockups' sign-off card, e.g. "Reporting supervisor"; "Sign" without it. */
+  role?: string;
   value: HandwrittenSignature | null;
   onChange: (value: HandwrittenSignature | null) => void;
   nameSuggestion?: string;
@@ -189,7 +192,8 @@ export function RecordSignatureField({
       label={required ? text("Signature *", "Handtekening *") : text("Signature", "Handtekening")}
     >
       <SignatureField
-        label={text("Sign", "Onderteken")}
+        label={role ?? text("Sign", "Onderteken")}
+        party={{ label: text("Supervision", "Supervisie"), tone: "supervision" }}
         lockName={lockName}
         locked={locked}
         declaration={declaration}

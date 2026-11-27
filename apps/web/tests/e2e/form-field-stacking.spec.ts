@@ -61,7 +61,10 @@ const fieldsSideBySide = (page: Page) => page.evaluate(() => {
       const grid = a.element.closest(".sheet-card-grid, .form-grid-2");
       const limit = grid?.classList.contains("sheet-card-grid") ? (grid.getBoundingClientRect().width >= 760 ? 4 : 1) : 2;
       const sameRow = (box: { rect: DOMRect }) => Math.min(a.rect.bottom, box.rect.bottom) - Math.max(a.rect.top, box.rect.top) > Math.min(a.rect.height, box.rect.height) * 0.5;
-      const allowed = grid !== null && grid === b.element.closest(".sheet-card-grid, .form-grid-2") && boxes.filter((box) => grid.contains(box.element) && sameRow(box)).length <= limit;
+      // Two signature cards stand side by side (mockups 01-15): a field of one card is not "beside" a field of the other.
+      const card = (element: Element) => element.closest(".record-signatures-grid > *");
+      const otherCard = card(a.element) !== null && card(b.element) !== null && card(a.element) !== card(b.element);
+      const allowed = otherCard || (grid !== null && grid === b.element.closest(".sheet-card-grid, .form-grid-2") && boxes.filter((box) => grid.contains(box.element) && sameRow(box)).length <= limit);
       if (overlap > Math.min(a.rect.height, b.rect.height) * 0.5 && apart && !allowed) pairs.push(`"${name(a.element)}" beside "${name(b.element)}" [${(() => { let node: HTMLElement | null = a.element.parentElement; while (node && !node.contains(b.element)) node = node.parentElement; return node ? `${node.tagName}.${String(node.className)} ${getComputedStyle(node).display}` : ""; })()}]`);
     }
   }

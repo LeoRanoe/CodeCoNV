@@ -150,7 +150,11 @@ export function DrawingLocationPicker({
                   onPageCount={setPageCount}
                   onPoint={choose}
                 />
-              ) : null}
+              ) : (
+                <div className="drawing-inline-empty">{drawings.length
+                  ? text("Choose the drawing, then tap the spot on it.", "Kies de tekening en tik dan de plek aan.")
+                  : text("This project has no drawings yet.", "Dit project heeft nog geen tekeningen.")}</div>
+              )}
               {activeDrawing && pageCount > 1 ? (
                 <div className="drawing-location-pages">
                   <button type="button" disabled={pageNumber <= 1} onClick={() => { setPageNumber(pageNumber - 1); setPoint(null); }} aria-label={text("Previous page", "Vorige pagina")}><ChevronLeft size={17} /></button>

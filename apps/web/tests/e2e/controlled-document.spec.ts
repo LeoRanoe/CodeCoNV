@@ -113,7 +113,8 @@ test("historical feedback: technical instruction prioritizes content over repeat
   // The form is the Technical Instructions sheet, row by row (client, 20-11-2026).
   const sheet = form.locator("[data-sheet-form='technical_instruction']");
   await expect(sheet).toBeVisible();
-  await expect(sheet.locator("[data-spec-field='instruction_date'] input")).toBeVisible();
+  // The instruction date stands in the auto bar, where it is corrected (mockup 10, Excel column I).
+  await expect(form.locator("[data-form-auto-bar] input[data-spec-field='instruction_date']")).toBeVisible();
   await expect(sheet.locator("[data-sheet-slot='description'] textarea")).toBeVisible();
   await expect(form.locator(".controlled-document-dates")).toHaveCount(0);
   await expect(form.locator(".register-type-switch")).toHaveCount(0);

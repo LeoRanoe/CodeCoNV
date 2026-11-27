@@ -205,7 +205,7 @@ test("17.2 and 17.3 a revised drawing and a Technical Instruction issued against
   await expect(reference.locator(".spec-record-chip")).toContainText(`${documentNumber} rev A`);
   await fillSpecFields(page.locator("main"));
   await fillSpecFields(page.locator("main"));
-  await page.locator("main").getByRole("button", { name: /^Create controlled document$/ }).last().click();
+  await page.locator("main").getByRole("button", { name: /^Issue & notify contractor$/ }).last().click();
   await finishSigning(page);
   await expect(page.locator(".operation-alert.success")).toBeVisible({ timeout: 30_000 });
 

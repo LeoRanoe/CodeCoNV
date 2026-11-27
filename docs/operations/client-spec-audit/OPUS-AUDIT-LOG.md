@@ -68,6 +68,13 @@ The forms at 1440x900, 1366x768 and 1024x768 against mockups 01-15 (`tmp/desk-be
 | D05 | "Day log for the whole day" | A row of its own above the form | In the header beside "Open log" (an icon on a phone) |
 | D06 | Sign-off of Works ongoing / completed | A "Contractor representative" and a contractor signature under the supervisor's | Removed: "There is no contractor signature on Works Ongoing or Works Completed" (package key decision 2; mockups 02-03) |
 | D07 | Contractor Portal | "New submission (RFI, RFA, WCR, inspection request)" | Removed (Q-1 answered, D-36) |
+| D08 | Sign-off (all sheet forms) | A separate "Signature" card after the form; the supervisor's field titled "Sign"; a read-only "Workflow status: Open" row | The signature cards stand in the last card under the workflow line, side by side: role chip and role ("Reporting supervisor", "Recording supervisor", "Issuing supervisor", "Originator", "NCR issuer"), a signing box, the declaration; the counterpart's card dashed |
+| D09 | Location card (Works ongoing / completed) | Drawing list left, buildings right | The drawing on the left (7/12), the "Drawing" dropdown, building and exact location on the right |
+| D10 | Record date (11 forms, R4) | A date field in the form and the creation time in the auto bar | The form's own date is in the auto bar and corrected there (Excel column I "tap to correct"); not repeated in the form |
+| D11 | Technical instruction, Change order | A "Form no · Project · Applies to · Issue date · Drawn up by" block | The auto bar of the mockups (Instruction / Change order ID, date, Issued / Requested by, Status); "Change author" stays under it |
+| D12 | Buttons and small parts | "Submit issue", "Submit NCR", "Create controlled document", "Save delay report" …; title without placeholder; progress % as a number box; rows of two controls with captions on two heights | "Sign, submit & notify" (NCR: "Raise & notify contractor", TI: "Issue & notify contractor") as the mockups; "Short title"; a slider with its value; captions on one line; a Draft chip in the header; descriptions of two lines that grow |
+
+Not taken from the mockups: the "± 8-12 min" estimate (no source in the Excel or Word: an invented figure), the drawing and pin on the forms without a drawing store (R3), the activity pills of "What exactly is being worked on?" (Excel gap 2), Pin / Area modes on the drawing.
 
 Not changed tonight (need a migration or a new form, `OPUS-AUDIT-REPORT.md` section 6): R1 Workforce table, R2 Inspection start, R3 drawing pin on the other forms, R8 Photos as a form.
 

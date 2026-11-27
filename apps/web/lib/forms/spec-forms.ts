@@ -153,6 +153,8 @@ export type SpecField = {
   hint?: Words;
   min?: number;
   max?: number;
+  /** A number between `min` and `max` shown as a slider with its value (mockup 02, "Progress percentage"). */
+  slider?: boolean;
   /** The value a new record starts with, e.g. a new issue is Open (workbook status lists). */
   initial?: string;
   /** Person pickers: which people are offered. Default: users and every party. */
@@ -622,7 +624,7 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
     { key: "work_item", label: w("What exactly is being worked on?", "Waar wordt precies aan gewerkt?"), kind: "text", required: true },
     ...quantityFields(w("Quantity completed", "Hoeveelheid gereed")),
     { key: "progress_status", label: w("Progress status", "Voortgangsstatus"), kind: "select", options: catalogue.progressStatuses, required: true },
-    { key: "progress_percent", label: w("Progress percentage", "Voortgangspercentage"), kind: "number", min: 0, max: 100 },
+    { key: "progress_percent", label: w("Progress percentage", "Voortgangspercentage"), kind: "number", min: 0, max: 100, slider: true },
     { key: "crew", label: w("Crew / contractor", "Ploeg / aannemer"), kind: "people", required: true, people: { users: false, partyTypes: ["contractor", "subcontractor"], listKey: "crews" } },
     { key: "start_time", label: w("Start time", "Begintijd"), kind: "time" },
     { key: "finish_time", label: w("Finish time", "Eindtijd"), kind: "time" },
@@ -1311,6 +1313,17 @@ const rowFilled = (row: SpecRow) => Object.entries(row).some(([key, value]) => k
 const futureDateKeys = /^(due|due_date|target_date|planned_delivery_at|revised_delivery_date|response_required_by|target_recovery_date|reinspection_date)$/;
 export const isEventDateField = (field: SpecField) => (field.kind === "date" || field.kind === "datetime") && !field.derived && !field.auto && !futureDateKeys.test(field.key);
 
+/**
+ * The record's own date (Excel v5.0 column I: "AUTO BAR (top of form) – tap to correct"; mockups 01-15): shown and
+ * corrected in the auto bar, not repeated as a field in the form. The Delay Report's auto-bar date is the moment it is
+ * written; its "Delay start" stays a field.
+ */
+export const autoBarDateKey: Partial<Record<SpecFormKey, string>> = {
+  works_ongoing: "report_date", works_completed: "completion_date", issue: "identified_at", ncr: "raised_at", hse: "observed_at",
+  hse_incident: "incident_at", delivery: "delivery_at", technical_instruction: "instruction_date", change_order: "request_date",
+  lessons_learned: "recorded_on", agreement: "agreement_at",
+};
+
 /** The project-local moment as YYYY-MM-DDTHH:mm, to compare with what a date or date-time box holds. */
 export function projectNowLocal(now = new Date()) {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Paramaribo", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(now).replace(" ", "T");
@@ -1505,12 +1518,12 @@ const signOff: [string, string] = ["Sign-off / review workflow", "Ondertekening 
 arrange("works_ongoing",
   ["drawing_location", "location", "exact_location", "shift", "weather", "rain", "discipline", "activity", "work_item", "crew", "report_date", "progress_status", "progress_percent", "quantity", "quantity_unit", "times", "details", "inspection_reference", "blocker", "photos", "remarks", "workflow_status"],
   [["drawing_location", "Location", "Locatie", ...locationHint], ["shift", "Work", "Werk", "What is being done and by whom?", "Wat gebeurt er en door wie?"], ["progress_status", "Progress", "Voortgang", "How far along is it today?", "Hoe ver is het vandaag?"], ["details", "Technical details", "Technische details", "Only shown for the selected activity", "Alleen getoond bij de gekozen activiteit"], ["blocker", "Blockers & evidence", "Belemmeringen en bewijs"], ["workflow_status", ...signOff]],
-  { drawing_location: 7, location: 5, exact_location: 5, report_date: 4, shift: 5, weather: 7, rain: 6, discipline: 6, activity: 6, work_item: 12, crew: 6, progress_status: 6, progress_percent: 6, quantity: 3, quantity_unit: 3, times: 6, details: 12, inspection_reference: 12, blocker: 12, photos: 6, remarks: 6, workflow_status: 12 });
+  { drawing_location: 7, location: 5, exact_location: 5, report_date: 4, shift: 5, weather: 7, rain: 6, discipline: 12, activity: 6, work_item: 12, crew: 6, progress_status: 6, progress_percent: 6, quantity: 3, quantity_unit: 3, times: 6, details: 12, inspection_reference: 12, blocker: 12, photos: 6, remarks: 6, workflow_status: 12 });
 
 arrange("works_completed",
   ["based_on", "completion_date", "discipline", "activity", "completed_items", "details", "quantity", "quantity_unit", "crew", "drawing_location", "location", "exact_location", "inspection", "reference", "outstanding", "photos", "remarks", "workflow_status"],
   [["based_on", "Work", "Werk", "What was completed and by whom?", "Wat is afgerond en door wie?"], ["drawing_location", "Location", "Locatie", ...locationHint], ["inspection", "Inspection", "Keuring", "Physical completion and quality acceptance are kept separate", "Fysieke oplevering en kwaliteitsacceptatie blijven gescheiden"], ["photos", "Evidence", "Bewijs"], ["workflow_status", ...signOff]],
-  { based_on: 12, completion_date: 4, discipline: 6, activity: 6, completed_items: 12, details: 12, quantity: 4, quantity_unit: 4, crew: 4, drawing_location: 7, location: 5, exact_location: 5, inspection: 12, reference: 6, outstanding: 6, photos: 6, remarks: 6, workflow_status: 12 });
+  { based_on: 12, completion_date: 4, discipline: 12, activity: 6, completed_items: 12, details: 12, quantity: 4, quantity_unit: 4, crew: 4, drawing_location: 7, location: 5, exact_location: 5, inspection: 12, reference: 6, outstanding: 6, photos: 6, remarks: 6, workflow_status: 12 });
 
 arrange("issue",
   ["issue_type", "issue_category", "discipline", "description", "identified_at", "location", "priority", "impact_types", "immediate_action", "responsible", "target_date", "related_record", "corrective_action", "attachments", "workflow_status"],
