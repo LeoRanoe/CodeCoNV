@@ -84,13 +84,25 @@ const measure = (page: Page, touch: boolean) => page.evaluate((touchScreen) => {
   const isFixed = (element: HTMLElement) => { for (let node: HTMLElement | null = element; node; node = node.parentElement) { const position = getComputedStyle(node).position; if (position === "fixed" || position === "sticky") return true; } return false; };
   const interactive = all.filter((element) => !isFixed(element));
   // Controls on top of each other: two boxes that overlap by a real amount and are not nested.
-  const boxes = interactive.map((element) => ({ element, rect: element.getBoundingClientRect() }));
+  // The part of a control that can be seen: a control inside a scrolling list is cut off by that list, so its box is
+  // clipped by every scrolling or clipping ancestor before it is compared (a drawing list in the Location card).
+  const seen = (element: HTMLElement) => {
+    let { left, top, right, bottom } = element.getBoundingClientRect();
+    for (let node = element.parentElement; node && node !== document.body; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (style.overflowX === "visible" && style.overflowY === "visible") continue;
+      const clip = node.getBoundingClientRect();
+      left = Math.max(left, clip.left); top = Math.max(top, clip.top); right = Math.min(right, clip.right); bottom = Math.min(bottom, clip.bottom);
+    }
+    return new DOMRect(left, top, Math.max(0, right - left), Math.max(0, bottom - top));
+  };
+  const boxes = interactive.map((element) => ({ element, rect: element.getBoundingClientRect(), shown: seen(element) }));
   for (let i = 0; i < boxes.length; i += 1) {
     for (let j = i + 1; j < boxes.length; j += 1) {
       const a = boxes[i]; const b = boxes[j];
       if (a.element.contains(b.element) || b.element.contains(a.element)) continue;
-      const width = Math.min(a.rect.right, b.rect.right) - Math.max(a.rect.left, b.rect.left);
-      const height = Math.min(a.rect.bottom, b.rect.bottom) - Math.max(a.rect.top, b.rect.top);
+      const width = Math.min(a.shown.right, b.shown.right) - Math.max(a.shown.left, b.shown.left);
+      const height = Math.min(a.shown.bottom, b.shown.bottom) - Math.max(a.shown.top, b.shown.top);
       if (width <= 2 || height <= 2) continue;
       const smaller = Math.min(a.rect.width * a.rect.height, b.rect.width * b.rect.height);
       if ((width * height) / smaller < 0.25) continue;

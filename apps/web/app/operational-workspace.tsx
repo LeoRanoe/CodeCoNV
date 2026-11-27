@@ -3809,7 +3809,7 @@ function ProjectOperations({
               <h1>{activeSectionLabel}</h1>
               <b>{activeSectionCount}</b>
             </div>
-            {activeFormLog ? <button className="ui-button ui-button--quiet ui-button--md workspace-open-log" type="button" onClick={openFormLog}><ScrollText size={15} aria-hidden="true" /> {text("Open log", "Open logboek")}</button> : null}
+            {activeFormLog ? <button className="ui-button ui-button--quiet ui-button--md workspace-open-log" type="button" onClick={openFormLog}><ScrollText size={15} aria-hidden="true" /> <span className="workspace-open-log-label">{text("Open log", "Open logboek")}</span></button> : null}
             {/* The "Switch module" dropdown used to sit here. The client wrote next to it: "ik
                 begrijp dit niet, misschien kan het weg". Every module is one tap away on the
                 workspace itself, so there is no second, hidden way in any more. */}

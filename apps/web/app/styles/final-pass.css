@@ -1172,3 +1172,28 @@ html { scroll-padding-bottom: calc(var(--mobile-nav-height, 0px) + 96px); }
 @media (max-width: 1024px) {
   .choice-tiles--chips .choice-tile, .choice-tiles--segmented .choice-tile, .choice-tile-multi { min-height: 44px; }
 }
+
+/* OPUS-F20. A segmented control on a narrow card (a phone) broke its words letter by letter ("Da y", "Ev eni ng"):
+   six equal segments in 340 px. On a narrow card the segments become separate buttons that wrap, each as wide as its word. */
+@container (max-width: 559px) {
+  .choice-tiles--segmented { border: 0; gap: var(--space-2); overflow: visible; }
+  .choice-tiles--segmented .choice-tile, .choice-tiles--segmented .choice-tile:first-child { border: 1px solid var(--ink-400); border-radius: var(--radius-sm); flex: 1 1 auto; }
+}
+@media (max-width: 640px) {
+  .choice-tiles--segmented { border: 0; gap: var(--space-2); overflow: visible; }
+  .choice-tiles--segmented .choice-tile, .choice-tiles--segmented .choice-tile:first-child { border: 1px solid var(--ink-400); border-radius: var(--radius-sm); flex: 1 1 auto; }
+}
+/* OPUS-F21. The auto bar on a phone: a value (record ID, date) wraps instead of ending in "…". */
+@media (max-width: 640px) {
+  .form-auto-bar-item strong { overflow: visible; overflow-wrap: anywhere; text-overflow: clip; white-space: normal; }
+}
+/* OPUS-F22. On a phone "Open log" is its icon (the name stays for screen readers), so the module name is not cut to "Works o…". */
+@media (max-width: 640px) {
+  .workspace-open-log { min-width: var(--control-h-lg); padding-inline: var(--space-3); }
+  .workspace-open-log-label { clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
+}
+/* OPUS-F23. On a phone the list of what is still needed in the sticky action bar keeps two lines (it took five, 170 px of
+   a 844 px screen); the full list is the form itself, where every required field is marked. */
+@media (max-width: 640px) {
+  .record-form-actions .confirm-needs { -webkit-box-orient: vertical; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+}

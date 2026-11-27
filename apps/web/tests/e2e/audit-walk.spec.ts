@@ -153,6 +153,8 @@ for (const role of roles) {
         await page.waitForTimeout(900);
         await page.screenshot({ path: `${dir}/${name}.png`, fullPage: full });
         report[name] = await page.evaluate(measure);
+        // AUDIT_EVAL: an expression evaluated on every screen and stored beside the measurement, for debugging one layout.
+        if (process.env.AUDIT_EVAL) (report[name] as Record<string, unknown>).eval = await page.evaluate(process.env.AUDIT_EVAL).catch((error) => String(error));
       };
       const step = async (name: string, body: () => Promise<void>) => {
         if (only && !only.test(name)) return;
