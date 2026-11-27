@@ -87,17 +87,18 @@ test("a two-building day is started, closed, submitted, approved, frozen, signed
   await expect(page.getByRole("heading", { name: "Who is on site today?" })).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const workforce = page.locator(".workforce-form");
-  const selects = workforce.locator(".workforce-sections select");
+  // Mockup 04: one row per discipline (worker discipline, contractor, number).
   for (const [building, discipline, count] of [["Hoofdgebouw", "Carpenter / formwork", 4], ["Nieuwbouw Oost", "Electrician", 3]] as const) {
     await workforce.getByRole("tab", { name: new RegExp(`^${building}`) }).click();
-    await selects.nth(0).selectOption({ label: "Hoofdaannemer E2E" });
-    await selects.nth(1).selectOption({ label: discipline });
-    for (let person = 0; person < count; person += 1) await workforce.getByRole("button", { name: "Add person" }).click();
+    await workforce.getByRole("button", { name: "Add row", exact: true }).click();
+    const line = workforce.locator(".workforce-table .workforce-row").last();
+    await line.locator("select").nth(0).selectOption({ label: discipline });
+    await line.locator("select").nth(1).selectOption({ label: "Hoofdaannemer E2E" });
+    await line.locator("input[type='number']").fill(String(count));
   }
-  // Fewer people than planned: the screen asks why before it confirms.
-  await workforce.getByPlaceholder("For example: two crews moved to the other building.")
-    .fill("Concrete crew starts tomorrow; today only formwork and reinforcement.");
-  await workforce.getByRole("button", { name: /Confirm attendance/ }).click();
+  // Fewer people than planned: the screen signals it and Remarks says why.
+  await workforce.getByLabel("Remarks").fill("Concrete crew starts tomorrow; today only formwork and reinforcement.");
+  await workforce.getByRole("button", { name: /Sign, submit & notify/ }).click();
   await finishSigning(page);
   await expect(page.getByText(/7 people recorded for today/)).toBeVisible();
   // The counted day is listed under the form, per building.

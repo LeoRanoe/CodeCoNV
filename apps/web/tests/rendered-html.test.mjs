@@ -1963,7 +1963,7 @@ test("gives the workforce screen the full register, not a counter per party", as
   // The screen this replaced could only count down one row per project party. A contractor
   // with masons and carpenters on site could not be recorded at all.
   assert.match(register, /export function addWorkforceRow/);
-  assert.match(register, /Add person|Persoon toevoegen/);
+  assert.match(register, /Add row|Rij toevoegen/);
   assert.match(register, /workforce-row-remove/);
   assert.match(register, /<TimeField /);
   // The context tiles were struck through later; the headcount they left is what remains.
@@ -2005,25 +2005,17 @@ test("gives the workforce screen the full register, not a counter per party", as
   assert.match(register, /filledBuildings\.map\(/);
   assert.match(app, /for \(const entry of perBuilding\)/);
 
-  // "Geordend, hoe het was": every block is a titled card with its own count, in a fixed
-  // order, instead of one flat stack of fields a supervisor has to read top to bottom.
-  assert.match(register, /function WorkforceSection/);
-  assert.match(styles, /\.workforce-section-icon/);
-  // The card itself is the shared record-form section every other form is built from, so
-  // workforce cannot drift away from the rest of the app's forms again.
-  assert.match(register, /<RecordFormSection/);
-  assert.match(register, /className="workforce-section"/);
+  // Mockup 04 (client, 27-11-2026): the numbered cards of every sheet form, "1 Workforce" (one row per
+  // discipline: worker discipline, contractor, number; the total; Remarks) and "2 Sign-off / review workflow".
+  assert.match(register, /className="sheet-card workforce-section"/);
+  assert.match(register, /workforce-table/);
+  assert.match(register, /export const completeWorkforceRow/);
+  assert.match(register, /mergeWorkforceRows\(rowsByBuilding/);
   assert.match(register, /<RecordSignatureField/);
-  assert.match(register, /record-form-sections workforce-sections/);
-  assert.match(styles, /\.record-form-section \{/);
-  // Numbered like every other form, and numbered on what is actually on screen.
-  assert.match(register, /step=\{1\}/);
-  assert.match(register, /const stepTotals = showVisitors \? 3 : 2;/);
-  const blocks = ["Workforce by trade", "Visitors", "Totals for today", "Deviating workforce"]
-    .map((title) => register.indexOf(`title={text("${title}"`));
-  assert.ok(blocks.every((position) => position > 0), `every block needs its own heading: ${blocks}`);
-  // Crew first, then visitors, then the totals, then what needs explaining.
-  assert.deepEqual([...blocks].sort((left, right) => left - right), blocks);
+  assert.match(register, /WF-ATTENDANCE-SUPERVISION/);
+  const cards = ['text("Workforce", "Bezetting")', 'text("Sign-off / review workflow"'].map((title) => register.indexOf(title));
+  assert.ok(cards.every((position) => position > 0), `both cards need their heading: ${cards}`);
+  assert.deepEqual([...cards].sort((left, right) => left - right), cards);
 });
 
 test("processes the annotated screens of 4 August: ordered photos, a named pin, the client's issue form and a day-aware record", async () => {
@@ -2115,30 +2107,28 @@ test("covers section 4.3 of the product plan on the workforce screen", async () 
   // The section this screen answers to, quoted so the test fails if the plan is rewritten.
   assert.match(plan, /### 4\.3 Aanwezige partijen en mankracht/);
 
-  // Functionaliteit: organisatie, ploeg, discipline en aantal personen.
-  assert.match(register, /\{text\("Party", "Partij"\)\}/);
-  assert.match(register, /\{text\("Crew · optional", "Ploeg · optioneel"\)\}/);
-  assert.match(register, /\{text\("Trade", "Discipline"\)\}/);
-  // Werktijd of dienst.
+  // Functionaliteit, as the Excel sheet and mockup 04 lay it out (27-11-2026): one row per discipline with the
+  // contractor and the number of workers.
+  assert.match(register, /\{text\("Worker discipline", "Discipline"\)\}/);
+  assert.match(register, /\{text\("Contractor", "Aannemer"\)\}/);
+  assert.match(register, /\{text\("Number", "Aantal"\)\}/);
+  // Werktijd van bezoekers.
   assert.match(register, /<TimeField /);
-  // Bezoekersregistratie.
+  // Bezoekersregistratie: kept, folded under the table (not on the Excel sheet).
   assert.match(register, /export type VisitorRow/);
-  assert.match(register, /title=\{text\("Visitors", "Bezoekers"\)\}/);
+  assert.match(register, /Visitors \(not counted\)/);
   assert.match(app, /entryType: "visitor" as const/);
-  // Toelichting bij afwijkende bezetting.
-  assert.match(register, /title=\{text\("Deviating workforce", "Afwijkende bezetting"\)\}/);
-  // "Ik kan niet opslaan" (19-11-2026): the explanation is asked for, never required to save.
-  assert.match(register, /\{text\("Explanation \(optional\)", "Toelichting \(optioneel\)"\)\}/);
-  assert.match(register, /canSave=\{!readOnly && filledBuildings\.length > 0\}/);
+  // Toelichting bij afwijkende bezetting: the deviation is signalled, the reason goes in Remarks, never required.
+  assert.match(register, /workforce-deviation-list/);
+  assert.match(register, /\{text\("Remarks", "Opmerkingen"\)\}/);
+  assert.match(register, /filledBuildings\.length \? "" : text\("Workers on site"/);
   assert.match(dataLayer, /notes: row\.notes\?\.trim\(\) \|\| null/);
 
-  // Automatisering: vorige werkdag kopiëren, totalen per organisatie en discipline,
-  // en grote afwijkingen signaleren.
+  // Automatisering: vorige werkdag kopiëren, het totaal, en grote afwijkingen signaleren.
   assert.match(dataLayer, /export async function loadPreviousWorkdayAttendance/);
-  assert.match(register, /workforceByParty/);
-  assert.match(register, /workforceByDiscipline/);
+  assert.match(register, /workforceHeadcount/);
   assert.match(register, /workforceDeviations/);
-  assert.match(register, /workforce-totals/);
+  assert.match(register, /workforce-total/);
 
   // The columns the screen writes have a migration, and it stays additive: a column that
   // already exists must never be recreated on a live database.

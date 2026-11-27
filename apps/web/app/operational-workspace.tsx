@@ -3945,7 +3945,7 @@ function ProjectOperations({
         </>
       ) : (
         <>
-          <div className={`workspace-section-controls${showForm && tab !== "documents" ? " workspace-section-controls--form" : ""}`}>
+          <div className={`workspace-section-controls${(showForm || tab === "workforce") && tab !== "documents" ? " workspace-section-controls--form" : ""}`}>
             {/* Project Documents is a main menu (Word 2), not a Workspace form: it has no way "back" to the Workspace (OPUS-F13). */}
             {tab !== "documents" ? <button className="workspace-back-button" type="button" onClick={() => switchTab("home")}><ArrowLeft size={17} aria-hidden="true" /> <span className="workspace-back-label">{text("Workspace", "Werkruimte")}</span></button> : null}
             <div className="workspace-current-module" aria-live="polite">
@@ -3955,7 +3955,7 @@ function ProjectOperations({
               <b>{activeSectionCount}</b>
             </div>
             {/* Mockups 01-15: the record's state beside the title while a form is open (shown on a desktop, final-pass.css OPUS-D10). */}
-            {showForm && tab !== "documents" ? <span className="workspace-form-state">{editingRegisterId || editingFindingId || editingHseId ? text("Editing", "Bewerken") : text("Draft", "Concept")}</span> : null}
+            {(showForm || tab === "workforce") && tab !== "documents" ? <span className="workspace-form-state">{editingRegisterId || editingFindingId || editingHseId ? text("Editing", "Bewerken") : text("Draft", "Concept")}</span> : null}
             {/* The Works tiles open the workbook's activity record; the one-box day log the client used before stays
                 one tap away, in the header beside "Open log" (OPUS-D01). */}
             {tab === "registers" && (registerForm.type === "works_ongoing" || registerForm.type === "works_completed") && !editingRegisterId ? <button className="ui-button ui-button--quiet ui-button--md workspace-day-log" type="button" onClick={() => { openDailyWork(registerForm.type === "works_completed" ? "works_completed" : "works_ongoing"); switchTab("daily"); setShowForm(true); }}>

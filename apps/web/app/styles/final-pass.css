@@ -1368,3 +1368,44 @@ html { scroll-padding-bottom: calc(var(--mobile-nav-height, 0px) + 96px); }
   .form-auto-bar:has(.form-auto-bar-input) > .form-auto-bar-item:nth-child(n + 3) { grid-row: 3; }
   .form-auto-bar:has(.form-auto-bar-input) > .form-auto-bar-item:nth-child(3) { border-left: 0; }
 }
+
+/* OPUS-D13. Workforce as mockup 04: one table (worker discipline, contractor, number, remove), "+ Add row", the total
+   workers on site, Remarks and the sign-off card. */
+.workforce-sheet .sheet-card { display: grid; gap: var(--space-3); }
+.workforce-title output { color: var(--ink-950); font-size: var(--text-md); }
+.workforce-label-row { align-items: center; display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: space-between; }
+.workforce-label-row small { color: var(--ink-700); font-weight: var(--weight-normal); }
+.workforce-table { border: 1px solid var(--line); border-radius: var(--radius-md); display: grid; overflow: hidden; }
+.workforce-table-head,
+.workforce-table .workforce-row { align-items: center; display: grid; gap: var(--space-3); grid-template-columns: minmax(0, 4fr) minmax(0, 3fr) minmax(5rem, 1fr) auto; padding: var(--space-2) var(--space-3); }
+.workforce-table-head { background: var(--ink-50); border-bottom: 1px solid var(--line); color: var(--ink-700); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.workforce-table .workforce-row { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
+.workforce-cell { display: grid; gap: 2px; margin: 0; min-width: 0; }
+.workforce-cell select, .workforce-cell input { background: var(--paper); border: 1px solid var(--ink-400); border-radius: var(--radius-sm); min-height: var(--control-h-md); min-width: 0; padding: 0 var(--space-3); width: 100%; }
+.workforce-cell small { color: var(--ink-700); font-size: var(--text-xs); }
+.workforce-number input { font-size: var(--text-md); font-weight: var(--weight-bold); text-align: center; }
+.workforce-table .workforce-row-remove { border-color: transparent; }
+.workforce-table-add { align-items: center; display: flex; flex-wrap: wrap; gap: var(--space-3); padding: var(--space-3); }
+.workforce-table-add .workforce-add-button { border-style: dashed; }
+.workforce-table-add small { color: var(--ink-700); font-size: var(--text-sm); }
+.workforce-sheet .workforce-total { background: var(--green-soft); border-radius: var(--radius-md); justify-content: flex-end; padding: var(--space-3) var(--space-4); }
+.workforce-sheet .workforce-total > span:first-child { color: var(--ink-900); font-size: var(--text-md); }
+.workforce-sheet .workforce-total > strong { color: var(--ink-950); font-size: var(--text-2xl); }
+.workforce-sheet .workforce-deviation-list { display: grid; gap: var(--space-1); list-style: none; margin: 0; padding: 0; }
+.workforce-sheet .workforce-deviation-list li { align-items: center; display: flex; flex-wrap: wrap; gap: var(--space-2); font-size: var(--text-sm); }
+.workforce-sheet .workforce-deviation-list svg { color: var(--signal-dark); }
+.workforce-remarks textarea { field-sizing: content; min-height: var(--control-h-md); }
+.workforce-visitors > summary { cursor: pointer; font-size: var(--text-sm); font-weight: var(--weight-semibold); min-height: var(--control-h-md); padding-block: var(--space-2); }
+.workforce-visitor-row { align-items: center; border-bottom: 1px solid var(--line); display: grid; gap: var(--space-3); grid-template-columns: minmax(0, 1fr) auto auto; padding: var(--space-2) 0; }
+.workforce-body > .record-form-actions { margin-top: var(--space-3); }
+@media (max-width: 640px) {
+  .workforce-table-head { display: none; }
+  .workforce-table .workforce-row { grid-template-columns: minmax(0, 1fr) 5rem auto; }
+  .workforce-table .workforce-row > .workforce-cell:first-child { grid-column: 1 / -1; }
+  .workforce-visitor-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .workforce-visitor-row .workforce-shift { grid-column: 1 / -1; }
+}
+@media (max-width: 1024px) {
+  .workforce-table .workforce-row-remove { min-height: 44px; min-width: 44px; }
+  .workforce-cell input { min-height: 44px; }
+}
