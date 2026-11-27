@@ -4,8 +4,8 @@ Prompt: `docs/operations/client-spec-audit/OPUS-AUDIT-PROMPT` (the owner's messa
 
 ## State
 
-- Phase: 2 and 6 (visual audit and fixes), first pass. Phase 3 (Excel and Word gap audit) runs in parallel.
-- Branch: `audit/opus-overnight-1`, based on `codex/forms-follow-mockups` (PR #37, not merged yet: its Playwright check was still running when this run started). This branch goes in after #37.
+- Phase: done (three passes, three PRs merged and live).
+- Branches: `audit/opus-overnight-1` (#38, included #37), `-2` (#39), `-3` (#40), `-4` (this log).
 - Tools: `apps/web/tests/e2e/audit-walk.spec.ts` (opt-in, `UX_WALK=1`): every screen in every viewport and role, a screenshot and a measurement (sideways scroll, covered or clipped controls, small targets, small text, sidebar footer) into `tmp/audit/<lang>/<viewport>/<role>/`.
 - Next step: see the bottom of this file.
 
@@ -59,6 +59,7 @@ The popups and menus at 1280x720, 1366x768, 820x1180, 390x844 and 844x390 (recor
 
 | PR | Content | Local gate on the merged head | CI | Merged | Production |
 |---|---|---|---|---|---|
+| #40 | F30, F31 (popups at the root, More actions menu) and `popup-stacking.spec.ts` in CI | 071332f: lint, design, tsc, unit 368/368, Playwright 275 passed, 0 failed | 5/5 green (the pgTAP job was re-run once: runner Docker port conflict while starting Supabase) | squash 899a349 | Vercel production 899a349 deployed; live CSS has the F30 rule |
 | #39 | pass 2 fixes and the report | 876b44c: lint, design, tsc, unit 368/368, Playwright 271 passed, 0 failed | 5/5 green | squash def9df6 | Vercel production def9df6 deployed; live CSS has `.document-folders small` |
 | #38 (includes #37) | F01-F27 | e1881b4: lint, design, tsc, unit 368/368; Playwright 270 passed, 1 failed (spec-registers incident: passes 9/9 alone and in both earlier full runs; a data-order flake) | 5/5 green | 27-11-2026, squash 5f50668; #37 closed as included | Vercel production 5f50668 deployed; live bundle contains "Send or export", `workspace-open-log-label`, `.more-actions-menu`; /supervisie 200 (no sign-in) |
 
@@ -70,4 +71,4 @@ See `V5-DECISION-REGISTER.md` D-31 and later.
 
 ## Next step
 
-Batch 2 on `audit/opus-overnight-2`: second pass (all eight viewports, English; Dutch at 1280x720 and 390x844 for supervisor, contractor and client portal) in `tmp/audit-pass2/`; fix what it finds; report.
+Run finished (27-11-2026). Three passes done (1: before the fixes; 2: every viewport and Dutch after #38; 3: popups). No open blocker or major in the visual audit; F16 is a client question, F17 and the gaps R1-R10 of `OPUS-AUDIT-REPORT.md` section 6 are recommendations. A next run starts from section 6 of the report.

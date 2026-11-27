@@ -2,6 +2,8 @@
 
 Independent audit of CODECO Supervision against the client's developer package v5 (Excel v5.0, Word v2.0, mockups v6), on the local stack only. Running log with every finding, its evidence and status: `OPUS-AUDIT-LOG.md`. Decisions: `V5-DECISION-REGISTER.md` D-31 and later.
 
+Shipped to production through green pull requests: [#38](https://github.com/LeoRanoe/CodeCoNV/pull/38) (F01-F27, includes #37), [#39](https://github.com/LeoRanoe/CodeCoNV/pull/39) (pass 2 fixes, this report), [#40](https://github.com/LeoRanoe/CodeCoNV/pull/40) (F30-F31). No migrations were needed or applied.
+
 ## 1. What was wrong (short)
 
 The owner's complaint was right, and the earlier "all tests pass" did not cover it: the tests measured overlap at 1440 x 900, 820 x 1024 and 390 x 844 and never at a laptop's 1366 x 768 or 1280 x 720, and never checked that the sidebar shows all its menus.
