@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { appendDictation, DictateButton } from "@/app/dictate-button";
 import { useLanguage } from "@/lib/i18n";
 import { issueDecisionMinimum, issueDecisionReady, type IssueDecision } from "@/lib/forms/issue-decision";
+import { ModalLayer } from "@/app/forms/modal-layer";
 
 /**
  * The Verify / Return dialog of an Issue card (developer package v5, Word 3.1 and 10). Verify asks for the closure note;
@@ -51,6 +52,7 @@ export function IssueDecisionDialog({ action, issueNumber, title, defaultNextAct
   ].filter(Boolean);
 
   return (
+    <ModalLayer>
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && !saving && onCancel()}>
       <section className="modal issue-decision-modal" role="dialog" aria-modal="true" aria-labelledby={heading}>
         <header className="modal-header">
@@ -85,5 +87,6 @@ export function IssueDecisionDialog({ action, issueNumber, title, defaultNextAct
         </div>
       </section>
     </div>
+    </ModalLayer>
   );
 }

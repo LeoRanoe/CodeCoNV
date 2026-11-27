@@ -13,7 +13,8 @@ The owner's complaint was right, and the earlier "all tests pass" did not cover 
 5. **Duplicated and inconsistent navigation.** Rapid Verify and Project Docs were both main menus and "Supporting tools"; Project Documents opened with a "← Workspace" button and the name "Project Docs"; "Reports" opened a page called "Client reports", "Actions" a page called "Action center"; "Issues" counted 9 on the Workspace and 11 in Records & Photos. (F06, F10, F11, F13, F18)
 6. **Phones.** Segmented controls broke words letter by letter at 390 px; portal rows squeezed their title into a 90 px column; pills were 40 px, under the 44 px thumb rule. (F19, F20, F27)
 7. **Roles.** The legacy client account saw Rapid Verify and the "View as" portal previews, both Supervision's per Word 2. (F24)
-8. **Wasted height.** The module header put "New" on its own row (60 px on every module page); on a phone on its side the two bars took a third of the screen. (F03, F12)
+8. **Popups under the bars.** Opened from a form, the signing popup (and five other popups) lived inside the sticky action bar, so on a phone the top and bottom bars lay over it and its "Sign & submit" button; the "More actions" menu was hidden under the next card. Found in pass 3, fixed in #40. (F30, F31)
+9. **Wasted height.** The module header put "New" on its own row (60 px on every module page); on a phone on its side the two bars took a third of the screen. (F03, F12)
 
 ## 2. What was fixed
 
@@ -97,8 +98,10 @@ Verified on the local stack (never on production data):
 - `ui-stability-audit.spec.ts`: 189 screens (ten menus and 17 Workspace destinations at seven viewports), 0 findings.
 - The full local gate (lint, design guardrails, tsc, unit 368, Playwright on three device profiles with the fake Blob store) on the merged head of #38.
 
+- Pass 3: the record view, More actions, signing popup, drawing picker, project switcher, notifications and the phone "More" sheet at 1280x720, 1366x768, 820x1180, 390x844 and 844x390 (fit, internal scroll, reachable last button), which found F30 and F31.
+
 Not verified:
-- The form dialogs one by one (Sign now, the drawing picker with a real drawing, Close / Verify / Approve, photo capture and edit, external-party link) by eye at every viewport: they are covered by their own specs (`dialogs`, `sign-popup`, `close-verify-approve-dialog`, `media-and-sharing`) in the gate, not by the walk.
+- Close / Verify / Approve, photo capture and edit, and the external-party link by eye at every viewport: covered by their own specs (`dialogs`, `close-verify-approve-dialog`, `issue-card-decision-dialog`, `media-and-sharing`), not by the walk. They use the same `ModalLayer` now where they open inside a form.
 - Empty, loading, error and offline states by eye: covered by `offline-*`, `session-revoked`, `first-load` specs, not by the walk.
 - PDF and Word exports by eye (the specs check that they download and contain the record).
 - A real tablet and a real phone in daylight; screen readers beyond the axe audit.

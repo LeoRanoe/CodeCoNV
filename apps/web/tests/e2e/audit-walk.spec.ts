@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
+import { fillSpecFields } from "./spec-fill";
 
 /**
  * A review aid, not a regression test (opt-in with UX_WALK=1): every screen of the supervision app, in every
@@ -95,7 +96,16 @@ function measure() {
     const s = getComputedStyle(el);
     return /(auto|scroll)/.test(s.overflowY) && el.scrollHeight > el.clientHeight + 2 && el.clientHeight > 100 && el !== document.documentElement && el !== document.body;
   }).map(describe);
+  // An open dialog: it fits the window, or it scrolls inside, and its last button can be reached.
+  const dialogs = [...document.querySelectorAll("[role=dialog], [role=alertdialog]")].filter(visible).map((dialog) => {
+    const r = dialog.getBoundingClientRect();
+    const scrolls = [dialog, ...dialog.querySelectorAll("*")].some((el) => /(auto|scroll)/.test(getComputedStyle(el).overflowY) && el.scrollHeight > el.clientHeight + 2);
+    const buttons = [...dialog.querySelectorAll("button")].filter(visible);
+    const last = buttons[buttons.length - 1]?.getBoundingClientRect();
+    return `${describe(dialog)} ${Math.round(r.top)}..${Math.round(r.bottom)} of ${vh}${r.bottom > vh + 1 || r.top < -1 ? " OUTSIDE" : ""}${scrolls ? " scrolls" : ""}${last && last.bottom > vh + 1 && !scrolls ? " LAST BUTTON UNREACHABLE" : ""}`;
+  });
   return {
+    dialogs,
     sideways: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     pageHeight: document.documentElement.scrollHeight,
     sidebarFooter,
@@ -212,6 +222,45 @@ for (const role of roles) {
             await shoot("12-more-sheet");
           });
         }
+        // The dialogs and popups of a record (OPUS pass 3).
+        const openForm = async (destination: string) => {
+          await nav("project");
+          await page.locator(`[data-workspace-destination="${destination}"]`).click();
+          await page.waitForTimeout(1200);
+        };
+        await step("dialog-view-record", async () => {
+          await openForm("issues");
+          const toggle = page.locator(".workspace-module-create.ui-button--secondary");
+          if (await toggle.isVisible().catch(() => false)) { await toggle.click(); await page.waitForTimeout(600); }
+          await page.locator(".finding-card").first().getByRole("button", { name: /View record|Registratie bekijken/ }).click();
+          await shoot("15-dialog-view-record");
+          await page.keyboard.press("Escape");
+        });
+        await step("dialog-more-actions", async () => {
+          await openForm("issues");
+          const toggle = page.locator(".workspace-module-create.ui-button--secondary");
+          if (await toggle.isVisible().catch(() => false)) { await toggle.click(); await page.waitForTimeout(600); }
+          const trigger = page.locator(".finding-card .more-actions-trigger").first();
+          await trigger.scrollIntoViewIfNeeded();
+          await trigger.click();
+          await shoot("16-more-actions-open");
+          await page.keyboard.press("Escape");
+        });
+        await step("dialog-sign", async () => {
+          await openForm("works-ongoing");
+          await fillSpecFields(page.locator(".record-form-shell, [data-sheet-form]").first());
+          await page.locator("main").getByRole("button", { name: /Save register item|Sign, submit|Opslaan|Ondertekenen/ }).last().click();
+          await page.locator(".signature-modal").waitFor({ state: "visible", timeout: 15_000 });
+          await shoot("17-dialog-sign");
+          await page.keyboard.press("Escape");
+        });
+        await step("dialog-drawing", async () => {
+          await openForm("works-ongoing");
+          await page.locator(".sheet-drawing-location > button").first().click();
+          await page.getByRole("dialog").first().waitFor({ state: "visible", timeout: 10_000 });
+          await shoot("18-dialog-drawing-picker");
+          await page.keyboard.press("Escape");
+        });
         await step("switch-project", async () => {
           await nav("vandaag");
           await page.locator(".breadcrumb-project").click();

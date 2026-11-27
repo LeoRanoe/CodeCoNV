@@ -25,6 +25,7 @@ import {
   photoMarkupSummary,
   photoMarkupToneColors,
 } from "@/lib/images/field-image.mjs";
+import { ModalLayer } from "@/app/forms/modal-layer";
 
 type MarkerTone = "to_be_corrected" | "alternative_solution" | "validated";
 type Severity = "low" | "medium" | "high" | "critical";
@@ -449,6 +450,7 @@ export function PhotoMarkupPad({
   ];
 
   return (
+    <ModalLayer>
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal photo-markup-modal" role="dialog" aria-modal="true" aria-labelledby="photo-markup-title">
         <header className="modal-header">
@@ -697,6 +699,7 @@ export function PhotoMarkupPad({
         </footer>
       </section>
     </div>
+    </ModalLayer>
   );
 }
 

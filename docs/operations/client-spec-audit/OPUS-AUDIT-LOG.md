@@ -44,15 +44,22 @@ Severity: blocker (cannot work), major (wrong or very hard), minor. Evidence pat
 | F28 | Register lists (Delivery, TI, CO, ...) | all | supervisor | Every row repeats the form name ("Materials delivery") in a list of that form | minor | `tmp/audit-pass2/en/1920x1080/supervisor/03-08-materials-delivery-list.png` | fixed |
 | F29 | Project Documents folders | all | supervisor | Folder numbers 11.2 px (under the 12 px minimum) | minor | measure.json pass 2 | fixed |
 | F21b | Auto bar | 820x1180 | supervisor | Record ID still cut ("E2E-001-INS-2026-…") on a tablet | minor | `tmp/audit-pass2/en/820x1180/supervisor/03-09-inspections-form.png` | fixed: values wrap at every width |
+| F30 | Issue card "More actions" menu | 1280x720 | supervisor | The open menu was clipped by its card and drawn under the next card: only a sliver showed | major | `tmp/audit-pass3/en/1280x720/supervisor/16-more-actions-open.png` | fixed; `popup-stacking.spec.ts` fails without it |
+| F31 | Signing popup (and the drawing picker, photo markup, sketch, photo detail, Verify / Return dialog) | 390x844, 844x390 | supervisor | Opened from inside a form, the popup lived in the sticky action bar's stacking layer and the form's container-query box: the top bar and the phone's bottom bar lay over it and over "Sign & submit" | blocker (phone) | `tmp/audit-pass3/en/844x390/supervisor/17-dialog-sign.png` | fixed: popups are drawn at the root of the page (`ModalLayer`); `popup-stacking.spec.ts` fails without it |
 
 ## Pass 2 (27-11-2026, after #38 was live)
 
 All eight viewports for the supervisor in English (`tmp/audit-pass2/en/`), and 1280x720 / 390x844 in Dutch for the supervisor, the contractor and the client portal (`tmp/audit-pass2/nl/`), with the demo and long-name (stress) data. Result: no sideways scroll, no sidebar item cut off, no small target on a touch width, no covered control except two false positives (content of a closed `<details>`, now skipped by the walk as it already was by the stability test). Found and fixed: F21b, F28, F29. No new blocker or major.
 
+## Pass 3 (dialogs)
+
+The popups and menus at 1280x720, 1366x768, 820x1180, 390x844 and 844x390 (record view, More actions, signing, drawing picker, project switcher, notifications, the phone "More" sheet), measured for fit, internal scroll and reachable last button (`tmp/audit-pass3/`). All fit or scroll inside; two defects found by eye: F30, F31.
+
 ## Shipped
 
 | PR | Content | Local gate on the merged head | CI | Merged | Production |
 |---|---|---|---|---|---|
+| #39 | pass 2 fixes and the report | 876b44c: lint, design, tsc, unit 368/368, Playwright 271 passed, 0 failed | 5/5 green | squash def9df6 | Vercel production def9df6 deployed; live CSS has `.document-folders small` |
 | #38 (includes #37) | F01-F27 | e1881b4: lint, design, tsc, unit 368/368; Playwright 270 passed, 1 failed (spec-registers incident: passes 9/9 alone and in both earlier full runs; a data-order flake) | 5/5 green | 27-11-2026, squash 5f50668; #37 closed as included | Vercel production 5f50668 deployed; live bundle contains "Send or export", `workspace-open-log-label`, `.more-actions-menu`; /supervisie 200 (no sign-in) |
 
 Gate history of #38: run 1 (8 failures: 4 mine, fixed; 3 from #37's pills, fixed; 1 weather rate limit), run 2 targeted 16/16, run 3 (2: weather 429, ui-stability drawing list, fixed in the test), run 4 (1: a11y Rapid Verify timing after F24, fixed), run 5 (1 flake above).

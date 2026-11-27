@@ -1214,3 +1214,8 @@ html { scroll-padding-bottom: calc(var(--mobile-nav-height, 0px) + 96px); }
 
 /* OPUS-F29. The folder numbers of the document register are 12 px, the smallest size of the type scale (they were 11.2 px). */
 .document-folders small { font-size: var(--text-xs); }
+
+/* OPUS-F30. The "More actions" menu opens over the cards under it: a card clipped it (overflow hidden) and the next card
+   was drawn on top. The menu lines up with the right edge of its button, inside the card. */
+.more-actions-menu { left: auto; right: 0; }
+:is(.finding-card, .controlled-document-card, .record-row):has(.more-actions-menu:not([hidden])) { overflow: visible; position: relative; z-index: 6; }
