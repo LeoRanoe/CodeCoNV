@@ -677,13 +677,14 @@ export const specForms: Record<SpecFormKey, SpecField[]> = {
   // (20-11-2026). These are the workbook's shared classifications, so inspections filter like
   // every other record, and the links to the work they inspect.
   inspection: [
-    { key: "inspection_type", label: w("Inspection type", "Soort inspectie"), kind: "select", options: catalogue.inspectionTypes, otherExplanation: true },
-    { key: "inspection_category", label: w("Inspection category", "Inspectiecategorie"), kind: "dependent", groups: catalogue.inspectionCategories, parent: "inspection_type", otherExplanation: true },
-    discipline("discipline", false),
-    { key: "related_record", label: w("Inspected work / related record", "Gekeurd werk / gekoppelde registratie"), kind: "record", recordKinds: ["register:works_ongoing", "register:works_completed", "register:delivery", "ncr", "finding"] },
-    { key: "drawing_reference", label: w("Drawing / specification reference", "Tekening- / specificatiereferentie"), kind: "document" },
+    // Excel v5.0 Inspections 7-10 and mockup 09: asked when the inspection starts, type, category and discipline required.
+    { key: "inspection_type", label: w("Inspection type", "Soort inspectie"), kind: "select", options: catalogue.inspectionTypes, required: true, otherExplanation: true, dropdown: true },
+    { key: "inspection_category", label: w("Inspection category", "Inspectiecategorie"), kind: "dependent", groups: catalogue.inspectionCategories, parent: "inspection_type", required: true, otherExplanation: true, dropdown: true },
+    discipline("discipline", true),
+    { key: "related_record", label: w("Work activity / material", "Werkactiviteit / materiaal"), kind: "record", recordKinds: ["register:works_ongoing", "register:works_completed", "register:delivery", "ncr", "finding"], hint: w("Linked work record or material: it fills the discipline", "Gekoppeld werkrecord of materiaal: het vult de discipline") },
+    { key: "drawing_reference", label: w("Drawing / specification reference", "Tekening- / specificatiereferentie"), kind: "document", hint: w("Add a spec clause if needed", "Voeg zo nodig een bestekclausule toe") },
     { key: "checklist_version", label: w("Checklist version", "Checklistversie"), kind: "text", auto: true, visible: when(filled("checklist_version")), hint: w("Revision and upload date of the checklist, kept with the inspection", "Revisie en uploaddatum van de checklist, bewaard bij de inspectie") },
-    { key: "inspection_result", label: w("Inspection result", "Inspectieresultaat"), kind: "select", options: catalogue.inspectionResults, hint: w("Suggested from the checklist: all Pass / N/A is Accepted, any Fail is Re-inspection Required", "Voorgesteld vanuit de checklist: alles Pass / N.v.t. is Accepted, een Fail is Re-inspection Required") },
+    { key: "inspection_result", label: w("Inspection result", "Inspectieresultaat"), kind: "select", options: catalogue.inspectionResults, required: true, hint: w("Suggested from the checklist: all Pass / N/A is Accepted, any Fail is Re-inspection Required", "Voorgesteld vanuit de checklist: alles Pass / N.v.t. is Accepted, een Fail is Re-inspection Required") },
     { key: "findings", label: w("Findings / observations", "Bevindingen / waarnemingen"), kind: "textarea", visible: needsFindings, required: needsFindings },
     { key: "finding_types", label: w("Finding type", "Soort bevinding"), kind: "multi", options: catalogue.inspectionFindingTypes, visible: needsFindings, required: needsFindings, otherExplanation: true },
     { key: "corrective_action", label: w("Corrective action required", "Vereiste correctieve actie"), kind: "textarea", visible: needsFindings },
@@ -985,7 +986,7 @@ export const sheetSpans: Partial<Record<SpecFormKey, Record<string, number>>> = 
 /** Fields the mockups show as a row of pills although their list is long (a dropdown elsewhere). */
 export const chipFields: readonly string[] = ["issue_type", "hse_type", "incident_type", "element_type", "delivery_status", "arrival_condition", "delay_cause_type", "detected_during", "root_cause_category", "reason", "meeting_source", "environmental_impact", "property_damage", "injury_classification", "injury_nature", "body_part", "discrepancy_type"];
 /** Fields the mockups show as one segmented control although their list has six values. */
-export const segmentedFields: readonly string[] = ["disposition", "inspection_status"];
+export const segmentedFields: readonly string[] = ["disposition", "inspection_status", "inspection_result"];
 
 export function sheetSpan(form: SpecFormKey, name: string, fallback: number): number {
   return sheetSpans[form]?.[name] ?? fallback;

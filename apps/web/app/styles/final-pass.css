@@ -1409,3 +1409,31 @@ html { scroll-padding-bottom: calc(var(--mobile-nav-height, 0px) + 96px); }
   .workforce-table .workforce-row-remove { min-height: 44px; min-width: 44px; }
   .workforce-cell input { min-height: 44px; }
 }
+
+/* OPUS-D14. Inspection as mockup 09: the numbered cards Inspection, Location, Checklist, Result and Sign-off. On a wide
+   screen a checklist point is one line (the question, then Pass / Fail / N/A), two points side by side; a Fail opens
+   its comment under it. The findings asked for a result that is not a pass stand together in a dashed frame. */
+.inspection-sheet .sheet-card { display: grid; gap: var(--space-3); }
+.inspection-checklist-name { align-items: center; display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; }
+.inspection-checklist-name > span:not(.form-auto-tag) { color: var(--ink-700); font-size: var(--text-sm); }
+.inspection-checklist-version { color: var(--ink-900); display: block; padding-block: var(--space-2); }
+.inspection-sheet .checklist-fail-count { color: var(--red); font-style: normal; font-weight: var(--weight-semibold); }
+.inspection-sheet .checklist-question.failed { background: var(--red-soft); }
+.inspection-findings { border: 1px dashed var(--border); border-radius: var(--radius-md); display: grid; gap: var(--space-3); padding: var(--space-3) var(--space-4); }
+.inspection-findings-note { color: var(--ink-700); font-size: var(--text-sm); font-weight: var(--weight-semibold); margin: 0; }
+.inspection-findings > .inspection-ncr-button,
+.inspection-sheet .sheet-card > .inspection-ncr-button { justify-self: start; }
+.inspection-photos { display: grid; gap: var(--space-2); }
+@media (min-width: 1024px) {
+  .inspection-sheet .checklist-question { display: flow-root; padding: var(--space-2) var(--space-3); }
+  .inspection-sheet .checklist-question > legend { float: left; max-width: calc(100% - 15rem); padding: var(--space-2) 0 0; }
+  .inspection-sheet .checklist-question > .answer-options { flex-wrap: nowrap; float: right; gap: 0; }
+  .inspection-sheet .checklist-question > .answer-options label { border-radius: 0; margin-left: -1px; min-height: var(--control-h-sm); }
+  .inspection-sheet .checklist-question > .answer-options label:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+  .inspection-sheet .checklist-question > .answer-options label:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+  .inspection-sheet .checklist-question > :not(legend, .answer-options) { clear: both; display: block; margin-top: var(--space-2); }
+}
+@media (min-width: 1280px) {
+  .inspection-sheet .checklist-section { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .inspection-sheet .checklist-section > header { grid-column: 1 / -1; }
+}

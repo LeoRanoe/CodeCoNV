@@ -69,6 +69,7 @@ export function SpecFields({
   slots,
   signoff,
   dateInAutoBar = false,
+  grid,
 }: {
   form: SpecFormKey;
   values: SpecValues;
@@ -89,6 +90,11 @@ export function SpecFields({
   signoff?: ReactNode;
   /** The form's own date stands in the auto bar (`AutoBarDate`), so the sheet does not repeat it. */
   dateInAutoBar?: boolean;
+  /**
+   * The fields as cells of a numbered card (mockups v6) on a screen that builds its own cards: the keys in this order,
+   * each with its width out of 12. A field that is hidden by its condition takes no cell.
+   */
+  grid?: ReadonlyArray<readonly [string, number]>;
 }) {
   const idBase = useId();
   const directory = useSpecDirectory();
@@ -141,6 +147,15 @@ export function SpecFields({
       <SpecInput key={field.key} id={`${idBase}-${field.key}`} form={form} field={field} values={values} set={set} setMany={setMany} text={text} language={language} disabled={disabled} directory={directory} />
     );
   };
+  if (grid) {
+    const cells = grid.map(([key, span]) => [fields.find((field) => field.key === key), span] as const).filter((cell): cell is readonly [SpecField, number] => Boolean(cell[0]));
+    if (!cells.length) return null;
+    return (
+      <div className="sheet-card-grid" data-spec-form={form}>
+        {cells.map(([field, span]) => <div className="sheet-cell" style={{ "--span": span } as React.CSSProperties} data-sheet-cell={field.key} key={field.key}>{render(field)}</div>)}
+      </div>
+    );
+  }
   if (layout && slots) {
     // One row per line of the sheet, in the sheet's order. The rows are grouped into the numbered cards of the mockups
     // (v6): a card has a number, a title and a hint; its rows sit in a 12-column grid. The title stands above the cards.
