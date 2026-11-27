@@ -3,13 +3,10 @@
 import {
   AlertTriangle,
   ArrowRight,
-  BookOpenCheck,
   CalendarClock,
   Calculator,
   Clock3,
-  FileText,
   Filter,
-  FolderOpen,
   Hash,
   Search,
   type LucideIcon,
@@ -49,6 +46,10 @@ type ProjectWorkspaceHomeProps = {
     issues: number;
     ncr: number;
     hse: number;
+    hseIncidents?: number;
+    worksOngoing?: number;
+    worksCompleted?: number;
+    workforceDays?: number;
     photos: number;
     deliveries: number;
     agreements: number;
@@ -70,7 +71,8 @@ type ProjectWorkspaceHomeProps = {
   openFinding: (scope: "issue" | "ncr", create?: boolean) => void;
   openDailyWork: (view: "works_ongoing" | "works_completed" | "delays") => void;
   openActionCenter: (view?: "work" | "deadlines") => void;
-  openRapidVerify: () => void;
+  /** Kept for callers; Rapid Verify is a main menu and no longer repeated in the supporting tools. */
+  openRapidVerify?: () => void;
 };
 
 type WorkspaceTile = {
@@ -93,7 +95,6 @@ export function ProjectWorkspaceHome({
   openWorkforce,
   openFinding,
   openActionCenter,
-  openRapidVerify,
   projectName,
 }: ProjectWorkspaceHomeProps) {
   const { locale, text } = useLanguage();
@@ -120,6 +121,7 @@ export function ProjectWorkspaceHome({
       id: "works-ongoing",
       label: text("Works ongoing", "Werkzaamheden gaande"),
       icon: formIcons.works_ongoing,
+      count: counts.worksOngoing,
       // The Works Ongoing sheet of the specification workbook: one record per activity.
       action: () => openTask("registers", false, { registerType: "works_ongoing" }),
     },
@@ -127,12 +129,14 @@ export function ProjectWorkspaceHome({
       id: "works-completed",
       label: text("Works completed", "Werkzaamheden afgerond"),
       icon: formIcons.works_completed,
+      count: counts.worksCompleted,
       action: () => openTask("registers", false, { registerType: "works_completed" }),
     },
     {
       id: "workforce",
       label: text("Workforce", "Workforce"),
       icon: formIcons.workforce,
+      count: counts.workforceDays,
       // §4.3 of the product plan: the workforce register, not the day's work list.
       action: openWorkforce,
     },
@@ -212,6 +216,7 @@ export function ProjectWorkspaceHome({
       id: "hse-incident",
       label: text("HSE incident", "HSE-incident"),
       icon: formIcons.hse_incident,
+      count: counts.hseIncidents,
       module: "hse",
       action: () => openTask("hse", false, { hseEventType: "incident" }),
     },
@@ -353,9 +358,8 @@ export function ProjectWorkspaceHome({
 
       <div className="workspace-support-strip" aria-label={text("Supporting project tools", "Ondersteunende projecttools")}>
         <span><Clock3 size={15} /> {text("Supporting tools", "Ondersteunende tools")}</span>
-        <button type="button" onClick={openRapidVerify}><BookOpenCheck size={15} /> Rapid Verify</button>
-        <button type="button" onClick={() => openTask("documents", false)}><FileText size={15} /> Project Docs</button>
-        <button type="button" onClick={() => openTask("assets", false)}><FolderOpen size={15} /> {text("Assets & folders", "Middelen & mappen")}</button>
+        {/* Rapid Verify and Project Documents are main menus (Word section 2) and the files of the project are in
+            Project Documents and Records & Photos: they are not repeated here (OPUS-F06). */}
         <button type="button" onClick={() => openTask("drawings", false)}><AlertTriangle size={15} /> {text("Drawings & pins", "Tekeningen & pins")}</button>
         {/* The calculator and the notepad of the field tools had no way in from here. */}
         <button type="button" onClick={() => openTask("tools", false)}><Calculator size={15} /> {text("Calculator & notes", "Rekenmachine & notities")}</button>

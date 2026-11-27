@@ -49,7 +49,7 @@ export function RecordList({
     return <div className="empty-list-state record-list-empty"><strong>{text("No records", "Geen registraties")}</strong><span>{empty}</span></div>;
   }
 
-  return <>{facets.length > 1 ? <SpecFacetFilterBar id="record-list-facets" facets={facets} value={facetFilter} onChange={setFacetFilter} /> : null}<div className="record-stack">{shownRows.map((row) => {
+  return <>{facets.length > 1 ? <SpecFacetFilterBar foldable id="record-list-facets" facets={facets} value={facetFilter} onChange={setFacetFilter} /> : null}<div className="record-stack">{shownRows.map((row) => {
     const Icon = row.icon;
     const waiting = isPendingRecordId(row.id);
     const open = row.onOpen ?? row.open?.onOpen;

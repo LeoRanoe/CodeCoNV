@@ -243,7 +243,7 @@ export function ProjectDocumentsHome({
         <div><h2>{text("Project document center", "Projectdocumentencentrum")}</h2><p>{text("Controlled project information", "Beheerde projectinformatie")}</p></div>
         <div className="project-documents-actions">
           {canManageFiles ? <button className={`ui-button ui-button--secondary ui-button--md${intakeOpen ? " active" : ""}`} type="button" aria-expanded={intakeOpen} aria-controls="project-document-upload" onClick={() => setIntakeOpen((open) => !open)}><Upload size={15} /> {text("Upload file", "Upload bestand")}</button> : null}
-          {canCreateRecords ? <button className="ui-button ui-button--primary ui-button--md" type="button" onClick={createDocument}><Plus size={15} /> {text("New controlled record", "Nieuw beheerd record")}</button> : null}
+          {canCreateRecords ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={createDocument}><Plus size={15} /> {text("New controlled record", "Nieuw beheerd record")}</button> : null}
         </div>
       </div>
 

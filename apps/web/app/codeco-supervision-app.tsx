@@ -690,10 +690,12 @@ export function CodecoSupervisionApp() {
   const navAllowed = (id: NavKey) => id === "acties" ? permissions.canAny("actions.read", "actions.create")
     : id === "projectdocs" ? permissions.canAny("documents.read", "files.read")
     : id === "records" ? permissions.can("records.read")
-    : id === "verify" ? permissions.can("files.read")
+    // Rapid Verify and "View as" of the portals are Supervision's (Word 2 and 2.1): an account that cannot record
+    // (the legacy client role) does not get them (OPUS-F24).
+    : id === "verify" ? permissions.can("files.read") && (!permissions.known || permissions.can("records.create"))
       : id === "punchlist" ? permissions.can("findings.read")
         : id === "rapporten" ? permissions.canAny("reports.read", "reports.readapproved")
-          : id === "contractorportal" || id === "clientportal" ? permissions.can("records.read")
+          : id === "contractorportal" || id === "clientportal" ? permissions.can("records.read") && (!permissions.known || permissions.can("records.create"))
           : true;
   const localizedNavigation = navigation.filter((item) => navAllowed(item.id)).map((item) => ({
     ...item,
@@ -1906,18 +1908,14 @@ export function CodecoSupervisionApp() {
         </nav>
 
         <div className="sidebar-spacer" />
-        {canRecord ? (
-          <button className={`quick-add-side${activeNav === "vandaag" ? "" : " has-page-primary"}`} type="button" onClick={openQuickAdd}>
-            <Camera size={18} strokeWidth={2.4} />
-            {text("Take photo", "Foto maken")}
-          </button>
-        ) : null}
+        {/* "Take photo" moved to the top bar (OPUS-F01): the sidebar holds the ten menus of Word section 2,
+            the project and the account, and fits a 720 px high laptop screen. */}
         <button className="user-card" type="button" onClick={() => void requestSignOut()} title={text("Sign out", "Afmelden")}>
           <span className="avatar" aria-hidden="true">{initials(currentUserName)}</span>
           <span className="user-copy">
-            <span className="sr-only">{text("Sign out: ", "Afmelden: ")}</span>
             <strong>{currentUserName}</strong>
-            <small>{text("CODECO user", "CODECO-gebruiker")}</small>
+            {/* The card signs out when tapped (OPUS-F25): it says so, instead of "CODECO user", which was also wrong for a client. */}
+            <small>{text("Sign out", "Afmelden")}</small>
           </span>
           <LogOut size={16} color="#7893a1" />
         </button>
@@ -1952,6 +1950,12 @@ export function CodecoSupervisionApp() {
             </button>
           </nav>
           <div className="top-actions">
+            {canRecord ? (
+              <button className={`quick-add-side ui-button ui-button--md${activeNav === "vandaag" ? " ui-button--primary" : " ui-button--secondary has-page-primary"}`} type="button" onClick={openQuickAdd}>
+                <Camera size={17} strokeWidth={2.2} aria-hidden="true" />
+                <span>{text("Take photo", "Foto maken")}</span>
+              </button>
+            ) : null}
             <FieldGuide
               canManage={canManageMembers}
               onOpenDestination={(destination) => {

@@ -32,7 +32,7 @@ const modules = ["Overview", "Workspace", "Actions", "Rapid Verify", "Reports", 
 const tiles = [
   "Photos", "Works ongoing", "Works completed", "Workforce", "Project Delay Report", "Issues", "HSE", "Materials delivery",
   "Inspections", "Technical instructions", "Change order", "NCR", "Lessons Learned", "HSE incident", "Agreements Made",
-  "Rapid Verify", "Project Docs", "Assets & folders", "Drawings & pins", "Deadlines",
+  "Drawings & pins", "Calculator & notes", "Deadlines",
 ];
 
 type Finding = { screen: string; viewport: string; kind: string; detail: string };

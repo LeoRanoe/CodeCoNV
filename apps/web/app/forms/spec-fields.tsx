@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Check, Plus, X } from "lucide-react";
 import {
   activityGuide,
@@ -16,6 +16,10 @@ import {
   isSheetSlot,
   sheetItemName,
   sheetSections,
+  sheetSpan,
+  sheetWorkflow,
+  chipFields,
+  segmentedFields,
   otherKey,
   projectNowLocal,
   sheetLayouts,
@@ -24,6 +28,8 @@ import {
   rowsFor,
   setSpecValue,
   specForms,
+  type SheetItem,
+  type SheetSection,
   type SpecColumn,
   type SpecField,
   type SpecFormKey,
@@ -129,58 +135,95 @@ export function SpecFields({
     );
   };
   if (layout && slots) {
-    // One row per line of the sheet, in the sheet's order.
+    // One row per line of the sheet, in the sheet's order. The rows are grouped into the numbered cards of the mockups
+    // (v6): a card has a number, a title and a hint; its rows sit in a 12-column grid. The title stands above the cards.
+    const longKinds = ["textarea", "multi", "completion", "rows", "people", "record", "tiles", "choices"];
+    const spanOf = (item: SheetItem): number => {
+      const name = sheetItemName(item);
+      if (isSheetSlot(item)) return sheetSpan(form, name, 12);
+      if (isSheetRow(item)) return sheetSpan(form, name, 12);
+      const field = fields.find((candidate) => candidate.key === item);
+      return sheetSpan(form, name, field && !longKinds.includes(field.kind) && field.kind !== "select" && field.kind !== "dependent" ? 6 : field ? 6 : 12);
+    };
+    type Cell = { key: string; span: number; node: ReactNode };
+    const blocks: Array<{ index: number; section: SheetSection | null; cells: Cell[] }> = [];
+    let titleCell: ReactNode = null;
+    layout.forEach((item) => {
+      const sectionIndex = (sheetSections[form] ?? []).findIndex((candidate) => candidate.from === sheetItemName(item));
+      const section = sectionIndex >= 0 ? sheetSections[form]![sectionIndex] : null;
+      const body = ((): React.ReactNode => {
+      if (isSheetRow(item)) {
+        // One sheet row, several controls: they stand together under the sheet's label. A
+        // row without its own label is headed by its first control's label (the sheet's);
+        // that control then does not repeat it (it keeps it as its accessible name).
+        const first = typeof item.items[0] === "string" ? specForms[form].find((candidate) => candidate.key === item.items[0]) : undefined;
+        const rowLabel = item.label ?? first?.label;
+        const parts = item.items.map((part) => {
+          if (typeof part === "string") {
+            const field = fields.find((candidate) => candidate.key === part);
+            if (!field) return null;
+            return !item.label && field === first ? <div className="sheet-row-main" key={`main-${field.key}`}>{render(field)}</div> : render(field);
+          }
+          const node = slots[part.slot];
+          if (node === undefined || node === null || node === false) return null;
+          return <div className="sheet-row-part" data-sheet-slot={part.slot} key={`slot-${part.slot}`}>{node}</div>;
+        }).filter(Boolean);
+        if (!parts.length) return null;
+        return (
+          <div className="form-field sheet-row" data-sheet-row={item.row} key={`row-${item.row}`}>
+            {rowLabel ? <span className="sheet-slot-label">{rowLabel[language]} {item.required || (first && fields.includes(first) && isRequired(first, values)) ? <em className="record-section-required">*</em> : null}</span> : null}
+            {parts}
+          </div>
+        );
+      }
+      if (isSheetSlot(item)) {
+        const node = slots[item.slot];
+        if (node === undefined || node === null || node === false) return null;
+        return (
+          <div className="form-field sheet-slot" data-sheet-slot={item.slot} key={`slot-${item.slot}`}>
+            <span className="sheet-slot-label">{item.label[language]} {item.required ? <em className="record-section-required">*</em> : null}</span>
+            {item.hint ? <p className="form-helper">{item.hint[language]}</p> : null}
+            {node}
+          </div>
+        );
+      }
+      const field = fields.find((candidate) => candidate.key === item);
+      return field ? render(field) : null;
+      })();
+      if (section || !blocks.length) blocks.push({ index: sectionIndex, section, cells: [] });
+      if (body === null || body === undefined || body === false) return;
+      if (sheetItemName(item) === "title") { titleCell = body; return; }
+      blocks[blocks.length - 1].cells.push({ key: sheetItemName(item), span: spanOf(item), node: body });
+    });
     return (
       <section className="record-section spec-section sheet-form" aria-label={heading ?? text("Form", "Formulier")} data-spec-form={form} data-sheet-form={form}>
         {heading ? <h3>{heading}</h3> : null}
-        {layout.map((item) => {
-          const sectionIndex = (sheetSections[form] ?? []).findIndex((candidate) => candidate.from === sheetItemName(item));
-          const section = sectionIndex >= 0 ? sheetSections[form]![sectionIndex] : null;
-          const body = ((): React.ReactNode => {
-          if (isSheetRow(item)) {
-            // One sheet row, several controls: they stand together under the sheet's label. A
-            // row without its own label is headed by its first control's label (the sheet's);
-            // that control then does not repeat it (it keeps it as its accessible name).
-            const first = typeof item.items[0] === "string" ? specForms[form].find((candidate) => candidate.key === item.items[0]) : undefined;
-            const rowLabel = item.label ?? first?.label;
-            const parts = item.items.map((part) => {
-              if (typeof part === "string") {
-                const field = fields.find((candidate) => candidate.key === part);
-                if (!field) return null;
-                return !item.label && field === first ? <div className="sheet-row-main" key={`main-${field.key}`}>{render(field)}</div> : render(field);
-              }
-              const node = slots[part.slot];
-              if (node === undefined || node === null || node === false) return null;
-              return <div className="sheet-row-part" data-sheet-slot={part.slot} key={`slot-${part.slot}`}>{node}</div>;
-            }).filter(Boolean);
-            if (!parts.length) return null;
-            return (
-              <div className="form-field sheet-row" data-sheet-row={item.row} key={`row-${item.row}`}>
-                {rowLabel ? <span className="sheet-slot-label">{rowLabel[language]} {item.required || (first && fields.includes(first) && isRequired(first, values)) ? <em className="record-section-required">*</em> : null}</span> : null}
-                {parts}
-              </div>
-            );
-          }
-          if (isSheetSlot(item)) {
-            const node = slots[item.slot];
-            if (node === undefined || node === null || node === false) return null;
-            return (
-              <div className="form-field sheet-slot" data-sheet-slot={item.slot} key={`slot-${item.slot}`}>
-                <span className="sheet-slot-label">{item.label[language]} {item.required ? <em className="record-section-required">*</em> : null}</span>
-                {item.hint ? <p className="form-helper">{item.hint[language]}</p> : null}
-                {node}
-              </div>
-            );
-          }
-          const field = fields.find((candidate) => candidate.key === item);
-          return field ? render(field) : null;
-          })();
-          if (!section) return body;
+        {titleCell ? <div className="sheet-title-row" data-sheet-title>{titleCell}</div> : null}
+        {blocks.filter((block) => block.cells.length).map((block, position, shown) => {
+          const workflow = position === shown.length - 1 ? sheetWorkflow[form] : undefined;
+          const heading3 = block.section ? (
+            <h3 className="sheet-section-title" data-sheet-section={block.index + 1}>
+              <span className="sheet-section-number" aria-hidden="true">{block.index + 1}</span>
+              <span className="sheet-section-name">{block.section.title[language]}</span>
+              {workflow ? <span className="sheet-section-hint">{workflow.code} · {text("Workflow status", "Workflowstatus")}: <strong>{text("Draft", "Concept")}</strong> · AUTO</span> : block.section.hint ? <span className="sheet-section-hint">{block.section.hint[language]}</span> : null}
+            </h3>
+          ) : null;
           return (
-            <Fragment key={`block-${section.from}`}>
-              <h3 className="sheet-section-title" data-sheet-section={sectionIndex + 1}><span className="sheet-section-number" aria-hidden="true">{sectionIndex + 1}</span>{section.title[language]}</h3>
-              {body}
-            </Fragment>
+            <section className="sheet-card" key={`card-${block.section?.from ?? position}`}>
+              {heading3}
+              {workflow ? (
+                <p className="sheet-workflow">
+                  {workflow.steps.map((step, index) => (
+                    <span key={`${step.role}-${index}`}>
+                      <span className={`sheet-role sheet-role--${step.role === "Supervision" ? "supervision" : "other"}`}>{step.role === "Supervision" ? text("Supervision", "Supervisie") : step.role === "Contractor" ? text("Contractor", "Aannemer") : step.role === "Project Manager" ? text("Project Manager", "Projectmanager") : step.role === "Supplier" ? text("Supplier / driver", "Leverancier / chauffeur") : text("Client", "Opdrachtgever")}</span> {language === "nl" ? step.nl : step.en}{index < workflow.steps.length - 1 ? <span aria-hidden="true"> →</span> : null}
+                    </span>
+                  ))}
+                </p>
+              ) : null}
+              <div className="sheet-card-grid">
+                {block.cells.map((cell) => <div className="sheet-cell" style={{ "--span": cell.span } as React.CSSProperties} data-sheet-cell={cell.key} key={cell.key}>{cell.node}</div>)}
+              </div>
+            </section>
           );
         })}
       </section>
@@ -247,7 +290,7 @@ function SpecInput({ id, form, field, values, set, setMany, text, language, disa
       <fieldset className="form-field spec-choices" disabled={disabled} data-spec-field={field.key}>
         <legend>{caption}</legend>
         {hint ? <p className="form-helper">{hint}</p> : null}
-        <div className="choice-tiles" role="group" aria-label={label}>
+        <div className="choice-tiles choice-tiles--chips" role="group" aria-label={label}>
           {options.map((option) => {
             const checked = many.includes(option.value);
             return (
@@ -322,7 +365,8 @@ function SpecInput({ id, form, field, values, set, setMany, text, language, disa
   }
 
   // A short list is shown as pictured tiles, so each choice is told apart at a glance (client, 20-11-2026).
-  const shortList = !field.dropdown && (field.kind === "select" || field.kind === "dependent" || field.kind === "rating") && options.length > 0 && options.length <= maxTiles
+  const asChips = chipFields.includes(field.key) && (field.kind === "select" || field.kind === "dependent");
+  const shortList = (asChips || (!field.dropdown && options.length <= maxTiles)) && (field.kind === "select" || field.kind === "dependent" || field.kind === "rating") && options.length > 0
     && (field.kind !== "rating" || !matrixRating(values, directory.config));
   if (shortList) {
     const choices = options.map((option) => option.value);
@@ -333,7 +377,7 @@ function SpecInput({ id, form, field, values, set, setMany, text, language, disa
       <fieldset className="form-field spec-field spec-tiles" disabled={disabled} data-spec-field={field.key} id={id}>
         <legend>{caption}</legend>
         {hint ? <p className="form-helper">{hint}</p> : null}
-        <div className="choice-tiles" role="radiogroup" aria-label={label} aria-required={required || undefined}>
+        <div className={`choice-tiles ${!asChips && (options.length <= 5 || segmentedFields.includes(field.key)) ? "choice-tiles--segmented" : "choice-tiles--chips"}`} role="radiogroup" aria-label={label} aria-required={required || undefined}>
           {options.map((option) => {
             const allowed = canChooseDecision(field, option.value, canDecide) || option.value === single;
             return (

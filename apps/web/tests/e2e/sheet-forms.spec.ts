@@ -38,28 +38,27 @@ async function openTile(page: Page, id: string) {
   await page.locator(`[data-workspace-destination='${id}']`).click();
 }
 
-/** The first rows of each sheet, in the workbook's order (labels as the screen shows them). */
+/** The first rows of each sheet, in the order of the mockups v6 (the title bar first; labels as the screen shows them). */
 const sheets: Array<{ tile: string; form: string; heading: string; save: RegExp; first: string[] }> = [
-  { tile: "issues", form: "issue", heading: "Issues", save: /^Submit issue$/, first: ["Date/time identified", "Issue type", "Category", "Title", "Description", "Location", "Discipline / work package", "Priority"] },
-  { tile: "ncr", form: "ncr", heading: "NCR", save: /^Submit NCR$/, first: ["Date raised", "NCR type", "Category", "Title", "Non-conformance description", "Discipline / work package", "Location / element"] },
-  { tile: "hse", form: "hse", heading: "HSE", save: /^Submit issue$/, first: ["Date/time observed", "Issue type", "Category", "Title", "Observation / hazard description", "Location"] },
-  { tile: "hse-incident", form: "hse_incident", heading: "HSE incident registration", save: /^Submit issue$/, first: ["Incident date/time", "Incident type", "Incident category", "Incident title", "Detailed event description", "Exact location"] },
-  { tile: "materials-delivery", form: "delivery", heading: "Materials delivery", save: /^Save register item$/, first: ["Title", "Delivery date/time", "Supplier", "Purchase order / requisition", "Delivery note number", "Material group"] },
-  { tile: "technical-instructions", form: "technical_instruction", heading: "Technical instructions", save: /^Create controlled document$/, first: ["Title", "Instruction date", "Instruction type", "Discipline"] },
-  { tile: "change-order", form: "change_order", heading: "Change order (CO)", save: /^Create controlled document$/, first: ["Request date", "Change type", "Change category", "Change title", "Change description", "Reason for change", "Originator / requester"] },
+  { tile: "issues", form: "issue", heading: "Issues", save: /^Submit issue$/, first: ["Title", "Issue type", "Category", "Discipline / work package", "Description", "Date/time identified", "Location"] },
+  { tile: "ncr", form: "ncr", heading: "NCR", save: /^Submit NCR$/, first: ["Title", "NCR type", "Category", "Non-conformance description", "Discipline / work package", "Requirement reference"] },
+  { tile: "hse", form: "hse", heading: "HSE", save: /^Submit issue$/, first: ["Title", "Issue type", "Category", "Person / contractor involved", "Observation / hazard description", "Date/time observed"] },
+  { tile: "hse-incident", form: "hse_incident", heading: "HSE incident registration", save: /^Submit issue$/, first: ["Incident title", "Incident type", "Incident category", "Detailed event description", "Incident date/time"] },
+  { tile: "materials-delivery", form: "delivery", heading: "Materials delivery", save: /^Save register item$/, first: ["Title", "Purchase order / requisition", "Supplier", "Delivery note number", "Delivery date/time", "Material group"] },
+  { tile: "technical-instructions", form: "technical_instruction", heading: "Technical instructions", save: /^Create controlled document$/, first: ["Title", "Instruction type", "Discipline"] },
+  { tile: "change-order", form: "change_order", heading: "Change order (CO)", save: /^Create controlled document$/, first: ["Change title", "Change type", "Change category", "Change description", "Reason for change", "Originator / requester"] },
   { tile: "delay-report", form: "delay_report", heading: "Project Delay Report (PDR)", save: /^Save delay report$/, first: ["Title", "Delay start date/time", "Affected activity"] },
-  { tile: "lessons-learned", form: "lessons_learned", heading: "Lessons Learned (LL)", save: /^Save lesson learned$/, first: ["Date recorded", "Project phase", "Lesson category", "Title", "Situation / context", "What happened?"] },
-  { tile: "agreements-made", form: "agreement", heading: "Agreements Made", save: /^Save agreement$/, first: ["Meeting / agreement date", "Meeting / source", "Agreement type", "Agreement category", "Agreement / decision title", "Agreement details"] },
-  { tile: "works-ongoing", form: "works_ongoing", heading: "Works ongoing", save: /^Save register item$/, first: ["Title", "Report date", "Shift", "Weather", "Work discipline", "Activity", "Building / area", "Exact location / grid / level"] },
-  { tile: "works-completed", form: "works_completed", heading: "Works completed", save: /^Save register item$/, first: ["Title", "Based on Works Ongoing record", "Completion date", "Work discipline", "Activity", "Building / area", "Exact location / grid / level"] },
+  { tile: "lessons-learned", form: "lessons_learned", heading: "Lessons Learned (LL)", save: /^Save lesson learned$/, first: ["Title", "Project phase", "Lesson category", "Date recorded", "Situation / context", "What happened?"] },
+  { tile: "agreements-made", form: "agreement", heading: "Agreements Made", save: /^Save agreement$/, first: ["Agreement / decision title", "Meeting / agreement date", "Meeting / source", "Agreed by", "Agreement type", "Agreement category"] },
+  { tile: "works-ongoing", form: "works_ongoing", heading: "Works ongoing", save: /^Save register item$/, first: ["Title", "Drawing location (PDF + pin)", "Building / area", "Exact location / grid / level", "Shift", "Weather"] },
+  { tile: "works-completed", form: "works_completed", heading: "Works completed", save: /^Save register item$/, first: ["Title", "Based on Works Ongoing record", "Completion date", "Work discipline", "Activity"] },
 ];
 
-/** The label of each row of the sheet form, top to bottom. */
+/** The label of each row of the sheet form, top to bottom: the title bar, then the rows of the numbered cards. */
 async function rowLabels(page: Page, form: string) {
-  // The numbered section headings group the rows; they are not rows themselves.
-  return page.locator(`[data-sheet-form='${form}'] > *:not(.sheet-section-title)`).evaluateAll((rows) => rows.map((row) => {
+  return page.locator(`[data-sheet-form='${form}'] .sheet-title-row, [data-sheet-form='${form}'] .sheet-cell`).evaluateAll((rows) => rows.map((row) => {
     // A sheet row with several controls is headed by its sheet label or its first control's.
-    const label = row.querySelector(".sheet-slot-label") ?? row.querySelector("legend") ?? row.querySelector("span");
+    const label = row.querySelector(".sheet-slot-label") ?? row.querySelector("legend") ?? row.querySelector("label") ?? row.querySelector("span");
     return (label?.textContent ?? "").replace(/\s*\*\s*$/, "").trim();
   }).filter(Boolean));
 }
@@ -108,19 +107,18 @@ for (const sheet of sheets) {
 
     const labels = await rowLabels(page, sheet.form);
     expect(labels.slice(0, sheet.first.length)).toEqual(sheet.first);
-    // Mockups v6: the Works forms are one page with seven numbered sections, in the workbook's row order.
+    // Mockups v6: a form is one page of numbered cards (Works ongoing six, Works completed five), the last one the sign-off.
     if (sheet.form === "works_ongoing" || sheet.form === "works_completed") {
       const titles = form.locator(".sheet-section-title");
-      await expect(titles).toHaveCount(7);
-      await expect(titles.first()).toContainText("General");
+      await expect(titles).toHaveCount(sheet.form === "works_ongoing" ? 6 : 5);
+      await expect(titles.first()).toContainText(sheet.form === "works_ongoing" ? "Location" : "Work");
       await expect(titles.last()).toContainText("Sign-off");
-      expect(await titles.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-sheet-section")))).toEqual(["1", "2", "3", "4", "5", "6", "7"]);
     }
-    // Every sheet form is numbered 1..n, starts with General and ends with the sign-off or the evidence.
+    // Every sheet form is numbered 1..n and ends with the sign-off card.
     const sections = await form.locator(".sheet-section-title").evaluateAll((nodes) => nodes.map((node) => ({ number: node.getAttribute("data-sheet-section"), title: node.textContent ?? "" })));
-    expect(sections.length, `${sheet.form} has numbered sections`).toBeGreaterThanOrEqual(5);
+    expect(sections.length, `${sheet.form} has numbered cards`).toBeGreaterThanOrEqual(4);
     expect(sections.map((section) => section.number)).toEqual(sections.map((_, index) => String(index + 1)));
-    expect(sections[0].title).toContain("General");
+    expect(sections.at(-1)!.title).toContain("Sign-off");
     await page.screenshot({ path: testInfo.outputPath(`${sheet.form}.png`), fullPage: true });
 
     await expect(page.locator(".confirm-needs, .record-still-needed")).toHaveCount(0);

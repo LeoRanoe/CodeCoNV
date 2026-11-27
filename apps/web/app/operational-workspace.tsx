@@ -62,6 +62,7 @@ import { ALL_BUILDINGS, BuildingMultiPicker, BuildingPicker, resolveDefaultBuild
 import { readChecklistFile } from "@/lib/checklists/import-checklist.mjs";
 import { appendDictation, DictateButton, inputWithMicStyle, micInputStyle } from "@/app/dictate-button";
 import { RecordBuildingsField, RecordFormSection, RecordFormShell, RecordSignatureField } from "@/app/forms/record-form-shell";
+import { MoreActions } from "@/app/forms/more-actions";
 import { RecordList, SavedRecordsFold } from "@/app/forms/record-list";
 import { ContractorSignatureField, RecordSignatures, contractorSignatureDetails, contractorSignatureFrom, emptyContractorSignature, type ContractorSignatureValue } from "@/app/forms/contractor-signature";
 import { SpecFields, SpecLinkChips } from "@/app/forms/spec-fields";
@@ -176,7 +177,6 @@ import type { ReportPhotoMode } from "@/lib/reports/report-photos";
 import { assignProjectAction, type InternalMember, type ProjectParty } from "@/lib/supabase/data";
 import { isStorageGatewayConfigured, openProjectFile, uploadProjectFile } from "@/lib/storage/gateway";
 import { isPhotoFile, photoSourceIds } from "@/lib/media/photo-library.mjs";
-import { countOpenFindings } from "@/lib/records/finding-counts.mjs";
 import { createFileOriginResolver, filesForRecord, type FileOriginKind, type FileOriginResolver } from "@/lib/supabase/file-origins";
 import { loadProjectThumbnailUrl } from "@/lib/images/thumbnail";
 import {
@@ -1408,7 +1408,11 @@ function ProjectOperations({
    * emptied whenever another register form is opened, so a photo taken for a delivery is
    * never filed with the technical instruction that is opened next.
    */
+  // Whether a form was chosen for the registers tab (a tile, "New" of a form, a record): only then does the list
+  // narrow to that form. After a reload the tab does not know its form and lists every register, as before (OPUS-F02).
+  const [registerTypeChosen, setRegisterTypeChosen] = useState(false);
   const clearRegisterStaging = (type: string) => {
+    setRegisterTypeChosen(true);
     setRegisterForm({ ...emptyControlledDocumentDraft, type });
     setRegisterSpec({});
     setAgreementForm({ ...emptyAgreementSignature });
@@ -3617,18 +3621,24 @@ function ProjectOperations({
     lessons_learned: text("Lessons Learned (LL)", "Geleerde lessen (LL)"),
     agreement: text("Agreements Made", "Gemaakte afspraken"),
   };
+  // A Workspace tab opened on one of the client's forms lists that form's records only (OPUS-F02):
+  // Works ongoing used to list every delivery, agreement, change order and instruction of the project.
+  const registerListType = (focusRecordId && data.registerEntries.find((entry) => entry.id === focusRecordId)?.register_type) || registerForm.type;
+  const registerListFilter = !externalSubmissionIntent && (registerTypeChosen || focusRecordId) && workspacePageTitles[registerListType] ? registerListType : "";
+  const inRegisterList = (entry: { register_type: string }) => !registerListFilter || entry.register_type === registerListFilter;
   const projectSections: Array<[Exclude<ProjectTab, "home">, string, number]> = ([
     ["inspections", text("Inspections", "Inspecties"), data.inspections.length],
-    ["findings", text("Issues", "Issues"), countOpenFindings(data.findings, "issue")],
-    ["ncr", "NCR", countOpenFindings(data.findings, "ncr")],
+    // Every tile and module header counts the form's records, like Records & Photos does; the open ones are counted on the page itself (OPUS-F11).
+    ["findings", text("Issues", "Issues"), data.findings.filter((finding) => finding.finding_type !== "ncr").length],
+    ["ncr", "NCR", data.findings.filter((finding) => finding.finding_type === "ncr").length],
     ["hse", hseSpecForm === "hse_incident" ? text("HSE incident registration", "HSE-incidentregistratie") : "HSE", data.hseEvents.length],
     // The page is named after what was asked for: one block of the day, or the whole day log.
     ["daily", !dayLogFocus ? text("Day log", "Daglog") : dailyWorkView === "works_completed" ? text("Works completed", "Werkzaamheden afgerond") : dailyWorkView === "delays" ? text("Delays", "Vertragingen") : text("Works ongoing", "Werkzaamheden gaande"), (data.dailyWork ?? []).length],
     ["workforce", text("Workforce", "Workforce"), workforceDays.length],
-    ["documents", "Project Docs", data.files.filter((file) => file.status === "available").length + data.registerEntries.filter((entry) => ["document", "drawing", "specification", "contract", "boq"].includes(entry.register_type)).length],
+    ["documents", text("Project Documents", "Projectdocumenten"), data.files.filter((file) => file.status === "available").length + data.registerEntries.filter((entry) => ["document", "drawing", "specification", "contract", "boq"].includes(entry.register_type)).length],
     // F17: a Workspace page opened on one of the client's forms carries that form's name (images 8 and 12).
     // F17: a saved record opened from the archive or a link is headed by its own form's name.
-    ["registers", workspacePageTitles[(focusRecordId && data.registerEntries.find((entry) => entry.id === focusRecordId)?.register_type) || registerForm.type] ?? text("Formal documents & registers", "Formele documenten & registers"), data.registerEntries.length],
+    ["registers", workspacePageTitles[(focusRecordId && data.registerEntries.find((entry) => entry.id === focusRecordId)?.register_type) || registerForm.type] ?? text("Formal documents & registers", "Formele documenten & registers"), data.registerEntries.filter(inRegisterList).length],
     ["visual", text("Visual evidence", "Visueel bewijs"), data.visualCaptures.length],
     ["drawings", text("Drawings", "Tekeningen"), data.files.filter((file) => file.category === "drawing" && file.status === "available").length],
     ["tools", text("Field tools", "Veldtools"), data.registerEntries.filter((entry) => ["notepad", "agreement", "technical_instruction"].includes(entry.register_type)).length],
@@ -3747,9 +3757,14 @@ function ProjectOperations({
             projectName={projectName}
             counts={{
               inspections: data.inspections.length,
-              issues: countOpenFindings(data.findings, "issue"),
-              ncr: countOpenFindings(data.findings, "ncr"),
-              hse: data.hseEvents.length,
+              issues: data.findings.filter((finding) => finding.finding_type !== "ncr").length,
+              ncr: data.findings.filter((finding) => finding.finding_type === "ncr").length,
+              // HSE and HSE incident are two forms (Word 3): each tile counts its own records (OPUS-F09).
+              hse: data.hseEvents.filter((event) => !["incident", "near_miss"].includes(event.event_type)).length,
+              hseIncidents: data.hseEvents.filter((event) => ["incident", "near_miss"].includes(event.event_type)).length,
+              worksOngoing: data.registerEntries.filter((entry) => entry.register_type === "works_ongoing").length,
+              worksCompleted: data.registerEntries.filter((entry) => entry.register_type === "works_completed").length,
+              workforceDays: workforceDays.length,
               // The tile opens the photo library, which lists photos and 360° images together.
               photos: data.visualCaptures.filter((capture) => capture.status === "active").length,
               deliveries: data.registerEntries.filter((entry) => entry.register_type === "delivery").length,
@@ -3786,14 +3801,15 @@ function ProjectOperations({
       ) : (
         <>
           <div className="workspace-section-controls">
-            <button className="workspace-back-button" type="button" onClick={() => switchTab("home")}><ArrowLeft size={17} aria-hidden="true" /> <span className="workspace-back-label">{text("Workspace", "Werkruimte")}</span></button>
+            {/* Project Documents is a main menu (Word 2), not a Workspace form: it has no way "back" to the Workspace (OPUS-F13). */}
+            {tab !== "documents" ? <button className="workspace-back-button" type="button" onClick={() => switchTab("home")}><ArrowLeft size={17} aria-hidden="true" /> <span className="workspace-back-label">{text("Workspace", "Werkruimte")}</span></button> : null}
             <div className="workspace-current-module" aria-live="polite">
               <span>{projectName}</span>
               {/* The module's own title: a heading, so it is announced and navigable. */}
               <h1>{activeSectionLabel}</h1>
               <b>{activeSectionCount}</b>
             </div>
-            {activeFormLog ? <button className="ui-button ui-button--quiet ui-button--md workspace-open-log" type="button" onClick={openFormLog}><ScrollText size={15} aria-hidden="true" /> {text("Open log", "Open logboek")}</button> : null}
+            {activeFormLog ? <button className="ui-button ui-button--quiet ui-button--md workspace-open-log" type="button" onClick={openFormLog}><ScrollText size={15} aria-hidden="true" /> <span className="workspace-open-log-label">{text("Open log", "Open logboek")}</span></button> : null}
             {/* The "Switch module" dropdown used to sit here. The client wrote next to it: "ik
                 begrijp dit niet, misschien kan het weg". Every module is one tap away on the
                 workspace itself, so there is no second, hidden way in any more. */}
@@ -4300,6 +4316,7 @@ function ProjectOperations({
                 />
               </RecordSignatures>
               <p className="form-helper">{text(`Entered by ${currentUserName}`, `Ingevoerd door ${currentUserName}`)}</p>
+              <div className="record-form-actions">
               <StillNeeded items={[
                 exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId ? text("exact location", "exacte locatie") : "",
                 !online && !findingPhotos.length ? text("a photo (you are offline)", "een foto (je bent offline)") : "",
@@ -4308,6 +4325,7 @@ function ProjectOperations({
                 ...findingSpecProblems,
               ]} />
               <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !findingCoversEveryBuilding && !findingLocationNodeId) || (!online && !findingPhotos.length) || findingForm.title.trim().length < 3 || findingForm.description.trim().length < 3 || findingSpecProblems.length > 0} onClick={findingSigning.request}><AlertTriangle size={15} /> {!online ? text("Add to sync queue", "In synchronisatiewachtrij") : text("Submit NCR", "NCR indienen")}</button>{findingSigning.dialog}
+              </div>
             </div>
           ) : null}
           {/* Submitting is not the end of an NCR: the contractor has to receive it and
@@ -4684,6 +4702,7 @@ function ProjectOperations({
                   slots={{
                     drawing_location: (
                       <div className="sheet-drawing-location">
+                        <DrawingLocationPicker inline key={`inline-${registerBuildingId}`} drawings={pickableDrawings(data.files, registerBuildingId)} buildings={buildings} client={client} initial={registerDrawingLocation} subject="record" close={() => undefined} save={(location) => setRegisterDrawingLocation(location)} />
                         {registerDrawingLocation ? <span className="sheet-drawing-location-summary"><MapPin size={14} aria-hidden="true" /> {drawingLocationLabel(registerDrawingLocation, text("page", "pagina"))}</span> : <small>{text("Optional: point at the spot on the drawing.", "Optioneel: wijs de plek aan op de tekening.")}</small>}
                         <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setPickingRegisterDrawing(true)}><MapPin size={14} /> {registerDrawingLocation ? text("Change on drawing", "Wijzigen op tekening") : text("Choose on drawing", "Kies op tekening")}</button>
                         {registerDrawingLocation ? <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => setRegisterDrawingLocation(null)}><X size={14} /> {text("Remove", "Verwijderen")}</button> : null}
@@ -5360,6 +5379,7 @@ function ProjectOperations({
                   ) : null}
                 </RecordSignatures>
               ) : null}
+              <div className="record-form-actions">
               {(() => {
                 // What is still missing before the save button works, in words. A disabled button
                 // that does not say why is how a form gets abandoned; this mirrors the rules above.
@@ -5388,6 +5408,7 @@ function ProjectOperations({
                 return registerMissing.length ? <small className="confirm-needs"><strong>{text(`${registerMissing.length} required left`, `Nog ${registerMissing.length} verplicht`)}</strong>: {registerMissing.join(" · ")} · {text("auto-saved", "automatisch bewaard")}</small> : null;
               })()}
               <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || (exactLocationRequired && !registerLocationNodeId) || registerTitle.length < 3 || (sheetRegister ? sheetRegisterMissing.length > 0 : !controlledFormReady || !lessonFormReady || !delayReportFormReady) || registerSpecProblems.length > 0} onClick={registerSigning.request}><PackageCheck size={15} /> {controlledRegister ? text("Create controlled document", "Maak beheerd document") : agreementRegister ? text("Save agreement", "Afspraak opslaan") : lessonsLearnedRegister ? text("Save lesson learned", "Geleerde les opslaan") : delayReportRegister ? text("Save delay report", "Vertragingsrapport opslaan") : text("Save register item", "Registeritem opslaan")}</button>{registerSigning.dialog}
+              </div>
             </RecordFormShell>
           ) : null}
           {/* The bill of quantities has nothing to do with a delivery or any other
@@ -5426,9 +5447,9 @@ function ProjectOperations({
               <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={openManagement}>{text("Back to Management", "Terug naar Management")}</button>
             </div>
           ) : null}
-          <SavedRecordsFold formOpen={showForm && !focusRecordId} count={data.registerEntries.filter((entry) => entry.register_type !== "boq" && (externalSubmissionIntent || !externalSubmissionRegisterTypes.includes(entry.register_type))).length} storageKey={`registers:${projectId}`}>
-          <ControlledDocumentList projectId={projectId} entries={data.registerEntries.filter((entry) => isControlledDocumentType(entry.register_type) && (externalSubmissionIntent || !externalSubmissionRegisterTypes.includes(entry.register_type)))} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={currentUserName} focusRecordId={focusRecordId} client={client} run={run} />
-          <RecordList empty={text("No additional project registers yet.", "Nog geen aanvullende projectregisters.")} rows={data.registerEntries.filter((entry) => !isControlledDocumentType(entry.register_type) && entry.register_type !== "boq").map((entry) => {
+          <SavedRecordsFold formOpen={showForm && !focusRecordId} count={data.registerEntries.filter((entry) => inRegisterList(entry) && entry.register_type !== "boq" && (externalSubmissionIntent || !externalSubmissionRegisterTypes.includes(entry.register_type))).length} storageKey={`registers:${projectId}`}>
+          <ControlledDocumentList projectId={projectId} entries={data.registerEntries.filter((entry) => inRegisterList(entry) && isControlledDocumentType(entry.register_type) && (externalSubmissionIntent || !externalSubmissionRegisterTypes.includes(entry.register_type)))} buildings={buildings} locationNodes={data.locationNodes} busy={busy} currentUserName={currentUserName} focusRecordId={focusRecordId} client={client} run={run} />
+          <RecordList empty={registerListFilter ? text("No records yet.", "Nog geen registraties.") : text("No additional project registers yet.", "Nog geen aanvullende projectregisters.")} rows={data.registerEntries.filter((entry) => inRegisterList(entry) && !isControlledDocumentType(entry.register_type) && entry.register_type !== "boq").map((entry) => {
             // The verdict and the quantity are the point of a delivery line, so the list
             // shows them instead of hiding them in the record.
             const outcome = String(entry.details?.outcome ?? "");
@@ -5772,10 +5793,13 @@ function ControlledDocumentList({ entries, buildings, locationNodes, busy, curre
             <div className="finding-actions" hidden={entryWaiting}><button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => setHistoryActive((current) => current === entry.id ? null : entry.id)}><Archive size={15} /> {historyActive === entry.id ? text("Close record", "Sluit dossier") : text("Open record & history", "Open dossier & historie")}</button>
             {/* Send the document to the contractor over WhatsApp. The formal PDF or Word
                 file stays the attachment; this is the message that announces it. */}
+            <MoreActions label={text("Send or export", "Versturen of exporteren")}>
             <button className="whatsapp-button" type="button" onClick={() => openWhatsApp(contractorMessage(entry))}><MessageCircle size={16} /> {text("Send to contractor", "Naar aannemer sturen")}</button>
             <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => openSms(contractorMessage(entry))}><Smartphone size={15} /> {text("Send as SMS", "Als SMS sturen")}</button>
             <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => openEmail(contractorMessage(entry))}><Mail size={15} /> {text("Send as email", "Als e-mail sturen")}</button>
-            <ReportDownloadButtons disabled={busy} onDownloadPdf={async () => { const history = await recordHistory(client, projectId, entry.id, language); const { downloadControlledDocumentPdf } = await import("@/lib/reports/controlled-document-pdf"); await downloadControlledDocumentPdf(entry, history); }} onDownloadWord={async () => { const history = await recordHistory(client, projectId, entry.id, language); const { downloadControlledDocumentDocx } = await import("@/lib/reports/controlled-document-docx"); await downloadControlledDocumentDocx(entry, history); }} />{!["closed", "cancelled"].includes(entry.status) ? <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy} onClick={() => { setActive(active === entry.id ? null : entry.id); const recipientAnswers = entry.register_type === "technical_instruction" || entry.register_type === "change_order"; setResponse({ decision: recipientAnswers ? "acknowledged" : "approved", comments: "", respondentName: recipientAnswers ? "" : currentUserName, respondentPosition: "", respondentCompany: recipientAnswers ? String(details.requested_to ?? "") : "CODECO N.V." }); setResponseSignature(null); }}><FileCheck2 size={15} /> {text("Record formal response", "Leg formeel antwoord vast")}</button> : null}</div>
+            <ReportDownloadButtons disabled={busy} onDownloadPdf={async () => { const history = await recordHistory(client, projectId, entry.id, language); const { downloadControlledDocumentPdf } = await import("@/lib/reports/controlled-document-pdf"); await downloadControlledDocumentPdf(entry, history); }} onDownloadWord={async () => { const history = await recordHistory(client, projectId, entry.id, language); const { downloadControlledDocumentDocx } = await import("@/lib/reports/controlled-document-docx"); await downloadControlledDocumentDocx(entry, history); }} />
+            </MoreActions>
+            {!["closed", "cancelled"].includes(entry.status) ? <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy} onClick={() => { setActive(active === entry.id ? null : entry.id); const recipientAnswers = entry.register_type === "technical_instruction" || entry.register_type === "change_order"; setResponse({ decision: recipientAnswers ? "acknowledged" : "approved", comments: "", respondentName: recipientAnswers ? "" : currentUserName, respondentPosition: "", respondentCompany: recipientAnswers ? String(details.requested_to ?? "") : "CODECO N.V." }); setResponseSignature(null); }}><FileCheck2 size={15} /> {text("Record formal response", "Leg formeel antwoord vast")}</button> : null}</div>
             {historyActive === entry.id ? <section className="controlled-document-history">
               <div><span>{text("Created / issued", "Aangemaakt / uitgegeven")}</span><strong>{formatDate(entry.occurred_at, locale)}</strong><small>{String(details.issuer_name ?? details.issued_by ?? currentUserName)} · {String(details.issuer_company ?? "CODECO N.V.")}</small></div>
               <div><span>{text("Current status", "Huidige status")}</span><strong>{statusText(entry.status, text)}</strong><small>{responseData.decision ? `${text("Decision", "Besluit")}: ${codeText(String(responseData.decision), text)}` : text("No formal decision recorded yet", "Nog geen formeel besluit vastgelegd")}</small></div>
@@ -6130,7 +6154,7 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
   const shownFindings = findings.filter((finding, index) => matchesSpecFacets(findingFacets[index], findingFilter) || finding.id === focusRecordId);
   return (
     <div className="record-stack">
-      {findings.length > 1 ? <SpecFacetFilterBar id="finding-facets" facets={findingFacets} value={findingFilter} onChange={setFindingFilter} /> : null}
+      {findings.length > 1 ? <SpecFacetFilterBar foldable id="finding-facets" facets={findingFacets} value={findingFilter} onChange={setFindingFilter} /> : null}
       {findings.length === 0 ? <div className="empty-list-state"><CheckCircle2 size={22} /><strong>{text("No findings yet", "Nog geen bevindingen")}</strong></div> : null}
       {findings.length > 0 && !shownFindings.length && facetFilterActive(findingFilter) ? <div className="empty-list-state"><span>{text("No records match these filters.", "Geen registraties met deze filters.")}</span></div> : null}
       {shownFindings.map((finding) => {
@@ -6168,18 +6192,21 @@ function FindingList({ data, client, run, findings, progressUpdates, visualAnnot
             <div className="finding-card-main"><span className={`record-severity ${finding.severity}`}>{severityText(finding.severity, text)}</span><div><span className="record-number">{finding.finding_number}{finding.finding_type === "ncr" ? " · NCR" : ""}</span><h3>{finding.title}</h3><p>{finding.description}</p>{issue.action_steps ? <p className="finding-required-action"><strong>{text("Required action:", "Vereiste actie:")}</strong> {issue.action_steps}</p> : null}{issue.immediate_actions?.length || issue.immediate_action_other ? <p className="finding-immediate-action"><strong>{text("Already done:", "Al gedaan:")}</strong> {[...(issue.immediate_actions ?? []).map((action) => optionText(immediateActionsTaken, action, text)), issue.immediate_action_other ?? ""].filter(Boolean).join(" · ")}</p> : null}<small>{[issue.issue_category, issue.root_cause ? `${text("cause", "oorzaak")}: ${optionText(recordRootCauses, issue.root_cause, text)}` : "", issue.responsible_person].filter(Boolean).join(" · ")}{[issue.issue_category, issue.root_cause, issue.responsible_person].some(Boolean) ? " · " : ""}{recordBuildingName}{recordLocation ? ` → ${recordLocation}` : ""} · Deadline {formatDate(finding.due_at, locale)}{latestProgress ? ` · ${text("progress", "voortgang")} ${latestProgress.progress_percent}% · ${codeText(latestProgress.disposition, text)}` : ""}{finding.verified_at ? ` · ${text("verified", "geverifieerd")} ${formatDate(finding.verified_at, locale)}` : ""}</small></div><span className={`task-status ${finding.status === "closed" ? "green" : finding.severity === "critical" ? "red" : ""}`}>{statusLabels[finding.status] ?? finding.status}</span></div>
             <div className="finding-actions" hidden={waitingToBeSent}>
               <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => viewRecord(finding)}><FileText size={16} /> {text("View record", "Registratie bekijken")}</button>
-              {finding.status !== "cancelled" && permissions.can("records.edit") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => editRecord(finding)}><Wrench size={16} /> {text("Edit", "Bewerken")}</button> : null}
-              {finding.status !== "cancelled" && permissions.can("records.edit") ? <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => withdrawRecord(finding)}>{text("Withdraw", "Intrekken")}</button> : null}
-              {visualAnnotation || permissions.can("files.manage") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => linkVisual(finding)}><Camera size={16} /> {visualAnnotation ? text("View photo marker", "Bekijk fotomarker") : finding.finding_type === "ncr" ? text("Mark on photo", "Markeer op foto") : text("Mark on photo / 360°", "Markeer op foto / 360°")}</button> : null}
-              {drawingPin || permissions.can("files.manage") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => linkDrawing(finding)}><MapPin size={16} /> {drawingPin ? text("View on drawing", "Bekijk op tekening") : text("Place on drawing", "Plaats op tekening")}</button> : null}
-              {permissions.can("findings.create") ? <button className="external-party-button" type="button" disabled={busy || creatingShareFor === finding.id} onClick={() => void createShare(finding)}>
-                {creatingShareFor === finding.id ? <Loader2 className="spin" size={17} /> : <MessageCircle size={17} />}
-                <span><strong>{text("Send to external party", "Stuur naar externe partij")}</strong><small>{text("WhatsApp link · no account needed", "WhatsApp-link · geen account nodig")}</small></span>
-              </button> : null}
-              <ReportDownloadButtons disabled={busy} onDownloadPdf={async () => { const signoffHistory = await recordHistory(client, projectId, finding.id, language); const { downloadNcrPdf } = await import("@/lib/reports/ncr-pdf"); await downloadNcrPdf(finding, latestProgress, { ...ncrContext(finding, recordBuildingName), signoffHistory }); }} onDownloadWord={async () => { const signoffHistory = await recordHistory(client, projectId, finding.id, language); const { downloadNcrDocx } = await import("@/lib/reports/ncr-docx"); await downloadNcrDocx(finding, latestProgress, { ...ncrContext(finding, recordBuildingName), signoffHistory }); }} />
-              {!["closed", "cancelled", "rejected"].includes(finding.status) && permissions.can("findings.manage") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setProgressActive(progressActive === finding.id ? null : finding.id); setProgressPercent(String(latestProgress?.progress_percent ?? 0)); setProgressDisposition(latestProgress?.disposition ?? issue.disposition ?? "to_be_corrected"); }}>{text("Record inspection progress", "Inspectievoortgang vastleggen")}</button> : null}
               {nextStatus ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { if (nextStatus === "closed" && finding.finding_type !== "ncr") { setDecision({ findingId: finding.id, action: "verify" }); return; } setActive(active === finding.id ? null : finding.id); setCorrection(""); setVerificationSignature(null); }}>{nextStatus === "closed" ? finding.finding_type === "ncr" ? text("Quality control · resolve", "Kwaliteitscontrole · afsluiten") : text("Verify", "Verifiëren") : nextStatus === "ready_for_verification" ? text("Mark repair ready", "Herstel gereedmelden") : finding.finding_type === "ncr" ? text("Record contractor answer", "Antwoord aannemer vastleggen") : text("Update status", "Status bijwerken")}</button> : null}
               {finding.status === "ready_for_verification" && permissions.can("findings.verify") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { if (finding.finding_type !== "ncr") { setDecision({ findingId: finding.id, action: "return" }); return; } setReturning(returning === finding.id ? null : finding.id); setReturnReason(""); }}>{text("Return for correction", "Terug voor correctie")}</button> : null}
+
+              <MoreActions>
+                {finding.status !== "cancelled" && permissions.can("records.edit") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => editRecord(finding)}><Wrench size={16} /> {text("Edit", "Bewerken")}</button> : null}
+                {finding.status !== "cancelled" && permissions.can("records.edit") ? <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => withdrawRecord(finding)}>{text("Withdraw", "Intrekken")}</button> : null}
+                {visualAnnotation || permissions.can("files.manage") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => linkVisual(finding)}><Camera size={16} /> {visualAnnotation ? text("View photo marker", "Bekijk fotomarker") : finding.finding_type === "ncr" ? text("Mark on photo", "Markeer op foto") : text("Mark on photo / 360°", "Markeer op foto / 360°")}</button> : null}
+                {drawingPin || permissions.can("files.manage") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => linkDrawing(finding)}><MapPin size={16} /> {drawingPin ? text("View on drawing", "Bekijk op tekening") : text("Place on drawing", "Plaats op tekening")}</button> : null}
+                {permissions.can("findings.create") ? <button className="external-party-button" type="button" disabled={busy || creatingShareFor === finding.id} onClick={() => void createShare(finding)}>
+                  {creatingShareFor === finding.id ? <Loader2 className="spin" size={17} /> : <MessageCircle size={17} />}
+                  <span><strong>{text("Send to external party", "Stuur naar externe partij")}</strong><small>{text("WhatsApp link · no account needed", "WhatsApp-link · geen account nodig")}</small></span>
+                </button> : null}
+                <ReportDownloadButtons disabled={busy} onDownloadPdf={async () => { const signoffHistory = await recordHistory(client, projectId, finding.id, language); const { downloadNcrPdf } = await import("@/lib/reports/ncr-pdf"); await downloadNcrPdf(finding, latestProgress, { ...ncrContext(finding, recordBuildingName), signoffHistory }); }} onDownloadWord={async () => { const signoffHistory = await recordHistory(client, projectId, finding.id, language); const { downloadNcrDocx } = await import("@/lib/reports/ncr-docx"); await downloadNcrDocx(finding, latestProgress, { ...ncrContext(finding, recordBuildingName), signoffHistory }); }} />
+                {!["closed", "cancelled", "rejected"].includes(finding.status) && permissions.can("findings.manage") ? <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setProgressActive(progressActive === finding.id ? null : finding.id); setProgressPercent(String(latestProgress?.progress_percent ?? 0)); setProgressDisposition(latestProgress?.disposition ?? issue.disposition ?? "to_be_corrected"); }}>{text("Record inspection progress", "Inspectievoortgang vastleggen")}</button> : null}
+              </MoreActions>
             </div>
             {/* The three signed boxes of the client's NCR form, in the order of the form:
                 what the engineer recommends, what the contractor proposes, what quality
@@ -6651,7 +6678,7 @@ function ReportOperations({ focusRecordId, data, reportId, reportNumber, reportS
     .sort((left, right) => right.end.localeCompare(left.end));
   return (
     <>
-      <header className="secondary-header report-page-header ui-page-header"><div><h1>{text("Client reports", "Klantrapporten")}</h1></div><div className="report-header-state"><span className="record-number ui-page-header__code">{reportNumber}</span><span className={`report-state-pill ui-status-badge ${reportStatus}`}>{statusLabels[reportStatus] ?? reportStatus}</span></div></header>
+      <header className="secondary-header report-page-header ui-page-header"><div><h1>{text("Reports", "Rapporten")}</h1></div><div className="report-header-state"><span className="record-number ui-page-header__code">{reportNumber}</span><span className={`report-state-pill ui-status-badge ${reportStatus}`}>{statusLabels[reportStatus] ?? reportStatus}</span></div></header>
       <SectionNav
         label={text("Report workspace", "Rapportwerkruimte")}
         items={[
