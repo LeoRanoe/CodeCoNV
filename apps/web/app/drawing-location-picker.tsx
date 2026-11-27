@@ -8,6 +8,7 @@ import { useLanguage } from "@/lib/i18n";
 import { normalizedImagePoint } from "@/lib/images/field-image.mjs";
 import { loadProjectFilePreviewObjectUrl } from "@/lib/storage/gateway";
 import type { FileRecord } from "@/lib/supabase/operations";
+import { ModalLayer } from "@/app/forms/modal-layer";
 
 /**
  * "Locatie kunnen kiezen in PDF" — the client does not want to type a room name that only the
@@ -97,9 +98,11 @@ export function DrawingLocationPicker({
   const frame = (children: React.ReactNode) => inline ? (
     <section className="drawing-location-inline" aria-label={text("Drawing and spot", "Tekening en plek")}>{children}</section>
   ) : (
-    <div className="modal-backdrop" role="presentation" onPointerDown={(event) => event.target === event.currentTarget && close()}>
-      <section className="modal drawing-location-modal" role="dialog" aria-modal="true" aria-labelledby="drawing-location-title">{children}</section>
-    </div>
+    <ModalLayer>
+      <div className="modal-backdrop" role="presentation" onPointerDown={(event) => event.target === event.currentTarget && close()}>
+        <section className="modal drawing-location-modal" role="dialog" aria-modal="true" aria-labelledby="drawing-location-title">{children}</section>
+      </div>
+    </ModalLayer>
   );
 
   return frame(

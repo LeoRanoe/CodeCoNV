@@ -12,6 +12,7 @@ import {
   signatureExportSize,
   signatureInkBounds,
 } from "@/lib/signatures/handwritten-signature.mjs";
+import { ModalLayer } from "@/app/forms/modal-layer";
 
 export type HandwrittenSignature = { name: string; image: string; signedAt: string };
 
@@ -199,6 +200,7 @@ export function SignaturePad({
   };
 
   return (
+    <ModalLayer>
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal signature-modal" role="dialog" aria-modal="true" aria-labelledby="signature-title">
         <header className="modal-header">
@@ -245,6 +247,7 @@ export function SignaturePad({
         </footer>
       </section>
     </div>
+    </ModalLayer>
   );
 }
 

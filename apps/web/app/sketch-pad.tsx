@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { strokeLayout, strokePoint } from "@/lib/images/stroke-layout.mjs";
 import { useLanguage } from "@/lib/i18n";
 import { useBackToClose } from "@/lib/navigation/app-history";
+import { ModalLayer } from "@/app/forms/modal-layer";
 
 type Stroke = { color: string; width: number; points: Array<{ x: number; y: number }> };
 
@@ -150,6 +151,7 @@ export function SketchPad({ close, save }: { close: () => void; save: (file: Fil
   };
 
   return (
+    <ModalLayer>
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className="modal sketch-modal" role="dialog" aria-modal="true" aria-labelledby="sketch-title">
         <header className="modal-header">
@@ -197,5 +199,6 @@ export function SketchPad({ close, save }: { close: () => void; save: (file: Fil
         </footer>
       </section>
     </div>
+    </ModalLayer>
   );
 }

@@ -13,6 +13,7 @@ import { createFileOriginResolver } from "@/lib/supabase/file-origins";
 import { createVisualCapture, updateVisualCaptureSpec, type FileRecord, type OperationSnapshot, type VisualAnnotation } from "@/lib/supabase/operations";
 import { PanoramaViewer } from "@/app/visual-evidence-workspace";
 import type { BuildingOption } from "@/app/building-picker";
+import { ModalLayer } from "@/app/forms/modal-layer";
 
 /**
  * One stored photo on a screen of its own.
@@ -184,6 +185,7 @@ export function StoredPhotoDetail({ data, buildings, file, client, busy, run, cl
   const isPanorama = capture?.capture_type === "panorama" && stackFiles.length <= 1;
 
   return (
+    <ModalLayer>
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <section className={`modal media-detail-modal${isPanorama ? " media-detail-modal-panorama" : ""}`} role="dialog" aria-modal="true" aria-labelledby="stored-photo-title">
         <header className="modal-header">
@@ -269,5 +271,6 @@ export function StoredPhotoDetail({ data, buildings, file, client, busy, run, cl
         </footer>
       </section>
     </div>
+    </ModalLayer>
   );
 }
