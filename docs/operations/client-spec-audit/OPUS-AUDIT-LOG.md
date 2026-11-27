@@ -41,6 +41,21 @@ Severity: blocker (cannot work), major (wrong or very hard), minor. Evidence pat
 | F25 | Account card | all | all | The card signs out on a tap but says "CODECO user" (also for a client) | minor | same | fixed: it says "Sign out" |
 | F26 | Portal header | 390x844 | contractor, client portal | 290 px header (large logo, stacked controls) | minor | `tmp/audit-roles/en/390x844/clientportal/01-portal-home.png` | fixed: about 220 px |
 | F27 | Portal rows | 390x844 | contractor, client portal, supervisor preview | Title squeezed into a 90 px column beside the states, one word per line | major | `tmp/audit-roles2/en/390x844/contractor/01-portal-home.png` | fixed: states under the title |
+| F28 | Register lists (Delivery, TI, CO, ...) | all | supervisor | Every row repeats the form name ("Materials delivery") in a list of that form | minor | `tmp/audit-pass2/en/1920x1080/supervisor/03-08-materials-delivery-list.png` | fixed |
+| F29 | Project Documents folders | all | supervisor | Folder numbers 11.2 px (under the 12 px minimum) | minor | measure.json pass 2 | fixed |
+| F21b | Auto bar | 820x1180 | supervisor | Record ID still cut ("E2E-001-INS-2026-…") on a tablet | minor | `tmp/audit-pass2/en/820x1180/supervisor/03-09-inspections-form.png` | fixed: values wrap at every width |
+
+## Pass 2 (27-11-2026, after #38 was live)
+
+All eight viewports for the supervisor in English (`tmp/audit-pass2/en/`), and 1280x720 / 390x844 in Dutch for the supervisor, the contractor and the client portal (`tmp/audit-pass2/nl/`), with the demo and long-name (stress) data. Result: no sideways scroll, no sidebar item cut off, no small target on a touch width, no covered control except two false positives (content of a closed `<details>`, now skipped by the walk as it already was by the stability test). Found and fixed: F21b, F28, F29. No new blocker or major.
+
+## Shipped
+
+| PR | Content | Local gate on the merged head | CI | Merged | Production |
+|---|---|---|---|---|---|
+| #38 (includes #37) | F01-F27 | e1881b4: lint, design, tsc, unit 368/368; Playwright 270 passed, 1 failed (spec-registers incident: passes 9/9 alone and in both earlier full runs; a data-order flake) | 5/5 green | 27-11-2026, squash 5f50668; #37 closed as included | Vercel production 5f50668 deployed; live bundle contains "Send or export", `workspace-open-log-label`, `.more-actions-menu`; /supervisie 200 (no sign-in) |
+
+Gate history of #38: run 1 (8 failures: 4 mine, fixed; 3 from #37's pills, fixed; 1 weather rate limit), run 2 targeted 16/16, run 3 (2: weather 429, ui-stability drawing list, fixed in the test), run 4 (1: a11y Rapid Verify timing after F24, fixed), run 5 (1 flake above).
 
 ## Decisions
 
@@ -48,4 +63,4 @@ See `V5-DECISION-REGISTER.md` D-31 and later.
 
 ## Next step
 
-PR #38 (batch 1, includes #37): full local gate on the head, then merge and confirm production. Then: Dutch walk, second pass over every viewport with the walk, report.
+Batch 2 on `audit/opus-overnight-2`: second pass (all eight viewports, English; Dutch at 1280x720 and 390x844 for supervisor, contractor and client portal) in `tmp/audit-pass2/`; fix what it finds; report.

@@ -55,7 +55,7 @@ function measure() {
     return false;
   };
   const controls = [...document.querySelectorAll("button, a[href], input:not([type=hidden]), select, textarea, [role=button], [role=tab], summary")]
-    .filter(visible).filter((el) => !el.closest(".visually-hidden, .sr-only, nextjs-portal"));
+    .filter(visible).filter((el) => !el.closest(".visually-hidden, .sr-only, nextjs-portal, details:not([open]) > :not(summary)"));
   const covered: string[] = [];
   const clipped: string[] = [];
   const small: string[] = [];
