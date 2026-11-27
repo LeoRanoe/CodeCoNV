@@ -1183,10 +1183,8 @@ html { scroll-padding-bottom: calc(var(--mobile-nav-height, 0px) + 96px); }
   .choice-tiles--segmented { border: 0; gap: var(--space-2); overflow: visible; }
   .choice-tiles--segmented .choice-tile, .choice-tiles--segmented .choice-tile:first-child { border: 1px solid var(--ink-400); border-radius: var(--radius-sm); flex: 1 1 auto; }
 }
-/* OPUS-F21. The auto bar on a phone: a value (record ID, date) wraps instead of ending in "…". */
-@media (max-width: 640px) {
-  .form-auto-bar-item strong { overflow: visible; overflow-wrap: anywhere; text-overflow: clip; white-space: normal; }
-}
+/* OPUS-F21. The auto bar: a value (record ID, date) wraps instead of ending in "…" (phone and tablet, 820 px: "E2E-001-INS-2026-…"). */
+.form-auto-bar-item strong { overflow: visible; overflow-wrap: anywhere; text-overflow: clip; white-space: normal; }
 /* OPUS-F22. On a phone "Open log" is its icon (the name stays for screen readers), so the module name is not cut to "Works o…". */
 @media (max-width: 640px) {
   .workspace-open-log { min-width: var(--control-h-lg); padding-inline: var(--space-3); }
@@ -1213,3 +1211,6 @@ html { scroll-padding-bottom: calc(var(--mobile-nav-height, 0px) + 96px); }
   .portal-row { grid-template-columns: minmax(0, 1fr); }
   .portal-row-side { justify-content: flex-start; }
 }
+
+/* OPUS-F29. The folder numbers of the document register are 12 px, the smallest size of the type scale (they were 11.2 px). */
+.document-folders small { font-size: var(--text-xs); }

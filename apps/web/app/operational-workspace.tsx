@@ -5471,7 +5471,8 @@ function ProjectOperations({
               meta: [
                 entry.entry_number,
                 recordContextLabel(entry.building_id, entry.location_node_id, entry.building_ids),
-                registerNames[entry.register_type] ?? allRegisterNames[entry.register_type] ?? entry.register_type,
+                // In a list of one form the form's name is the page title; it is not repeated on every row (OPUS-F28).
+                registerListFilter ? "" : registerNames[entry.register_type] ?? allRegisterNames[entry.register_type] ?? entry.register_type,
                 quantityLabel,
                 outcomeLabel,
                 // An agreement without its parties and signature is unreadable in a list.

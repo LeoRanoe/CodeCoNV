@@ -11,7 +11,9 @@ The owner's complaint was right, and the earlier "all tests pass" did not cover 
 3. **Wrong content.** Opening "Works ongoing" listed every register record of the project, including change orders and technical instructions, with a count of 21. (F02)
 4. **Too many controls.** Issue and NCR cards had up to ten buttons each; controlled documents seven. Four filters filled a phone screen before the first record. (F07, F08)
 5. **Duplicated and inconsistent navigation.** Rapid Verify and Project Docs were both main menus and "Supporting tools"; Project Documents opened with a "← Workspace" button and the name "Project Docs"; "Reports" opened a page called "Client reports", "Actions" a page called "Action center"; "Issues" counted 9 on the Workspace and 11 in Records & Photos. (F06, F10, F11, F13, F18)
-6. **Wasted height.** The module header put "New" on its own row (60 px on every module page); on a phone on its side the two bars took a third of the screen. (F03, F12)
+6. **Phones.** Segmented controls broke words letter by letter at 390 px; portal rows squeezed their title into a 90 px column; pills were 40 px, under the 44 px thumb rule. (F19, F20, F27)
+7. **Roles.** The legacy client account saw Rapid Verify and the "View as" portal previews, both Supervision's per Word 2. (F24)
+8. **Wasted height.** The module header put "New" on its own row (60 px on every module page); on a phone on its side the two bars took a third of the screen. (F03, F12)
 
 ## 2. What was fixed
 
@@ -24,11 +26,16 @@ Authority: Word section 2 (ten menus) and 2.1 (principles); mockups v6 for the s
 | Place | Before | After | Reason |
 |---|---|---|---|
 | Sidebar | logo, project, ten menus, "Take photo", account | logo, project, ten menus in Word order, account | Word 2 lists ten menus; the mockups show no photo button; the tenth menu was unreachable at 768 px |
-| Top bar (desktop) | breadcrumb, Help, weather, language, connection, notifications (Management gear hidden by CSS) | "Take photo" first (orange on the Overview only, icon-only from 1025 to 1280 px), then the same | One photo button per screen size; the top bar has room, the sidebar has not |
+| Top bar (desktop) | breadcrumb, Help, weather, language, connection, notifications (Management gear hidden by CSS) | "Take photo" first (orange on the Overview only, icon-only from 1024 to 1280 px), then the same | One photo button per screen size; the top bar has room, the sidebar has not |
 | Phone / tablet bottom bar | Overview, Workspace, Photo, Actions, More | unchanged | The five frequent jobs, one tap |
 | Workspace | 15 forms + Supporting tools (Rapid Verify, Project Docs, Assets & folders, Drawings & pins, Calculator & notes, Deadlines) | 15 forms + Drawings & pins, Calculator & notes, Deadlines | Rapid Verify and Project Documents are main menus; files are in Project Documents and Records & Photos |
 | Records & Photos | the same 15-form grid as folders | unchanged | Word 5 asks for an archive per form; the grid is the folder list, not a second Workspace (it opens records, not forms) |
 | Page names | "Client reports", "Action center", "Project Docs" | "Reports", "Actions", "Project Documents" | One thing, one name (Word 2 names) |
+| Sidebar for a client account (legacy `client` role) | all ten menus | without Rapid Verify, Contractor Portal and Client Portal ("View as") | Word 2: Rapid Verify is for Supervisor / Inspector, "View as" is Supervision's (2.1) |
+| Account card | name and "CODECO user"; a tap signs out | name and "Sign out" | A button says what it does |
+| Record cards | up to ten buttons | View, next step (and Verify / Return); the rest behind "More actions" / "Send or export" | One or two primary actions per card |
+
+A mock of the result is the set of screenshots in `docs/operations/ui-stability-audit/opus-2026-11-26/` (before / after per finding).
 
 Recommended, not done tonight (see section 6): open Actions on the automatic follow-up list (Word 9; the sidebar badge counts that list, the page opens on "My work"); route the legacy `client` and `contractor` roles to their portals only (Word 8, 21).
 
@@ -71,7 +78,7 @@ Ordered by what a supervisor feels first. None of these is a layout defect; each
 | R2 | Inspection start as mockup 09: type, category, discipline, linked work / material, result list (6 values), title | Mockup 09, Excel Inspections | Changes the inspection flow and its stored fields (migration for required server rules) | 1-2 days |
 | R3 | Drawing and pin in the Location card of Issue, NCR, HSE, HSE incident, TI, CO, PDR; building and level filled from the drawing | Mockups 05-07, 10-12, 14; Excel "Location block" | A pin per record needs storage (migration) | 1 day |
 | R4 | Event date only in the auto bar ("tap to correct"), not a second field in the body | Excel column I on 10 forms | Touches the save path of ten forms | ½ day |
-| R5 | Actions opens on the automatic follow-up list (Word 9); the sidebar badge already counts that list | Word 9 | Changes the landing view of a screen many flows use; needs the owner's yes | 1 hour + tests |
+| R5 | Actions opens on the automatic follow-up list (Word 9); the sidebar badge already counts that list | Word 9 | Decided not tonight: it changes the landing view of a screen that six release specs read, and the earlier decision "who has own work starts on it" was deliberate. Recommended | 1 hour + tests |
 | R6 | Legacy `client` and `contractor` roles: route to their portals only (Word 8, 21); tonight only Rapid Verify and "View as" were taken from the client | Word 8, 21, 22 | Role routing is a permission change; the portal roles (`client_*`, `contractor_*`) already do this | ½ day |
 | R7 | Lists that need a server-rule migration: Change Order time unit has "Hours" (Excel: Calendar / Working days); HSE incident severity scale (Excel: Level 1-5) | Excel CO row 17, HSE incident | The option lists are stored in `app_private.spec_form_rules()` (migration 202611250009 is checked by a unit test) | 2 hours + migration |
 | R8 | Photos as a form (mockup 01): per-photo title, classification pills, related record, sign-off profile | Mockup 01, Excel Photos | Photo flow and its stored fields | 1 day |
@@ -81,3 +88,18 @@ Ordered by what a supervisor feels first. None of these is a layout defect; each
 ## 7. Client questions
 
 - Q-1 (F16): may a contractor create RFI, RFA, WCR and inspection requests in the Contractor Portal? Word v2.0 decision 1 says all forms are filled in by Supervision only; Word 6.2 lists no contractor RFI; an earlier written request (20-11-2026) asked for contractor submissions. Default kept: the button stays.
+
+## 8. What was verified, and what was not
+
+Verified on the local stack (never on production data):
+- Every screen of the supervisor app (Overview, Workspace, the 15 forms with their lists, Actions, Rapid Verify, Project Documents, Records & Photos, Reports, both portal previews, Management, the phone "More" sheet, the project switcher and the notifications dialog) at all eight viewports, twice (pass 1 before the fixes at 1366x768, 1280x720, 1024x768, 390x844, 844x390; pass 2 after them at all eight), by screenshot and by the measurement in `audit-walk.spec.ts`. Screenshots: `tmp/audit/`, `tmp/audit-after*/`, `tmp/audit-pass2/` (local, not committed; the ones that matter are in `docs/operations/ui-stability-audit/opus-2026-11-26/`).
+- The contractor (own login), the client-portal user (own login) and the legacy client at 1366x768 and 390x844; Dutch at 1280x720 and 390x844 for supervisor, contractor and client portal.
+- `ui-stability-audit.spec.ts`: 189 screens (ten menus and 17 Workspace destinations at seven viewports), 0 findings.
+- The full local gate (lint, design guardrails, tsc, unit 368, Playwright on three device profiles with the fake Blob store) on the merged head of #38.
+
+Not verified:
+- The form dialogs one by one (Sign now, the drawing picker with a real drawing, Close / Verify / Approve, photo capture and edit, external-party link) by eye at every viewport: they are covered by their own specs (`dialogs`, `sign-popup`, `close-verify-approve-dialog`, `media-and-sharing`) in the gate, not by the walk.
+- Empty, loading, error and offline states by eye: covered by `offline-*`, `session-revoked`, `first-load` specs, not by the walk.
+- PDF and Word exports by eye (the specs check that they download and contain the record).
+- A real tablet and a real phone in daylight; screen readers beyond the axe audit.
+- Signed-in production (by rule: production was checked read-only through its public bundle).
