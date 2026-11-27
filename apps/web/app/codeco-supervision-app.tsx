@@ -692,10 +692,10 @@ export function CodecoSupervisionApp() {
     : id === "records" ? permissions.can("records.read")
     // Rapid Verify and "View as" of the portals are Supervision's (Word 2 and 2.1): an account that cannot record
     // (the legacy client role) does not get them (OPUS-F24).
-    : id === "verify" ? permissions.can("files.read") && permissions.can("records.create")
+    : id === "verify" ? permissions.can("files.read") && (!permissions.known || permissions.can("records.create"))
       : id === "punchlist" ? permissions.can("findings.read")
         : id === "rapporten" ? permissions.canAny("reports.read", "reports.readapproved")
-          : id === "contractorportal" || id === "clientportal" ? permissions.can("records.read") && permissions.can("records.create")
+          : id === "contractorportal" || id === "clientportal" ? permissions.can("records.read") && (!permissions.known || permissions.can("records.create"))
           : true;
   const localizedNavigation = navigation.filter((item) => navAllowed(item.id)).map((item) => ({
     ...item,

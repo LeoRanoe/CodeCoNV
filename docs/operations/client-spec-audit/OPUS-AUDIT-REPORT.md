@@ -63,7 +63,20 @@ Compared at 1366 x 768 and 1280 x 720 (the mockups are tablet landscape, one con
 
 ## 6. What remains
 
-(filled in at the end of the run)
+Ordered by what a supervisor feels first. None of these is a layout defect; each is a gap against the client's documents that is larger than a safe overnight change, or needs a migration or a client answer.
+
+| # | What | Source | Why not tonight | Size |
+|---|---|---|---|---|
+| R1 | Workforce form as mockup 04: one table (discipline, contractor, number), total, remarks, sign-off; Record ID `WF-` | Mockup 04, Excel Workforce rows 3-12 | A new form and a numbering branch in the database (migration); the current form also writes attendance used by reports | 1-2 days |
+| R2 | Inspection start as mockup 09: type, category, discipline, linked work / material, result list (6 values), title | Mockup 09, Excel Inspections | Changes the inspection flow and its stored fields (migration for required server rules) | 1-2 days |
+| R3 | Drawing and pin in the Location card of Issue, NCR, HSE, HSE incident, TI, CO, PDR; building and level filled from the drawing | Mockups 05-07, 10-12, 14; Excel "Location block" | A pin per record needs storage (migration) | 1 day |
+| R4 | Event date only in the auto bar ("tap to correct"), not a second field in the body | Excel column I on 10 forms | Touches the save path of ten forms | ½ day |
+| R5 | Actions opens on the automatic follow-up list (Word 9); the sidebar badge already counts that list | Word 9 | Changes the landing view of a screen many flows use; needs the owner's yes | 1 hour + tests |
+| R6 | Legacy `client` and `contractor` roles: route to their portals only (Word 8, 21); tonight only Rapid Verify and "View as" were taken from the client | Word 8, 21, 22 | Role routing is a permission change; the portal roles (`client_*`, `contractor_*`) already do this | ½ day |
+| R7 | Lists that need a server-rule migration: Change Order time unit has "Hours" (Excel: Calendar / Working days); HSE incident severity scale (Excel: Level 1-5) | Excel CO row 17, HSE incident | The option lists are stored in `app_private.spec_form_rules()` (migration 202611250009 is checked by a unit test) | 2 hours + migration |
+| R8 | Photos as a form (mockup 01): per-photo title, classification pills, related record, sign-off profile | Mockup 01, Excel Photos | Photo flow and its stored fields | 1 day |
+| R9 | The tablet in landscape at exactly 1024 px gets the phone layout (bottom bar) instead of the sidebar | Word 16 ("tablet landscape") | The 1024 px breakpoint is shared by hundreds of rules | ½ day |
+| R10 | Form header as the mockups (one header: icon, title, "project › Workspace", Draft, time estimate) instead of the module header plus the form's own title | Mockups 01-15 | Visual only, but on every form; worth one careful pass | ½ day |
 
 ## 7. Client questions
 
