@@ -96,8 +96,8 @@ test("planning an inspection in the app notifies the executor once, and not the 
   await signIn(page, planner);
   await openInspections(page);
   const subject = `Inspection notification ${crypto.randomUUID()}`;
-  await page.locator(".inspection-subject-details summary").click();
-  await page.getByLabel("Subject / element").fill(subject);
+  // Mockup 09: the subject is the inspection's Title, above card 1.
+  await page.locator(".inspection-form [data-sheet-title] input").fill(subject);
   const plan = page.locator("[data-inspection-plan]");
   await expect(plan).toBeVisible();
   await plan.locator("summary").click();

@@ -1086,9 +1086,6 @@
 .checklist-remark { border-color: var(--ink-600) !important; background: var(--ink-025) !important; }
 /* Like the record footer: above the fixed mobile navigation, not behind it. */
 .checklist-sticky-actions { background: rgba(255,255,255,.94); border-top: 1px solid var(--ink-100); bottom: var(--mobile-nav-height); margin: 0 -15px -15px; padding: 11px 15px calc(11px + max(0px, env(safe-area-inset-bottom) - var(--mobile-nav-height))); position: sticky; z-index: 3; }
-.inspection-subject-details { border-top: 1px solid var(--ink-100); color: var(--ink-600); padding-top: var(--space-2); }
-.inspection-subject-details summary { cursor: pointer; font-size: var(--text-xs); font-weight: var(--weight-bold); }
-.inspection-subject-details .form-field { margin-top: 10px; }
 .start-checklist-button { justify-content: center; min-height: var(--control-h-xl); } /* same hero-CTA tier as .day-questions-button */
 
 .finding-photo-stack {

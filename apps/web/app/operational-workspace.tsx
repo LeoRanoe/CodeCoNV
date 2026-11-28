@@ -56,7 +56,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import NextImage from "next/image";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { AgreementSignatureFields, agreementRecordDetails, agreementSignatureDetails, agreementSummaryLine, emptyAgreementRecord, emptyAgreementSignature } from "@/app/agreement-signature";
 import { ALL_BUILDINGS, BuildingMultiPicker, BuildingPicker, resolveDefaultBuildingId, type BuildingOption } from "@/app/building-picker";
 import { readChecklistFile } from "@/lib/checklists/import-checklist.mjs";
@@ -66,6 +66,7 @@ import { MoreActions } from "@/app/forms/more-actions";
 import { RecordList, SavedRecordsFold } from "@/app/forms/record-list";
 import { ContractorSignatureField, RecordSignatures, contractorSignatureDetails, contractorSignatureFrom, emptyContractorSignature, type ContractorSignatureValue } from "@/app/forms/contractor-signature";
 import { SpecFields, SpecLinkChips } from "@/app/forms/spec-fields";
+import { SheetCard } from "@/app/forms/sheet-card";
 import { AutoBarDate, FormAutoBar, autoBarItems } from "@/app/forms/form-auto-bar";
 import { fileProblem, formCodes, nextRecordId, suggestTitle, titleFollowsSuggestion } from "@/lib/forms/record-defaults.mjs";
 import { AttachmentButtons } from "@/app/forms/attachment-buttons";
@@ -211,6 +212,7 @@ import {
   updateFindingRecord,
   updateHseRecord,
   updateInspectionRecord,
+  updateInspectionSpec,
   loadInspectionExecutors,
   planInspection,
   rescheduleInspection,
@@ -863,6 +865,12 @@ function isAutomaticWeatherItem(item: ChecklistItem) {
     || /ambient weather conditions are suitable/i.test(item.prompt);
 }
 
+/** Mockup 09: the cells of the inspection's cards, each with its width out of 12. */
+const inspectionClassificationGrid = [["inspection_type", 6], ["inspection_category", 6], ["discipline", 6], ["related_record", 6], ["drawing_reference", 6]] as const;
+const inspectionResultGrid = [["inspection_result", 12]] as const;
+const inspectionFindingsGrid = [["finding_types", 12], ["findings", 6], ["corrective_action", 6], ["responsible_contractor", 4], ["reinspection_date", 4], ["ncr_reference", 4]] as const;
+const inspectionWitnessGrid = [["contractor_witness", 6]] as const;
+
 export function OperationalWorkspace({
   mode,
   client,
@@ -1363,6 +1371,10 @@ function ProjectOperations({
   const [inspectionResumeError, setInspectionResumeError] = useState("");
   const [inspectionTitle, setInspectionTitle] = useState("");
   const [inspectionTemplateId, setInspectionTemplateId] = useState("");
+  /** Mockup 09 card 1 (type, category, discipline, work, drawing reference), asked before the checklist starts. */
+  const [inspectionStartSpec, setInspectionStartSpec] = useState<SpecValues>({});
+  /** The open inspection's own fields: card 1 again, the result and its findings, the contractor witness. */
+  const [inspectionSpec, setInspectionSpec] = useState<SpecValues>({});
   const [inspectionAnswers, setInspectionAnswers] = useState<Record<string, InspectionAnswer>>({});
   const [inspectionPhotos, setInspectionPhotos] = useState<PhotoEvidence[]>([]);
   const [inspectionPhotoError, setInspectionPhotoError] = useState("");
@@ -1612,9 +1624,10 @@ function ProjectOperations({
   const inspectionAutosave = useFormAutosave({
     id: `form:inspection-start:${projectId}`,
     enabled: showForm && !activeInspection && tab === "inspections",
-    value: { inspectionTitle, inspectionTemplateId, inspectionBuildingId, inspectionBuildingIds, inspectionLocationNodeId },
+    value: { inspectionTitle, inspectionTemplateId, inspectionBuildingId, inspectionBuildingIds, inspectionLocationNodeId, inspectionStartSpec },
     restore: (draft) => {
       setInspectionTitle(draft.inspectionTitle ?? "");
+      setInspectionStartSpec(draft.inspectionStartSpec ?? {});
       setInspectionTemplateId(draft.inspectionTemplateId ?? "");
       if (draft.inspectionBuildingId) setInspectionBuildingId(draft.inspectionBuildingId);
       if (draft.inspectionBuildingIds?.length) setInspectionBuildingIds(draft.inspectionBuildingIds);
@@ -1710,6 +1723,28 @@ function ProjectOperations({
   const answeredChecklistItems = activeTemplate
     ? activeTemplate.items.filter((item) => checklistItemAnswered(item, inspectionAnswers[item.id])).length
     : 0;
+  // Mockup 09 / Excel Inspections 15: the result is suggested from the checklist (any Fail → Re-inspection Required,
+  // every point Pass or N/A → Accepted); the inspector may change it.
+  const checklistFailCount = activeTemplate ? activeTemplate.items.filter((item) => ["no", "fail"].includes(inspectionAnswers[item.id]?.result ?? "")).length : 0;
+  const suggestedInspectionResult = !activeTemplate ? "" : checklistFailCount ? "Re-inspection Required" : answeredChecklistItems === activeTemplate.items.length ? "Accepted" : "";
+  const inspectionSpecValues: SpecValues = { ...inspectionSpec, inspection_result: inspectionSpec.inspection_result || suggestedInspectionResult };
+  const inspectionNeedsFindings = ["Accepted with Comments", "Rejected", "Re-inspection Required", "Not Ready for Inspection"].includes(String(inspectionSpecValues.inspection_result ?? ""));
+  const openChecklistPoints = activeTemplate ? activeTemplate.items.filter((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id])).length : 0;
+  const inspectionStillNeeded = activeTemplate ? [
+    ...(openChecklistPoints ? [text(`${openChecklistPoints} checklist points`, `${openChecklistPoints} checklistpunten`)] : []),
+    ...specMissing("inspection", inspectionSpecValues, language),
+  ] : [];
+  const selectedInspectionTemplate = inspectionTemplates.find((template) => template.id === (inspectionTemplateId || inspectionTemplates[0]?.id));
+  const inspectionStartNeeded = [
+    ...specMissing("inspection", inspectionStartSpec, language, ["inspection_result"]),
+    ...(exactLocationRequired && !inspectionLocationNodeId ? [text("Exact location", "Exacte locatie")] : []),
+  ];
+  // Excel Inspections 5: "<Type / Category> – <Location> – <date>", until the inspector writes a title of their own.
+  const suggestedInspectionTitle = [
+    String(inspectionStartSpec.inspection_category || inspectionStartSpec.inspection_type || selectedInspectionTemplate?.name || text("Inspection", "Inspectie")),
+    inspectionLocationNodeId ? locationBreadcrumb(data.locationNodes, inspectionLocationNodeId) : buildings.find((building) => building.id === inspectionBuildingId)?.name ?? buildingName,
+    issueDateLabel,
+  ].join(" – ");
   const online = typeof navigator === "undefined" ? true : navigator.onLine;
   // Every form says the same thing about a photo, because a photo works the same in
   // every form: tap it to describe it, mark it or throw it away.
@@ -2581,16 +2616,21 @@ function ProjectOperations({
   const beginInspection = async () => {
     const templateId = inspectionTemplateId || inspectionTemplates[0]?.id;
     const template = data.templates.find((item) => item.id === templateId);
-    const inspectionBuildingName = buildings.find((building) => building.id === inspectionBuildingId)?.name ?? buildingName;
-    const resolvedTitle = inspectionTitle.trim() || `${template?.name ?? text("Inspection", "Inspectie")} · ${inspectionBuildingName}`;
-    if (!templateId) return;
+    const resolvedTitle = inspectionTitle.trim() || suggestedInspectionTitle;
+    if (!templateId || inspectionStartNeeded.length) return;
     let created: Inspection | null = null;
     const okay = await run(async () => {
-      created = await startInspection(client, { projectId, buildingId: inspectionBuildingId, buildingIds: inspectionBuildingIds, locationNodeId: inspectionLocationNodeId, reportId, templateId, title: resolvedTitle });
+      const started = await startInspection(client, { projectId, buildingId: inspectionBuildingId, buildingIds: inspectionBuildingIds, locationNodeId: inspectionLocationNodeId, reportId, templateId, title: resolvedTitle });
+      // Card 1 of mockup 09 is stored with the inspection, with the checklist's revision (Excel Inspections 14).
+      const spec = cleanSpecValues("inspection", { ...inspectionStartSpec, checklist_version: template ? `Rev ${template.version_number}` : "" });
+      await updateInspectionSpec(client, started.id, spec);
+      created = { ...started, spec } as Inspection;
     }, text("Inspection started; complete every required checkpoint.", "Inspectie gestart; vul nu ieder verplicht controlepunt in."));
     if (okay && created) {
       inspectionAutosave.clear();
       setActiveInspection(created);
+      setInspectionSpec(((created as Inspection).spec ?? {}) as SpecValues);
+      setInspectionStartSpec({});
       const automaticWeatherResult = projectStartAnswers
         ? projectStartAnswers.weatherCondition === "rain"
           || projectStartAnswers.weatherCondition === "heavy_rain"
@@ -2638,6 +2678,7 @@ function ProjectOperations({
     setInspectionBuildingIds(inspection.building_ids?.length ? inspection.building_ids : [inspection.building_id]);
     setInspectionLocationNodeId(inspection.location_node_id ?? "");
     setInspectionTitle(inspection.title);
+    setInspectionSpec((inspection.spec ?? {}) as SpecValues);
     setInspectionSignature(signatureFromDetails(inspection.signed_by, inspection.signed_at, inspection.signature_image));
     // Resuming replaces whatever was being read; the reader closes with it.
     setViewedRecord(null);
@@ -2702,7 +2743,7 @@ function ProjectOperations({
 
   const submitInspection = async () => {
     if (!activeInspection || !activeTemplate) return;
-    if (activeTemplate.items.some((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id]))) return;
+    if (inspectionStillNeeded.length) return;
     const okay = await run(
       async () => {
         const effectiveReportId = await ensureProjectDayReport(client, projectId, reportId);
@@ -2720,6 +2761,8 @@ function ProjectOperations({
           await signInspection(client, activeInspection.id, inspectionSignature);
           setActiveInspection((current) => current ? { ...current, signed_by: inspectionSignature.name, signed_at: inspectionSignature.signedAt, signature_image: inspectionSignature.image } : current);
         }
+        // The result and its findings are written before the checklist completes the record.
+        await updateInspectionSpec(client, activeInspection.id, cleanSpecValues("inspection", inspectionSpecValues));
         if (!["passed", "cancelled"].includes(activeInspection.status)) {
           await finishInspection(client, inspectionToFinish, inspectionAnswers);
         }
@@ -4055,117 +4098,174 @@ function ProjectOperations({
       {tab === "inspections" ? (
         <section className="operation-panel">
           {activeInspection && activeTemplate ? (
-            <RecordFormShell code={activeInspection.inspection_number} title={activeInspection.title} icon={formIcons.inspection} status={text("In progress", "In uitvoering")} busy={busy} className="wide sectioned-record-form">
+            <RecordFormShell code={activeInspection.inspection_number} title={activeInspection.title} icon={formIcons.inspection} status={text("In progress", "In uitvoering")} busy={busy} className="wide sectioned-record-form inspection-form">
               <FormAutoBar items={autoBarItems({
-                idLabel: text("Record ID", "Registratienummer"),
+                idLabel: text("Inspection ID", "Inspectie-ID"),
                 idValue: activeInspection.inspection_number,
-                dateLabel: text("Date/time", "Datum/tijd"),
+                dateLabel: text("Inspection date/time", "Inspectiedatum/-tijd"),
                 dateValue: `${issueDateLabel} · ${issueTime}`,
                 byLabel: text("Inspected by", "Geïnspecteerd door"),
                 byValue: currentUserName,
                 statusValue: text("In progress", "In uitvoering"),
                 text,
               })} />
-              <p className="form-intro">{text("A failed point creates a finding when you complete the inspection.", "Een niet-geslaagd punt maakt een bevinding aan zodra je de inspectie afrondt.")}</p>
-              <div className="checklist-progress" aria-label={text("Checklist progress", "Checklistvoortgang")}>
-                <span><b>{answeredChecklistItems}</b> / {activeTemplate.items.length} {text("answered", "beantwoord")}</span>
-                <span className="checklist-progress-track"><i style={{ width: `${activeTemplate.items.length ? Math.round((answeredChecklistItems / activeTemplate.items.length) * 100) : 0}%` }} /></span>
-              </div>
-              <div className="checklist-run">
-                {checklistSections.map(({ section, items }) => (
-                  <section className="checklist-section" key={section}>
-                    <header>
-                      <span><strong>{section}</strong><small>{items.filter((item) => checklistItemAnswered(item, inspectionAnswers[item.id])).length} / {items.length}</small></span>
-                      {items.every((item) => item.response_type === "yes_no_na" || item.response_type === "pass_fail_na") && items.some((item) => !checklistItemAnswered(item, inspectionAnswers[item.id])) ? <button type="button" onClick={() => approveChecklistSection(items)}><CheckCircle2 size={14} /> {text("Approve section", "Sectie akkoord")}</button> : null}
-                    </header>
-                    {items.map((item) => {
-                      const current = inspectionAnswers[item.id] ?? { result: "", notes: "" };
-                      const automaticWeather = isAutomaticWeatherItem(item);
-                      const failed = current.result === "no" || current.result === "fail";
-                      return (
-                        <fieldset className={`checklist-question${automaticWeather ? " automatic" : ""}`} key={item.id}>
-                          <legend>{item.prompt}{item.required ? " *" : ""}</legend>
-                          {automaticWeather ? <span className="checklist-auto-chip"><CloudSun size={13} /> {text("Weather prefilled · confirm", "Weer vooraf ingevuld · bevestig")}</span> : null}
-                          {checklistGuidance(item) ? <small>{checklistGuidance(item)}</small> : null}
-                          {item.response_type === "number" ? (
-                            <label className="checklist-value-input"><input type="number" value={current.numericValue ?? ""} min={item.minimum_value ?? undefined} max={item.maximum_value ?? undefined} onChange={(event) => setInspectionAnswers((answers) => ({ ...answers, [item.id]: { ...current, result: event.target.value ? "value" : "", numericValue: event.target.value ? Number(event.target.value) : undefined } }))} />{item.unit ? <em>{item.unit}</em> : null}</label>
-                          ) : item.response_type === "text" ? (
-                            <input value={current.textValue ?? ""} onChange={(event) => setInspectionAnswers((answers) => ({ ...answers, [item.id]: { ...current, result: event.target.value.trim() ? "text" : "", textValue: event.target.value } }))} placeholder={text("Enter the required value", "Vul de vereiste waarde in")} />
-                          ) : (
-                            <div className="answer-options">
-                              {(item.response_type === "yes_no_na" ? [["yes", text("Yes", "Ja")], ["no", text("No", "Nee")], ["na", text("N/A", "N.v.t.")]] : [["pass", text("Pass", "Akkoord")], ["fail", text("Fail", "Niet akkoord")], ["na", text("N/A", "N.v.t.")]]).map(([value, label]) => (
-                                <label key={value}><input type="radio" name={item.id} value={value} checked={current.result === value} onChange={() => setInspectionAnswers((answers) => ({ ...answers, [item.id]: { ...current, result: value } }))} /> {label}</label>
-                              ))}
-                            </div>
-                          )}
-                          {failed || current.notes ? <input className="checklist-remark" value={current.notes} onChange={(event) => setInspectionAnswers((answers) => ({ ...answers, [item.id]: { ...current, notes: event.target.value } }))} placeholder={text("Short exception note or evidence reference", "Korte afwijkingsnotitie of bewijsreferentie")} /> : null}
-                        </fieldset>
-                      );
-                    })}
-                  </section>
-                ))}
-              </div>
-              <label className="finding-photo-capture inspection-photo-capture">
-                <Camera size={22} />
-                <span><strong>{inspectionPhotos.length ? text(`${inspectionPhotos.length} photos ready`, `${inspectionPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
-                <input type="file" accept={photoAccept} capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setInspectionPhotos, setInspectionPhotoError); event.currentTarget.value = ""; }} />
-              </label>
-              <RecordBuildingsField
-                id="active-inspection-buildings"
-                buildings={buildings}
-                value={inspectionBuildingIds}
-                onChange={(next) => { setInspectionBuildingIds(next); setInspectionBuildingId(next[0] ?? inspectionBuildingId); setInspectionLocationNodeId(""); }}
-              />
-              <LocationPicker id="active-inspection-location" nodes={data.locationNodes} buildingId={inspectionBuildingId} value={inspectionLocationNodeId} onChange={setInspectionLocationNodeId} requiredDepth={requiredLocationDepth} />
-              <PhotoEvidenceList
-                photos={inspectionPhotos}
-                setPhotos={setInspectionPhotos}
-                markupContext={{ ...markupOptions, defaultBuildingId: activeInspection.building_id }}
-              />
-              {inspectionPhotoError ? <p className="field-error" role="alert">{inspectionPhotoError}</p> : null}
-              {/* "Geen optie om te ondertekenen! Naam etc." — the person who walked the
-                  checklist signs it, here, before it is completed. */}
-              {activeInspection.signature_image ? (
-                <RecordSignatureField
-                  declaration={text(
-                    "By signing you confirm that you checked every point of this checklist yourself.",
-                    "Met je handtekening bevestig je dat je elk punt van deze checklist zelf hebt gecontroleerd.",
+              {/* Mockup 09: one page of numbered cards, Inspection, Location, Checklist, Result and Sign-off. */}
+              <section className="record-section spec-section sheet-form inspection-sheet" aria-label={text("Form", "Formulier")}>
+                <div className="sheet-title-row" data-sheet-title>
+                  <label className="form-field sheet-slot">
+                    <span className="sheet-slot-label">{text("Title", "Titel")} <em className="record-section-required">*</em></span>
+                    <input value={inspectionTitle} maxLength={120} onChange={(event) => setInspectionTitle(event.target.value)} placeholder={activeInspection.title} />
+                  </label>
+                </div>
+                <SheetCard number={1} title={text("Inspection", "Inspectie")} hint={text("What is inspected?", "Wat wordt er gekeurd?")}>
+                  <SpecFields form="inspection" values={inspectionSpecValues} onChange={setInspectionSpec} text={text} language={language} grid={inspectionClassificationGrid} />
+                </SheetCard>
+                <SheetCard number={2} title={text("Location", "Locatie")} hint={text("Where is it?", "Waar is het?")}>
+                  <div className="sheet-card-grid">
+                    <div className="sheet-cell" style={{ "--span": 6 } as CSSProperties}>
+                      <RecordBuildingsField
+                        id="active-inspection-buildings"
+                        buildings={buildings}
+                        value={inspectionBuildingIds}
+                        onChange={(next) => { setInspectionBuildingIds(next); setInspectionBuildingId(next[0] ?? inspectionBuildingId); setInspectionLocationNodeId(""); }}
+                      />
+                    </div>
+                    <div className="sheet-cell" style={{ "--span": 6 } as CSSProperties}>
+                      <LocationPicker id="active-inspection-location" nodes={data.locationNodes} buildingId={inspectionBuildingId} value={inspectionLocationNodeId} onChange={setInspectionLocationNodeId} requiredDepth={requiredLocationDepth} />
+                    </div>
+                    <div className="sheet-cell" style={{ "--span": 12 } as CSSProperties}>
+                      {/* "Locatie pinnen": the checklist itself gets its spot on the drawing. */}
+                      <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setDrawingInspectionId(activeInspection.id); setDrawingFindingId(""); switchTab("drawings"); }}>
+                        <MapPin size={15} /> {text("Pin this location on the drawing", "Locatie op de tekening pinnen")}
+                      </button>
+                    </div>
+                  </div>
+                </SheetCard>
+                <SheetCard number={3} title={text("Checklist", "Checklist")} hint={text("Answer every point · a comment on Fail", "Beantwoord elk punt · een opmerking bij Fail")}>
+                  <p className="inspection-checklist-name"><strong>{activeTemplate.code ? `${activeTemplate.code} · ` : ""}{activeTemplate.name}</strong> <span>{text(`Rev ${activeTemplate.version_number}`, `Rev ${activeTemplate.version_number}`)}</span> <span className="form-auto-tag">{text("Auto", "Auto")}</span></p>
+                  <div className="checklist-progress" aria-label={text("Checklist progress", "Checklistvoortgang")}>
+                    <span><b>{answeredChecklistItems}</b> / {activeTemplate.items.length} {text("answered", "beantwoord")}{checklistFailCount ? <> · <em className="checklist-fail-count">{checklistFailCount} {text("Fail", "Fail")}</em></> : null}</span>
+                    <span className="checklist-progress-track"><i style={{ width: `${activeTemplate.items.length ? Math.round((answeredChecklistItems / activeTemplate.items.length) * 100) : 0}%` }} /></span>
+                  </div>
+                  <div className="checklist-run">
+                    {checklistSections.map(({ section, items }) => (
+                      <section className="checklist-section" key={section}>
+                        <header>
+                          <span><strong>{section}</strong><small>{items.filter((item) => checklistItemAnswered(item, inspectionAnswers[item.id])).length} / {items.length}</small></span>
+                          {items.every((item) => item.response_type === "yes_no_na" || item.response_type === "pass_fail_na") && items.some((item) => !checklistItemAnswered(item, inspectionAnswers[item.id])) ? <button type="button" onClick={() => approveChecklistSection(items)}><CheckCircle2 size={14} /> {text("Approve section", "Sectie akkoord")}</button> : null}
+                        </header>
+                        {items.map((item) => {
+                          const current = inspectionAnswers[item.id] ?? { result: "", notes: "" };
+                          const automaticWeather = isAutomaticWeatherItem(item);
+                          const failed = current.result === "no" || current.result === "fail";
+                          return (
+                            <fieldset className={`checklist-question${automaticWeather ? " automatic" : ""}${failed ? " failed" : ""}`} key={item.id}>
+                              <legend>{item.prompt}{item.required ? " *" : ""}</legend>
+                              {automaticWeather ? <span className="checklist-auto-chip"><CloudSun size={13} /> {text("Weather prefilled · confirm", "Weer vooraf ingevuld · bevestig")}</span> : null}
+                              {checklistGuidance(item) ? <small>{checklistGuidance(item)}</small> : null}
+                              {item.response_type === "number" ? (
+                                <label className="checklist-value-input"><input type="number" value={current.numericValue ?? ""} min={item.minimum_value ?? undefined} max={item.maximum_value ?? undefined} onChange={(event) => setInspectionAnswers((answers) => ({ ...answers, [item.id]: { ...current, result: event.target.value ? "value" : "", numericValue: event.target.value ? Number(event.target.value) : undefined } }))} />{item.unit ? <em>{item.unit}</em> : null}</label>
+                              ) : item.response_type === "text" ? (
+                                <input value={current.textValue ?? ""} onChange={(event) => setInspectionAnswers((answers) => ({ ...answers, [item.id]: { ...current, result: event.target.value.trim() ? "text" : "", textValue: event.target.value } }))} placeholder={text("Enter the required value", "Vul de vereiste waarde in")} />
+                              ) : (
+                                <div className="answer-options">
+                                  {(item.response_type === "yes_no_na" ? [["yes", text("Yes", "Ja")], ["no", text("No", "Nee")], ["na", text("N/A", "N.v.t.")]] : [["pass", text("Pass", "Akkoord")], ["fail", text("Fail", "Niet akkoord")], ["na", text("N/A", "N.v.t.")]]).map(([value, label]) => (
+                                    <label key={value}><input type="radio" name={item.id} value={value} checked={current.result === value} onChange={() => setInspectionAnswers((answers) => ({ ...answers, [item.id]: { ...current, result: value } }))} /> {label}</label>
+                                  ))}
+                                </div>
+                              )}
+                              {failed || current.notes ? <input className="checklist-remark" value={current.notes} onChange={(event) => setInspectionAnswers((answers) => ({ ...answers, [item.id]: { ...current, notes: event.target.value } }))} placeholder={text("Comment: what is wrong?", "Opmerking: wat is er mis?")} /> : null}
+                            </fieldset>
+                          );
+                        })}
+                      </section>
+                    ))}
+                  </div>
+                </SheetCard>
+                <SheetCard number={4} title={text("Result", "Resultaat")} hint={text("Outcome of the inspection", "Uitkomst van de inspectie")}>
+                  <SpecFields form="inspection" values={inspectionSpecValues} onChange={setInspectionSpec} text={text} language={language} grid={inspectionResultGrid} />
+                  {inspectionNeedsFindings ? (
+                    <div className="inspection-findings" role="group" aria-label={text("Findings", "Bevindingen")}>
+                      <p className="inspection-findings-note">{text("Shown when the result is not a pass", "Zichtbaar als het resultaat geen akkoord is")}</p>
+                      <SpecFields form="inspection" values={inspectionSpecValues} onChange={setInspectionSpec} text={text} language={language} grid={inspectionFindingsGrid} />
+                      {/* "Optie om NCR te kiezen vanuit hier" — a failed point can become the
+                          formal report straight away, with the checklist as its reference. */}
+                      <button className="ui-button ui-button--secondary ui-button--md inspection-ncr-button" type="button" onClick={() => raiseNcrFromInspection(activeInspection)}>
+                        <ShieldAlert size={15} /> {text("Raise an NCR from this checklist", "NCR opstellen vanuit deze checklist")}
+                      </button>
+                    </div>
+                  ) : (
+                    <button className="ui-button ui-button--quiet ui-button--md inspection-ncr-button" type="button" onClick={() => raiseNcrFromInspection(activeInspection)}>
+                      <ShieldAlert size={15} /> {text("Raise an NCR from this checklist", "NCR opstellen vanuit deze checklist")}
+                    </button>
                   )}
-                  nameSuggestion={currentUserName}
-                  lockName
-                  locked={Boolean(activeInspection.signature_image)}
-                  value={inspectionSignature}
-                  onChange={setInspectionSignature}
-                  required
-                />
-              ) : null}
-              {/* "Locatie pinnen": the checklist itself gets its spot on the drawing. */}
-              <button className="ui-button ui-button--secondary ui-button--md" type="button" onClick={() => { setDrawingInspectionId(activeInspection.id); setDrawingFindingId(""); switchTab("drawings"); }}>
-                <MapPin size={15} /> {text("Pin this location on the drawing", "Locatie op de tekening pinnen")}
-              </button>
-              {/* "Optie om NCR te kiezen vanuit hier" — a failed point can become the
-                  formal report straight away, with the checklist as its reference. */}
-              <button className="ui-button ui-button--secondary ui-button--md inspection-ncr-button" type="button" onClick={() => raiseNcrFromInspection(activeInspection)}>
-                <ShieldAlert size={15} /> {text("Raise an NCR from this checklist", "NCR opstellen vanuit deze checklist")}
-              </button>
-              <div className="form-actions checklist-sticky-actions"><button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={busy} onClick={() => { if (!inspectionOpen(activeInspection)) { setActiveInspection(null); return; } void run(() => saveInspectionAnswers(client, activeInspection, inspectionAnswers), text("Checklist progress saved.", "Voortgang van de checklist opgeslagen.")).then((saved) => { if (saved) setActiveInspection(null); }); }}>{text("Complete later", "Later afronden")}</button><button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || activeTemplate.items.some((item) => item.required && !checklistItemAnswered(item, inspectionAnswers[item.id]))} onClick={inspectionSigning.request}>{busy ? <Loader2 className="spin" size={15} /> : <FileCheck2 size={15} />} {text("Complete inspection", "Inspectie afronden")}</button></div>
-              {inspectionSigning.needsSignature ? <p className="form-intro">{text("You sign the checklist when you complete it.", "Je ondertekent de checklist bij het afronden.")}</p> : null}
+                  <div className="inspection-photos">
+                    <span className="sheet-slot-label">{text("Photo evidence", "Fotobewijs")}</span>
+                    <label className="finding-photo-capture inspection-photo-capture">
+                      <Camera size={22} />
+                      <span><strong>{inspectionPhotos.length ? text(`${inspectionPhotos.length} photos ready`, `${inspectionPhotos.length} foto’s klaar`) : text("Take or choose a photo", "Maak of kies een foto")}</strong><small>{photoCaptureHint}</small></span>
+                      <input type="file" accept={photoAccept} capture="environment" onChange={(event) => { addPhotosToStack(event.currentTarget.files, setInspectionPhotos, setInspectionPhotoError); event.currentTarget.value = ""; }} />
+                    </label>
+                    <PhotoEvidenceList
+                      photos={inspectionPhotos}
+                      setPhotos={setInspectionPhotos}
+                      markupContext={{ ...markupOptions, defaultBuildingId: activeInspection.building_id }}
+                    />
+                    {inspectionPhotoError ? <p className="field-error" role="alert">{inspectionPhotoError}</p> : null}
+                  </div>
+                </SheetCard>
+                <SheetCard number={5} title={text("Sign-off / review workflow", "Ondertekening / beoordelingsproces")} hint={<>INSPECTION-WITNESS-SUPERVISION · {text("Workflow status", "Workflowstatus")}: <strong>{text("In progress", "In uitvoering")}</strong> · AUTO</>}>
+                  <p className="sheet-workflow">
+                    <span><span className="sheet-role sheet-role--supervision">{text("Supervision", "Supervisie")}</span> {text("records & signs result", "legt het resultaat vast en tekent")}<span aria-hidden="true"> →</span></span>
+                    <span><span className="sheet-role sheet-role--other">{text("Contractor", "Aannemer")}</span> {text("acknowledges attendance / reacts", "bevestigt aanwezigheid / reageert")}<span aria-hidden="true"> →</span></span>
+                    <span><span className="sheet-role sheet-role--supervision">{text("Supervision", "Supervisie")}</span> {text("accepts · or re-inspection", "accepteert · of herkeuring")}</span>
+                  </p>
+                  <SpecFields form="inspection" values={inspectionSpecValues} onChange={setInspectionSpec} text={text} language={language} grid={inspectionWitnessGrid} />
+                  {/* "Geen optie om te ondertekenen! Naam etc." — the person who walked the
+                      checklist signs it, here, before it is completed. */}
+                  {activeInspection.signature_image ? (
+                    <div className="sheet-signoff">
+                      <RecordSignatures>
+                        <RecordSignatureField
+                          declaration={text(
+                            "By signing you confirm that you checked every point of this checklist yourself.",
+                            "Met je handtekening bevestig je dat je elk punt van deze checklist zelf hebt gecontroleerd.",
+                          )}
+                          nameSuggestion={currentUserName}
+                          role={text("Inspector", "Inspecteur")}
+                          lockName
+                          locked={Boolean(activeInspection.signature_image)}
+                          value={inspectionSignature}
+                          onChange={setInspectionSignature}
+                          required
+                        />
+                      </RecordSignatures>
+                    </div>
+                  ) : <p className="form-helper">{text("You sign the checklist when you complete it.", "Je ondertekent de checklist bij het afronden.")}</p>}
+                </SheetCard>
+              </section>
+              <div className="record-form-actions checklist-sticky-actions">
+                {inspectionStillNeeded.length ? <small className="confirm-needs"><strong>{text(`${inspectionStillNeeded.length} required left`, `Nog ${inspectionStillNeeded.length} verplicht`)}</strong>: {inspectionStillNeeded.join(" · ")}</small> : null}
+                <button className="ui-button ui-button--quiet ui-button--md" type="button" disabled={busy} onClick={() => setActiveInspection(null)}><X size={14} /> {text("Cancel", "Annuleren")}</button>
+                <button className="ui-button ui-button--secondary ui-button--md" type="button" disabled={busy} onClick={() => { if (!inspectionOpen(activeInspection)) { setActiveInspection(null); return; } void run(async () => { await saveInspectionAnswers(client, activeInspection, inspectionAnswers); await updateInspectionSpec(client, activeInspection.id, cleanSpecValues("inspection", inspectionSpecValues)); }, text("Checklist progress saved.", "Voortgang van de checklist opgeslagen.")).then((saved) => { if (saved) setActiveInspection(null); }); }}><Save size={14} /> {text("Save draft", "Concept opslaan")}</button>
+                <button className="ui-button ui-button--primary ui-button--md" type="button" disabled={busy || inspectionStillNeeded.length > 0} onClick={inspectionSigning.request}>{busy ? <Loader2 className="spin" size={15} /> : <FileCheck2 size={15} />} {text("Sign, submit & notify", "Ondertekenen, indienen & melden")}</button>
+              </div>
               {inspectionSigning.dialog}
             </RecordFormShell>
           ) : null}
           {showForm && !activeInspection ? (
-            <RecordFormShell title={text("Start inspection", "Inspectie starten")} icon={formIcons.inspection} status={text("New", "Nieuw")} busy={busy} className="wide sectioned-record-form">
+            <RecordFormShell title={text("Start inspection", "Inspectie starten")} icon={formIcons.inspection} status={text("New", "Nieuw")} busy={busy} className="wide sectioned-record-form inspection-form">
               <FormAutoBar items={autoBarItems({
-                idLabel: text("Record ID", "Registratienummer"),
+                idLabel: text("Inspection ID", "Inspectie-ID"),
                 idValue: nextRecordId(data.inspections.map((inspection) => inspection.inspection_number), projectCode, "inspection", recordYear),
-                dateLabel: text("Date/time", "Datum/tijd"),
+                dateLabel: text("Inspection date/time", "Inspectiedatum/-tijd"),
                 dateValue: `${issueDateLabel} · ${issueTime}`,
                 byLabel: text("Inspected by", "Geïnspecteerd door"),
                 byValue: currentUserName,
                 statusValue: text("Draft", "Concept"),
                 text,
               })} />
-              <DraftNotice status={inspectionAutosave.status} savedAt={inspectionAutosave.savedAt} onDiscard={() => { inspectionAutosave.clear(); setInspectionTitle(""); setInspectionTemplateId(""); setInspectionLocationNodeId(""); }} />
+              <DraftNotice status={inspectionAutosave.status} savedAt={inspectionAutosave.savedAt} onDiscard={() => { inspectionAutosave.clear(); setInspectionTitle(""); setInspectionTemplateId(""); setInspectionLocationNodeId(""); setInspectionStartSpec({}); }} />
               
               {anchorWorkPlanned && missingAnchorChecklistCodes.length ? (
                 <div className="operation-alert success recommended-checklist-install">
@@ -4179,14 +4279,49 @@ function ProjectOperations({
                   </div>
                 </div>
               ) : null}
-              {inspectionTemplates.length ? <RecordFormSection number={1} title={text("Checklist and location", "Checklist en locatie")}>
-                <RecordBuildingsField id="inspection-buildings" buildings={buildings} value={inspectionBuildingIds} onChange={(next) => { setInspectionBuildingIds(next); setInspectionBuildingId(next[0] ?? inspectionBuildingId); setInspectionLocationNodeId(""); }} />
-                <LocationPicker id="inspection-location" nodes={data.locationNodes} buildingId={inspectionBuildingId} value={inspectionLocationNodeId} onChange={setInspectionLocationNodeId} requiredDepth={requiredLocationDepth} />
-                <label className="form-field"><span>{text("Checklist · recommended for today's work first", "Checklist · aanbevolen voor vandaag eerst")}</span><select value={inspectionTemplateId || inspectionTemplates[0]?.id || ""} onChange={(event) => { setInspectionTemplateId(event.target.value); setInspectionTitle(""); }}>{inspectionTemplates.map((template) => <option value={template.id} key={template.id}>{["LIB-101", "LIB-102", "LIB-103"].includes(template.code) ? "★ " : ""}{template.name} · v{template.version_number}</option>)}</select></label>
-                <details className="inspection-subject-details"><summary>{text("Add a different subject or element · optional", "Ander onderwerp of element toevoegen · optioneel")}</summary><label className="form-field"><span>{text("Subject / element", "Onderwerp / element")}</span><input value={inspectionTitle} onChange={(event) => setInspectionTitle(event.target.value)} placeholder={`${inspectionTemplates.find((template) => template.id === (inspectionTemplateId || inspectionTemplates[0]?.id))?.name ?? text("Inspection", "Inspectie")} · ${buildingName}`} /></label></details>
-                <button className="ui-button ui-button--primary ui-button--md start-checklist-button" type="button" disabled={busy || (exactLocationRequired && !inspectionLocationNodeId)} onClick={() => void beginInspection()}><ClipboardCheck size={15} /> {text("Start recommended checklist", "Start aanbevolen checklist")}</button>
-                {permissions.can("inspections.manage") ? <InspectionPlanForm executors={inspectionExecutors} busy={busy} ready={!(exactLocationRequired && !inspectionLocationNodeId)} onPlan={planForColleague} /> : null}
-              </RecordFormSection> : <div className="operation-alert warning"><AlertTriangle size={18} /><div><strong>{text("No project checklist is published yet", "Nog geen projectchecklist gepubliceerd")}</strong><span>{text("Only an administrator can install checklists (Management).", "Alleen een beheerder kan checklists installeren (Management).")}</span></div></div>}
+              {inspectionTemplates.length ? (
+                <section className="record-section spec-section sheet-form inspection-sheet" aria-label={text("Form", "Formulier")}>
+                  {/* Mockup 09 / Excel Inspections 5: the title is suggested as "<Type / Category> – <Location> – <date>"; it may be overwritten. */}
+                  <div className="sheet-title-row" data-sheet-title>
+                    <label className="form-field sheet-slot">
+                      <span className="sheet-slot-label">{text("Title", "Titel")} <em className="record-section-required">*</em></span>
+                      <input value={inspectionTitle} maxLength={120} onChange={(event) => setInspectionTitle(event.target.value)} placeholder={suggestedInspectionTitle} />
+                    </label>
+                  </div>
+                  <SheetCard number={1} title={text("Inspection", "Inspectie")} hint={text("What is inspected?", "Wat wordt er gekeurd?")}>
+                    <SpecFields form="inspection" values={inspectionStartSpec} onChange={setInspectionStartSpec} text={text} language={language} grid={inspectionClassificationGrid} />
+                  </SheetCard>
+                  <SheetCard number={2} title={text("Location", "Locatie")} hint={text("Where is it?", "Waar is het?")}>
+                    <div className="sheet-card-grid">
+                      <div className="sheet-cell" style={{ "--span": 6 } as CSSProperties}>
+                        <RecordBuildingsField id="inspection-buildings" buildings={buildings} value={inspectionBuildingIds} onChange={(next) => { setInspectionBuildingIds(next); setInspectionBuildingId(next[0] ?? inspectionBuildingId); setInspectionLocationNodeId(""); }} />
+                      </div>
+                      <div className="sheet-cell" style={{ "--span": 6 } as CSSProperties}>
+                        <LocationPicker id="inspection-location" nodes={data.locationNodes} buildingId={inspectionBuildingId} value={inspectionLocationNodeId} onChange={setInspectionLocationNodeId} requiredDepth={requiredLocationDepth} />
+                      </div>
+                    </div>
+                  </SheetCard>
+                  <SheetCard number={3} title={text("Checklist", "Checklist")} hint={text("Pick your checklist · its items appear when you start", "Kies je checklist · de punten verschijnen bij het starten")}>
+                    <div className="sheet-card-grid">
+                      <div className="sheet-cell" style={{ "--span": 8 } as CSSProperties}>
+                        <label className="form-field"><span>{text("Checklist", "Checklist")} <em className="record-section-required">*</em></span><select value={inspectionTemplateId || inspectionTemplates[0]?.id || ""} onChange={(event) => setInspectionTemplateId(event.target.value)}>{inspectionTemplates.map((template) => <option value={template.id} key={template.id}>{["LIB-101", "LIB-102", "LIB-103"].includes(template.code) ? "★ " : ""}{template.code ? `${template.code} · ` : ""}{template.name}</option>)}</select><small className="form-helper">{text("Recommended for today's work first", "Aanbevolen voor het werk van vandaag eerst")}</small></label>
+                      </div>
+                      <div className="sheet-cell" style={{ "--span": 4 } as CSSProperties}>
+                        <div className="form-field">
+                          <span>{text("Checklist version", "Checklistversie")} <span className="form-auto-tag">{text("Auto", "Auto")}</span></span>
+                          <output className="inspection-checklist-version">{selectedInspectionTemplate ? `Rev ${selectedInspectionTemplate.version_number} · ${selectedInspectionTemplate.items.length} ${text("items", "punten")}` : "—"}</output>
+                        </div>
+                      </div>
+                    </div>
+                    {permissions.can("inspections.manage") ? <InspectionPlanForm executors={inspectionExecutors} busy={busy} ready={!(exactLocationRequired && !inspectionLocationNodeId)} onPlan={planForColleague} /> : null}
+                  </SheetCard>
+                  <div className="record-form-actions">
+                    {inspectionStartNeeded.length ? <small className="confirm-needs"><strong>{text(`${inspectionStartNeeded.length} required left`, `Nog ${inspectionStartNeeded.length} verplicht`)}</strong>: {inspectionStartNeeded.join(" · ")} · {text("auto-saved", "automatisch bewaard")}</small> : null}
+                    <button className="ui-button ui-button--quiet ui-button--md" type="button" onClick={() => setShowForm(false)}><X size={14} /> {text("Cancel", "Annuleren")}</button>
+                    <button className="ui-button ui-button--primary ui-button--md start-checklist-button" type="button" disabled={busy || inspectionStartNeeded.length > 0} onClick={() => void beginInspection()}><ClipboardCheck size={15} /> {text("Start checklist", "Checklist starten")}</button>
+                  </div>
+                </section>
+              ) : <div className="operation-alert warning"><AlertTriangle size={18} /><div><strong>{text("No project checklist is published yet", "Nog geen projectchecklist gepubliceerd")}</strong><span>{text("Only an administrator can install checklists (Management).", "Alleen een beheerder kan checklists installeren (Management).")}</span></div></div>}
             </RecordFormShell>
           ) : null}
           {permissions.can("inspections.manage") ? <PlannedInspections inspections={data.inspections.filter((item) => item.status === "planned")} executors={inspectionExecutors} busy={busy} nameOf={executorName} onReschedule={moveInspection} /> : null}

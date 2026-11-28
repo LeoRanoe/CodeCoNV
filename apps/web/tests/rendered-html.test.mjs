@@ -3170,7 +3170,17 @@ test("gives every record form the width of the desktop it is opened on", async (
   assert.match(workspace, /className=\{registerFormClassName\}/);
   assert.doesNotMatch(workspace, /className=\{controlledRegister \? "wide controlled-document-form" : ""\}/);
   assert.match(workspace, /className="operation-form wide sectioned-record-form snap-assign-form ncr-record-form"/);
-  assert.match(workspace, /title=\{text\("Start inspection", "Inspectie starten"\)\} icon=\{formIcons\.inspection\} status=\{text\("New", "Nieuw"\)\} busy=\{busy\} className="wide sectioned-record-form"/);
+  assert.match(workspace, /title=\{text\("Start inspection", "Inspectie starten"\)\} icon=\{formIcons\.inspection\} status=\{text\("New", "Nieuw"\)\} busy=\{busy\} className="wide sectioned-record-form inspection-form"/);
+  // Mockup 09 (27-11-2026): the inspection is the numbered cards Inspection, Location, Checklist, Result and Sign-off;
+  // type, category and discipline are asked before the checklist starts and stored with it, the result is suggested
+  // from the checklist and completing writes it first.
+  for (const title of ['title={text("Inspection", "Inspectie")}', 'title={text("Location", "Locatie")}', 'title={text("Checklist", "Checklist")}', 'title={text("Result", "Resultaat")}', 'title={text("Sign-off / review workflow"']) {
+    assert.ok(workspace.includes(`<SheetCard number={`) && workspace.includes(title), `inspection card ${title}`);
+  }
+  assert.match(workspace, /const inspectionStartNeeded = \[\s*\.\.\.specMissing\("inspection", inspectionStartSpec, language, \["inspection_result"\]\)/);
+  assert.match(workspace, /await updateInspectionSpec\(client, started\.id, spec\)/);
+  assert.match(workspace, /checklistFailCount \? "Re-inspection Required" : answeredChecklistItems === activeTemplate\.items\.length \? "Accepted" : ""/);
+  assert.match(workspace, /await updateInspectionSpec\(client, activeInspection\.id, cleanSpecValues\("inspection", inspectionSpecValues\)\);\s*if \(!\["passed", "cancelled"\]/);
 
   // And the width is used rather than only granted: two columns of sections once the form
   // itself is wide enough, measured on the form and not on the window.

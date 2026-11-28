@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { finishSigning } from "./sign-popup";
+import { fillSpecFields } from "./spec-fill";
 
 /**
  * An inspection from start to signed completion, the way a supervisor really works it:
@@ -44,7 +45,12 @@ test("inspection: failed point, approve section, NCR detour, resume, sign and co
   test.setTimeout(240_000);
   await signIn(page);
   await openInspections(page);
-  await page.getByRole("button", { name: "Start recommended checklist" }).click();
+  // Mockup 09: type, category and discipline are asked before the checklist starts (Excel Inspections 7-9).
+  const start = page.getByRole("button", { name: "Start checklist" });
+  await expect(start).toBeDisabled();
+  await fillSpecFields(page.locator(".inspection-form [data-sheet-section='1']").locator(".."));
+  await expect(start).toBeEnabled();
+  await start.click();
   const questions = page.locator(".checklist-question");
   await expect(questions.first()).toBeVisible();
   const total = await questions.count();
@@ -63,7 +69,7 @@ test("inspection: failed point, approve section, NCR detour, resume, sign and co
   await expect(page.locator(".checklist-section").first().getByRole("button", { name: "Approve section" })).toHaveCount(0);
 
   // Not complete: unanswered points and no signature.
-  const complete = page.getByRole("button", { name: "Complete inspection" });
+  const complete = page.getByRole("button", { name: "Sign, submit & notify" });
   await expect(complete).toBeDisabled();
 
   // Raising an NCR keeps the answers: the NCR form opens with the failed point in it.
@@ -85,6 +91,10 @@ test("inspection: failed point, approve section, NCR detour, resume, sign and co
     if (await approve.count()) await approve.click();
   }
   await expect(page.locator(".checklist-progress")).toContainText(`${total} / ${total}`);
+  // Mockup 09 card 4: a Fail suggests "Re-inspection Required", which asks for the findings first.
+  await expect(page.locator("[data-spec-field='inspection_result'] input[value='Re-inspection Required']")).toBeChecked();
+  await expect(complete).toBeDisabled();
+  await fillSpecFields(page.locator(".inspection-findings"));
   // v5: nothing is signed in the form; completing opens the signing popup and the signature cannot be skipped.
   await expect(complete).toBeEnabled();
   // QA L25: completing sends the answers in one request, not one per checklist point.
